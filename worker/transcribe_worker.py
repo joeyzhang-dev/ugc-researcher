@@ -218,8 +218,9 @@ def transcribe_whisperx(media: Path) -> list[dict] | None:
     # 0.21 confidence) — which then transcribes into invented foreign text.
     # Set WHISPERX_LANGUAGE="" to restore auto-detection.
     language = os.environ.get("WHISPERX_LANGUAGE", "en") or None
-    # 4 performance + 6 efficiency cores here; CTranslate2 defaults to 4.
-    threads = int(os.environ.get("WHISPERX_THREADS", "8"))
+    # Match the performance-core count (4P + 6E here). Going wider spills onto
+    # efficiency cores for little gain and starves the dev server / UI.
+    threads = int(os.environ.get("WHISPERX_THREADS", "4"))
     # Smaller batches keep float32 activation memory in check.
     batch_size = int(os.environ.get("WHISPERX_BATCH_SIZE", "4"))
     print(

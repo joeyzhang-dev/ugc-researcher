@@ -50,6 +50,22 @@ const nextConfig: NextConfig = {
   // a separate dir instead: NEXT_DIST_DIR=.next-build npm run build
   // (Vercel builds don't set the var, so deploys keep the default .next.)
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // The transcription worker writes downloaded media into worker/data/ and
+  // appends to worker.log / dev.log — all inside the repo. Without these
+  // ignores the dev server rebuilds on every download, which starves the CPU
+  // and leaves real page compiles (e.g. /research) stuck behind the loop.
+  webpack(config) {
+    config.watchOptions = {
+      ...config.watchOptions,
+      ignored: [
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/worker/data/**",
+        "**/*.log",
+      ],
+    };
+    return config;
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

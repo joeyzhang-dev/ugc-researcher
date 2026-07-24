@@ -1,0 +1,28 @@
+npm warn Unknown global config "min-release-age-exclude". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.
+
+> trace-research@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.20
+   - Local:        http://localhost:3000
+   - Network:      http://10.1.10.197:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 9.3s
+ ○ Compiling /middleware ...
+ ✓ Compiled /middleware in 1380ms (171 modules)
+ ○ Compiling /login ...
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (106kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (253kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ✓ Compiled /login in 9.6s (672 modules)
+ GET /login 200 in 10455ms
+ ○ Compiling / ...
+ ✓ Compiled / in 517ms (677 modules)
+ GET / 307 in 728ms
+ ○ Compiling /research ...
+ ✓ Compiled /research in 642ms (709 modules)
+ ✓ Compiled in 137ms (246 modules)
+ GET /research 200 in 2395ms
+ ✓ Compiled in 181ms (246 modules)
+ GET /research 200 in 318ms

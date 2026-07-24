@@ -590,3 +590,631 @@ Using cache found in /Users/joey/.cache/torch/hub/snakers4_silero-vad_master
   → [research] https://www.instagram.com/reel/DYu8A4sSHFD/
     whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
 2026-07-24 13:03:28 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DX5Y723tMJF/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ8wPFRN6bA/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Daikh0lpk_1/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZDxuRxSfdW/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 13:06:32 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DajLEeexiOd/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaBjFa_TC4p/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaasXsIQD4c/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZJYDlLR9ol/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DX2uRSCNKR_/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZoD2cMyu36/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZltFHsgOL0/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaHw64nT64p/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXf-4XsjuIG/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZjFd7gOu8G/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 12 segments via whisperx local
+  → [media backfill] https://www.instagram.com/reel/DPjeGo7keej/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZtNtN0gA9v/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/Dad18umxKId/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DagCOiRRQ4Y/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZpukVsMuAz/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZRSDmKO_-o/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZ28OqZxRqr/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DX5Y723tMJF/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZ5m-1zJouV/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/Da87kH5Rj2D/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZJYDlLR9ol/
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+processed 29 video(s)
+  → [research] https://www.instagram.com/reel/DWsOpjujQtK/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DW2jrV9DONQ/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXS6oJ0DDX2/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DbFHjjxsNbW/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DbHNF2WvouS/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Da9Xys8M0f1/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 19 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DWz_mftDL__/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DWvAniXDa7Z/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaTyKzCpMOb/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 4 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ3mcSpsJ8o/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZGy5ohN372/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYD2MXCt_Nw/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaT74tzg3ts/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 4 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaIxzzsB6rc/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DX3aToMNM1N/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaHxbQEz1fH/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZctF1cA8am/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaYTVPmxTvT/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 22 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZl1HeXS2Z-/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Da6-q_cMXze/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 26 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXiZl3Kjq1q/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZdWPPAR-yn/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXFbDRbERNj/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DbCRdBgR1uP/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 17 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaKi6dgznz5/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [media backfill] https://www.instagram.com/reel/DZRSDmKO_-o/
+    storage upload failed: <urlopen error [Errno 54] Connection reset by peer>
+  → [media backfill] https://www.instagram.com/reel/DZ28OqZxRqr/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZ3mcSpsJ8o/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZJYDlLR9ol/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZl1HeXS2Z-/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZdWPPAR-yn/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DXFbDRbERNj/
+    ✓ uploaded
+processed 30 video(s)
+  → [research] https://www.instagram.com/reel/DacNm1OpUm9/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaTXBMhJrYL/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 19 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYykHKayqEO/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZpJoi_wmGf/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 1 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ0Mf_XsfAQ/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 13:50:36 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DY7wOZqvtg7/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 19 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZQ9pHcpBQu/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 13:51:53 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DaT8E_MxnqO/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DamLghZMB_z/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 25 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZL1W3gNGMq/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 13:54:02 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DZYMQUrSDsI/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 13:54:05 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DZbSzJfR9pm/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaLWoD1BpKC/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZTkbQCx86J/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 19 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaF0hZDAC2M/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 21 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DanvGImxsHD/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DbEPLapPzs2/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Da6Ko8MB2TQ/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXVn-_Pjox9/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYOQnkIOkNu/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZEDUNqtcZX/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXN6weDDpES/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZYxEGnR-pf/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 16 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZx0mgPRWgM/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DabSX5uSUaR/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 23 segments via whisperx local
+  → [media backfill] https://www.instagram.com/reel/DZRSDmKO_-o/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZ28OqZxRqr/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZbSzJfR9pm/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZTkbQCx86J/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/Da6Ko8MB2TQ/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZYxEGnR-pf/
+    ✓ uploaded
+processed 24 video(s)
+  → [research] https://www.instagram.com/reel/DaHHHClAIEP/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZOWw92xWHS/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 18 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZnXa3zses6/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 14:08:59 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DXsVO3RgUyH/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 15 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYATv7eygmC/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYgDK4YtCi9/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DajoKDHBgVp/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 4 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZMJhlhgIP4/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 17 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DX-0JZmulRv/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Da0oGFrxTSK/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 16 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DadVgR7R3O6/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaKO4vWzqAt/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Dav9jaQx9Ho/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaWxRtrx0v7/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 5 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaVe7_dJtop/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 17 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DayCFJMRKfB/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZkw1Ouxabf/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaHBm7VROgB/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZIk75TsJ6V/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 1 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Da0p5HQRLj7/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaGlXXSSOLJ/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXvN9PpMp_L/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 5 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaRcvzcs_6s/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+    ✓ 23 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DY9zJHDgOIl/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZoBG22AFug/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 16 segments via whisperx local
+  → [media backfill] https://www.instagram.com/reel/DZ28OqZxRqr/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZbSzJfR9pm/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZTkbQCx86J/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZMJhlhgIP4/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/Da0oGFrxTSK/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZkw1Ouxabf/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/Da0p5HQRLj7/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DaRcvzcs_6s/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+processed 28 video(s)
+  → [research] https://www.instagram.com/reel/DYa00ertj2S/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYLvjMru8Yf/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DY5Lh2hhBRr/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 18 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaJF57Mp-mA/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DarKQtOAgov/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZvy9AzRQpS/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 23 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZsAyzpRcvV/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DadL-zRRTD0/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaOBEQOx-aQ/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DavfFr6Rsj8/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DamJep_OrGl/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZyhBqiA14U/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 17 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZib80qJ83Q/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYigfTzMgv1/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 14:42:34 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DZllYIuxG6_/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 22 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZd2MvPgBuG/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ_9paguMhm/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 3 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DX0CyfyxyFy/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXvRN3Vutv8/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZQL2PtRUHk/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 20 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZNpJvSR07Y/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 15 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaV0W4vJ4zM/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 17 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZWJ3eLxebk/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaI49YFxw1k/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 18 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaPx_siTg9B/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 10 segments via whisperx local
+  → [media backfill] https://www.instagram.com/reel/DZ28OqZxRqr/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZTkbQCx86J/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/Da0oGFrxTSK/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DaRcvzcs_6s/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DaJF57Mp-mA/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DarKQtOAgov/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZvy9AzRQpS/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DadL-zRRTD0/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DaOBEQOx-aQ/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DavfFr6Rsj8/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DamJep_OrGl/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZyhBqiA14U/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZib80qJ83Q/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZllYIuxG6_/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZd2MvPgBuG/
+    ✓ uploaded
+processed 36 video(s)
+  → [research] https://www.instagram.com/reel/DZmG5YVuLCJ/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYn-p0ct2fq/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DY0gkEBthCM/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ3gA0gx1Nu/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZjDn4CgMgX/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZOiwEBgw02/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaEZJlguGrb/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZfcXR9ABQX/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ7GLvgzkST/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaB6GTkx633/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaN7ZfChD9P/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaB6ysqR26F/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 21 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ9xJhdzwZO/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaKwcgYt_xF/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ1MGKmgk8q/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DasyRPTRcXq/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZJLInVNFUJ/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaJsV_aRr2x/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 16 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DamtQSZTZrG/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DY3PsoxNz7C/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ_ixweuaRm/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 6 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ8pdHOzwO9/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 6 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ8Lo1CpvFe/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 17 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaO0mYaRvj3/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 18 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYvL9EUx1uf/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [media backfill] https://www.instagram.com/reel/DaRcvzcs_6s/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DaJF57Mp-mA/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZvy9AzRQpS/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZ_9paguMhm/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DaI49YFxw1k/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZmG5YVuLCJ/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DYn-p0ct2fq/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DaB6GTkx633/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZ8pdHOzwO9/
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+processed 32 video(s)
+  → [research] https://www.instagram.com/reel/DZOkhuTxoLz/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaHK3XsuVG4/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZsIptvAL4y/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 15:29:09 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DaGbNmnRw2X/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 17 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Da3YF9NR7mw/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYS1eALRVsw/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 3 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZqTIDotgaj/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZKv9ghg-35/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Da5nLuTOV6n/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DNbIrUDR-BW/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 15:34:07 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DazBVz8sNpn/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 16 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Da0JohaRceT/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 28 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXYKG67jrZM/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZZFCJeypm-/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZShG2fMfM3/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 15:39:43 - whisperx.vads.silero - WARNING - No active speech found in audio
+Deprecated Feature: Support for Python version 3.9 has been deprecated. Please update to Python 3.10 or above
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/linecache.py:54: UserWarning: Module 'speechbrain.pretrained' was deprecated, redirecting to 'speechbrain.inference'. Please update your script. This is a change from SpeechBrain 1.0. See: https://github.com/speechbrain/speechbrain/releases/tag/v1.0.0
+  if getattr(mod, '__file__', None) == filename:
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/multiprocessing/resource_tracker.py:216: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
