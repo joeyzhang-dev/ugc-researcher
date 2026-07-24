@@ -525,9 +525,15 @@ def run_once() -> int:
             done += 1
         except Exception as e:
             print(f"    ✗ {e}")
-            sb("PATCH", f"research_videos?id=eq.{video['id']}",
-               {"transcript_status": "failed", "error_message": str(e)[:500]},
-               prefer="return=minimal")
+            # Marking the row failed is itself a network call — a transient
+            # Supabase/Cloudflare error here must not kill the whole worker
+            # (the row just stays pending/fetching for a later pass).
+            try:
+                sb("PATCH", f"research_videos?id=eq.{video['id']}",
+                   {"transcript_status": "failed", "error_message": str(e)[:500]},
+                   prefer="return=minimal")
+            except Exception as patch_err:
+                print(f"    ✗ could not mark failed: {patch_err}")
 
     # Rows transcribed before storage uploads existed still need playable copies.
     done += backfill_research_media()
@@ -540,8 +546,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(f"worker: {SUPA}")
     while True:
-        n = run_once()
-        print(f"processed {n} video(s)")
+        # One crashed cycle (Supabase 522, DNS blip, media host timeout) must
+        # not end a multi-hour run — log it and try again next poll.
+        try:
+            n = run_once()
+            print(f"processed {n} video(s)")
+        except Exception as e:
+            print(f"worker cycle failed ({type(e).__name__}): {e}")
         if args.once:
             break
         time.sleep(60)
