@@ -61,10 +61,19 @@ export interface ResearchVideo {
   transcript_method: string | null;
   error_message: string | null;
   format_category: string | null;
+  /** AI-categorization queue state (null = not queued). Drained by the Copilot
+   *  agent — see docs/format-categorization.md. */
+  format_llm_status: ResearchFormatLlmStatus | null;
+  format_llm_reasoning: string | null;
+  /** Provenance of the AI category, e.g. "copilot-cli/claude-opus-4.8". */
+  format_llm_model: string | null;
+  format_categorized_at: string | null;
   raw_metadata: unknown;
   created_at: string;
   updated_at: string;
 }
+
+export type ResearchFormatLlmStatus = "pending" | "done" | "failed";
 
 export interface ResearchVideoSegment {
   id: string;

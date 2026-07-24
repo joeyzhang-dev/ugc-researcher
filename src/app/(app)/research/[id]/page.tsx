@@ -5,6 +5,7 @@ import type { ResearchCreator, ResearchVideo } from "@/lib/types";
 import { median, summarizeCreator, type VideoLift } from "@/lib/research";
 import {
   autoCategorizeFormats,
+  queueAiCategorization,
   rescrapeResearchCreator,
   retryFailedTranscripts,
 } from "../actions";
@@ -87,7 +88,7 @@ export default async function ResearchCreatorPage({
     supabase
       .from("research_videos")
       .select(
-        "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category, error_message"
+        "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category, format_llm_status, format_llm_reasoning, format_llm_model, format_categorized_at, error_message"
       )
       .eq("research_creator_id", id),
   ]);
@@ -113,6 +114,7 @@ export default async function ResearchCreatorPage({
   const summary = summarizeCreator(videos);
   const transcribed = videos.filter((v) => v.transcript_status === "transcribed").length;
   const failedTranscripts = videos.filter((v) => v.transcript_status === "failed").length;
+  const aiQueued = videos.filter((v) => v.format_llm_status === "pending").length;
 
   // Format rollup: median score/lift per format, best first; uncategorized
   // videos get their own trailing bucket so the filter covers every video.
@@ -240,11 +242,18 @@ export default async function ResearchCreatorPage({
         <Card
           title="Formats by median score"
           action={
-            <form action={autoCategorizeFormats.bind(null, creator.id)}>
-              <SubmitButton pendingLabel="Categorizing…" className={secondaryButtonClass}>
-                Auto-categorize
-              </SubmitButton>
-            </form>
+            <span className="flex items-center gap-2">
+              <form action={autoCategorizeFormats.bind(null, creator.id)}>
+                <SubmitButton pendingLabel="Categorizing…" className={secondaryButtonClass}>
+                  Quick regex
+                </SubmitButton>
+              </form>
+              <form action={queueAiCategorization.bind(null, creator.id)}>
+                <SubmitButton pendingLabel="Queueing…" className={secondaryButtonClass}>
+                  Categorize with AI ✦
+                </SubmitButton>
+              </form>
+            </span>
           }
         >
           {formatRollup.length === 0 ? (
@@ -309,10 +318,19 @@ export default async function ResearchCreatorPage({
               </table>
             </div>
           )}
-          <p className="mt-3 text-xs text-neutral-400">
-            Click a format to filter the videos below. Detection improves as transcripts land —
-            hit Auto-categorize after the worker finishes.
-          </p>
+          {aiQueued > 0 ? (
+            <p className="mt-3 text-xs font-medium text-amber-600">
+              {aiQueued} video{aiQueued === 1 ? "" : "s"} queued for AI categorization — run{" "}
+              <code className="rounded bg-amber-50 px-1">npm run categorize:formats</code> to
+              classify them with Copilot (Opus 4.8), then refresh.
+            </p>
+          ) : (
+            <p className="mt-3 text-xs text-neutral-400">
+              Click a format to filter the videos below. <strong>Quick regex</strong> is an instant
+              caption/transcript heuristic; <strong>Categorize with AI ✦</strong> queues the videos
+              for Copilot (Opus 4.8) to read full transcripts and name new formats.
+            </p>
+          )}
         </Card>
       </div>
 

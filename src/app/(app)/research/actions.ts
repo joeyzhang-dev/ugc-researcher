@@ -72,10 +72,27 @@ export async function rescrapeResearchCreator(id: string) {
   revalidatePath("/research");
 }
 
-/** Re-run transcript-aware format detection over this creator's videos. */
+/** Re-run the fast regex format detection over this creator's videos. */
 export async function autoCategorizeFormats(creatorId: string) {
   await requireAdmin();
   await runFormatCategorization(createAdminClient(), creatorId);
+  revalidatePath(`/research/${creatorId}`);
+}
+
+/**
+ * Queue this creator's videos for AI format categorization. Just flips a flag —
+ * the actual LLM work is done by the Copilot agent when the drainer runs
+ * (`npm run categorize:formats`), mirroring the transcription worker. See
+ * docs/format-categorization.md.
+ */
+export async function queueAiCategorization(creatorId: string) {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("research_videos")
+    .update({ format_llm_status: "pending", updated_at: new Date().toISOString() })
+    .eq("research_creator_id", creatorId);
+  if (error) throw new Error(error.message);
   revalidatePath(`/research/${creatorId}`);
 }
 
