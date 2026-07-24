@@ -1,0 +1,55 @@
+/Users/joey/Developer/ugc-ops/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/joey/Developer/ugc-ops/.venv/lib/python3.9/site-packages/pyannote/audio/core/io.py:212: UserWarning: torchaudio._backend.list_audio_backends has been deprecated. This deprecation is part of a large refactoring effort to transition TorchAudio into a maintenance phase. The decoding and encoding capabilities of PyTorch for both audio and video are being consolidated into TorchCodec. Please see https://github.com/pytorch/audio/issues/3902 for more information. It will be removed from the 2.9 release. 
+  torchaudio.list_audio_backends()
+/Users/joey/Developer/ugc-ops/.venv/lib/python3.9/site-packages/speechbrain/utils/torch_audio_backend.py:64: UserWarning: torchaudio._backend.list_audio_backends has been deprecated. This deprecation is part of a large refactoring effort to transition TorchAudio into a maintenance phase. The decoding and encoding capabilities of PyTorch for both audio and video are being consolidated into TorchCodec. Please see https://github.com/pytorch/audio/issues/3902 for more information. It will be removed from the 2.9 release. 
+  available_backends = torchaudio.list_audio_backends()
+worker: https://zaoqousjswryyvxdnfha.supabase.co
+  → [research] https://www.instagram.com/reel/DT1F62zka02/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:00:06 - whisperx.asr - INFO - No language specified, language will be detected for each audio file (increases inference time)
+2026-07-24 03:00:06 - whisperx.vads.silero - INFO - Performing voice activity detection using Silero...
+Using cache found in /Users/joey/.cache/torch/hub/snakers4_silero-vad_master
+2026-07-24 03:00:07 - whisperx.vads.silero - WARNING - No active speech found in audio
+2026-07-24 03:00:07 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:00:25 - whisperx.asr - INFO - Detected language: en (0.79) in first 30s of audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DZ4Gif6TZ2B/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:00:39 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZvKAr0RYxV/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:02:09 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 22 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZoMqWIAn2X/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:04:22 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 20 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DarWtA9TIn7/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:06:08 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXsojUfEfrJ/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:07:04 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:07:15 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaHbqQxzHNf/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:07:53 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:08:06 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZL4tSfOkqo/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:09:02 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 18 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaWOtKATWRw/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:10:27 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DatmYwcxcDQ/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:11:44 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio

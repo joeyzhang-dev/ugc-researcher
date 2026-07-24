@@ -27,6 +27,9 @@ export interface ResearchScrapeOptions {
   handle: string;
   platform?: Platform;
   resultsLimit?: number;
+  /** Stamp the creator kind ('roster' for our own creators). Omitted = leave
+   *  the existing value (or the DB default 'research') untouched. */
+  kind?: "research" | "roster";
 }
 
 export interface ResearchScrapeResult {
@@ -63,7 +66,14 @@ export async function runResearchScrape(
   const { data: creator, error: upsertError } = await supabase
     .from("research_creators")
     .upsert(
-      { platform, handle, profile_url: profileUrl, status: "scraping", error_message: null },
+      {
+        platform,
+        handle,
+        profile_url: profileUrl,
+        status: "scraping",
+        error_message: null,
+        ...(options.kind ? { kind: options.kind } : {}),
+      },
       { onConflict: "platform,handle" }
     )
     .select()

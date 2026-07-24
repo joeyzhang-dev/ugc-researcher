@@ -178,9 +178,15 @@ export default async function ResearchCreatorPage({
                 Re-scrape
               </SubmitButton>
             </form>
-            <Link href="/research" className={secondaryButtonClass}>
-              ← Research
-            </Link>
+            {creator.kind === "roster" ? (
+              <Link href="/creators" className={secondaryButtonClass}>
+                ← Our creators
+              </Link>
+            ) : (
+              <Link href="/research" className={secondaryButtonClass}>
+                ← Research
+              </Link>
+            )}
           </span>
         }
       />

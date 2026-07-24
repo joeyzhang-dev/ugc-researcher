@@ -15,11 +15,15 @@ export interface Profile {
 
 export type ResearchCreatorStatus = "pending" | "scraping" | "ready" | "failed";
 
-/** Outside creator under study on the Research page (not a campaign creator). */
+/** 'research' = outside creator we study; 'roster' = one of our own creators. */
+export type ResearchCreatorKind = "research" | "roster";
+
+/** A creator profile we scrape — either studied competition or our roster. */
 export interface ResearchCreator {
   id: string;
   platform: Platform;
   handle: string;
+  kind: ResearchCreatorKind;
   display_name: string | null;
   profile_url: string | null;
   avatar_url: string | null;
@@ -82,4 +86,38 @@ export interface ResearchVideoSegment {
   start_time: number | null;
   end_time: number | null;
   text: string;
+}
+
+/** A product being promoted (Trace today; more apps later). */
+export interface ResearchApp {
+  id: string;
+  name: string;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface ResearchCampaign {
+  id: string;
+  app_id: string;
+  name: string;
+  status: string;
+  notes: string | null;
+  created_at: string;
+}
+
+/** Roster membership: creator ↔ app, carrying the per-app niche tag. */
+export interface ResearchAppCreator {
+  id: string;
+  app_id: string;
+  research_creator_id: string;
+  niche: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface ResearchCampaignCreator {
+  id: string;
+  campaign_id: string;
+  research_creator_id: string;
+  created_at: string;
 }

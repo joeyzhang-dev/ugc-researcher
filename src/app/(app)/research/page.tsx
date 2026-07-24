@@ -27,7 +27,12 @@ export default async function ResearchPage({
   const supabase = await createClient();
 
   const [{ data: creatorsData }, { data: videosData }] = await Promise.all([
-    supabase.from("research_creators").select("*").order("created_at", { ascending: false }),
+    // This tab is the outside creators we study — our own roster lives on /creators.
+    supabase
+      .from("research_creators")
+      .select("*")
+      .eq("kind", "research")
+      .order("created_at", { ascending: false }),
     supabase
       .from("research_videos")
       .select(
