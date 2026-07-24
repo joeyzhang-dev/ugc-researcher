@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+body {
+  @apply bg-[#fafafa] text-neutral-900 antialiased;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+::selection {
+  @apply bg-neutral-200 text-neutral-900;
+}
