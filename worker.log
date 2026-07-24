@@ -461,3 +461,56 @@ Using cache found in /Users/joey/.cache/torch/hub/snakers4_silero-vad_master
     whisperx: large-v3 on cpu (int8, vad=silero)
 2026-07-24 12:40:30 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
 2026-07-24 12:40:42 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DWp4eSnjdee/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:41:15 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:41:26 - whisperx.asr - INFO - Detected language: en (0.96) in first 30s of audio
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZVgeGQxZ0D/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:41:57 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 13 segments via whisperx local
+  → [media backfill] https://www.instagram.com/reel/DZvKAr0RYxV/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZL4tSfOkqo/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZtNtN0gA9v/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/Dad18umxKId/
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+  → [media backfill] https://www.instagram.com/reel/DagCOiRRQ4Y/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZRSDmKO_-o/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZlAzs3JUxJ/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DaiHKaBz3ZN/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZ28OqZxRqr/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/Da_9PKjzlIX/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DYJDJrXO-iz/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZ5m-1zJouV/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DaXuDPURtjR/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/Da87kH5Rj2D/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/Daxe4otzn8z/
+    ✓ uploaded
+processed 32 video(s)
+  → [research] https://www.instagram.com/reel/Daf8uvexpIg/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:44:47 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZg2sMnSaKC/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:46:03 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZTj7zypNDr/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:47:33 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:47:49 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { VideoLift } from "@/lib/research";
 import { formatCompact, formatDate } from "@/lib/format";
 
@@ -105,6 +105,50 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Copy-to-clipboard button with a brief confirmation. */
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // navigator.clipboard needs a secure context and permission; fall back to
+      // a throwaway textarea so the button still works everywhere.
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+    setCopied(true);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title="Copy the script to your clipboard"
+      className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+        copied
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-neutral-200 text-neutral-500 hover:border-neutral-300 hover:text-neutral-900"
+      }`}
+    >
+      {copied ? "Copied ✓" : "Copy"}
+    </button>
+  );
+}
+
 /** One timestamped transcript line (WhisperX segment). */
 export interface PanelSegment {
   position: number;
@@ -130,6 +174,9 @@ export function ResearchVideoPanel({
   if (!row) return null;
   const v = row.video;
   const segments = segmentsByVideo[v.id] ?? [];
+  // Plain spoken lines, no timestamps — what you'd paste into a draft.
+  const scriptText =
+    segments.length > 0 ? segments.map((s) => s.text).join("\n") : v.transcript_text ?? "";
 
   return (
     <aside className="sticky top-6 w-[380px] shrink-0 rounded-xl border border-neutral-200 bg-white">
@@ -241,8 +288,9 @@ export function ResearchVideoPanel({
         <div className="rounded-xl border border-neutral-200 p-3">
           <p className="mb-1.5 flex items-center justify-between text-xs font-semibold text-neutral-700">
             Script
-            <span className="font-normal text-neutral-400">
+            <span className="flex items-center gap-2 font-normal text-neutral-400">
               {v.transcript_status === "transcribed" ? v.transcript_method : v.transcript_status}
+              {scriptText && <CopyButton text={scriptText} />}
             </span>
           </p>
           {segments.length > 0 ? (
