@@ -111,26 +111,15 @@ export async function runResearchScrape(
       // fall through — post scrape still runs
     }
 
+    // Reels only. A grid ("posts") scrape returns photos/carousels we discard
+    // anyway, misses Reels-only accounts entirely, and costs an extra Apify run
+    // per creator. TikTok's profile scrape is already all-video.
     const rawItems = await runActorSync(
       config,
-      buildDiscoveryInput(platform, [handle], resultsLimit)
+      platform === "instagram"
+        ? buildInstagramReelsInput([handle], resultsLimit)
+        : buildDiscoveryInput(platform, [handle], resultsLimit)
     );
-
-    // A grid ("posts") scrape misses Reels-only accounts (e.g. video creators
-    // whose reels never appear in the profile grid). Pull Reels too and merge —
-    // dedupe by canonical URL happens in the loop below. Best-effort: a Reels
-    // failure must not sink an otherwise-good posts scrape.
-    if (platform === "instagram") {
-      try {
-        const reelItems = await runActorSync(
-          config,
-          buildInstagramReelsInput([handle], resultsLimit)
-        );
-        rawItems.push(...reelItems);
-      } catch {
-        // keep whatever the posts scrape returned
-      }
-    }
 
     let videos = 0;
     let created = 0;

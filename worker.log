@@ -53,3 +53,411 @@ Using cache found in /Users/joey/.cache/torch/hub/snakers4_silero-vad_master
   → [research] https://www.instagram.com/reel/DatmYwcxcDQ/
     whisperx: large-v3 on cpu (int8, vad=silero)
 2026-07-24 03:11:44 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 18 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DatFntjpqTM/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:12:39 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:12:50 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaeqdcozbRY/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:13:49 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaH41w3zn_W/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:15:00 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZojua_ujni/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:15:45 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:15:55 - whisperx.asr - INFO - Detected language: en (0.98) in first 30s of audio
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXap5Wzjijm/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:16:24 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:16:34 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DanpiHNR8mz/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:17:17 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaNkqBCTJVs/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:18:14 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:18:25 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: [SSL: SSLV3_ALERT_BAD_RECORD_MAC] sslv3 alert bad record mac (_ssl.c:2633)
+    ✓ 6 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Da19E-tzebH/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:19:14 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYTgFwWuDHQ/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:20:11 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:20:22 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZqtarwR5XF/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:21:02 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 24 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZau6muR1Qc/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:22:35 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DY5zYXDAcjB/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:23:46 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaaEGJaRRtE/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:24:50 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZtNtN0gA9v/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:25:55 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 22 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaLasMMRlhx/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:27:17 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 19 segments via whisperx local
+  → [media backfill] https://www.instagram.com/reel/DaY6Q2zRDlC/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZYJzwCxvhN/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DaYc0MGR0W-/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZvKAr0RYxV/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZL4tSfOkqo/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DXap5Wzjijm/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DaNkqBCTJVs/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DY5zYXDAcjB/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZtNtN0gA9v/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+processed 28 video(s)
+  → [research] https://www.instagram.com/reel/DZ0-AbeRZV0/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:29:36 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 23 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaHcWJhzcsp/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:30:29 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:30:38 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DX3BksQu_SF/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:31:10 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:31:20 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaqNdqIxf1_/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:32:04 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 17 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DadbNwlRiO7/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:33:27 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:33:38 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DW9SteGEXSF/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:34:25 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:34:35 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Dad18umxKId/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:35:12 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DagCOiRRQ4Y/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:36:12 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 15 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZRSDmKO_-o/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:37:21 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DbJtM4fxZ4B/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:38:21 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 16 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZRFM_9xOZl/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:39:29 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 16 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaG9j2uSRLY/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:40:37 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYvLj3oynL2/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:41:30 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:41:38 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZlAzs3JUxJ/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:42:26 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaiHKaBz3ZN/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:43:27 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZwKJIOOXq9/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:44:34 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 19 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZzG77Jyp2V/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:45:32 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZG4AYkx4xm/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:46:25 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:46:34 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaZUCwaB_mV/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:47:13 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 16 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaYK1dQR7qU/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:48:23 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DRCoFDMESV2/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:49:11 - whisperx.vads.silero - WARNING - No active speech found in audio
+2026-07-24 03:49:11 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:49:20 - whisperx.asr - INFO - Detected language: en (0.44) in first 30s of audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DZ28OqZxRqr/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:49:31 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 18 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DallVQ1SBoh/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:51:21 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ5Aqj9gfxr/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:52:28 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 16 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DbDt_d9TPkT/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:53:26 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 8 segments via whisperx local
+  → [media backfill] https://www.instagram.com/reel/DaY6Q2zRDlC/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DaYc0MGR0W-/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZvKAr0RYxV/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZL4tSfOkqo/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZtNtN0gA9v/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/Dad18umxKId/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DagCOiRRQ4Y/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZRSDmKO_-o/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DbJtM4fxZ4B/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZlAzs3JUxJ/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DaiHKaBz3ZN/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DZwKJIOOXq9/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZzG77Jyp2V/
+    ✓ uploaded
+  → [media backfill] https://www.instagram.com/reel/DZ28OqZxRqr/
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+  → [media backfill] https://www.instagram.com/reel/DallVQ1SBoh/
+    ✓ uploaded
+processed 30 video(s)
+  → [research] https://www.instagram.com/reel/Da_9PKjzlIX/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:55:45 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 03:55:53 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: HTTP Error 520: <none>
+    ✓ 6 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZMUP4KSjAG/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 03:57:02 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: HTTP Error 502: Bad Gateway
+    ✗ HTTP Error 522: <none>
+Traceback (most recent call last):
+  File "/Users/joey/Developer/trace-research/worker/transcribe_worker.py", line 524, in run_once
+    process_research(video)
+  File "/Users/joey/Developer/trace-research/worker/transcribe_worker.py", line 473, in process_research
+    sb("PATCH", f"research_videos?id=eq.{vid}", update, prefer="return=minimal")
+  File "/Users/joey/Developer/trace-research/worker/transcribe_worker.py", line 75, in sb
+    with urllib.request.urlopen(req) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 522: <none>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/joey/Developer/trace-research/worker/transcribe_worker.py", line 543, in <module>
+    n = run_once()
+  File "/Users/joey/Developer/trace-research/worker/transcribe_worker.py", line 528, in run_once
+    sb("PATCH", f"research_videos?id=eq.{video['id']}",
+  File "/Users/joey/Developer/trace-research/worker/transcribe_worker.py", line 75, in sb
+    with urllib.request.urlopen(req) as r:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 214, in urlopen
+    return opener.open(url, data, timeout)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 523, in open
+    response = meth(req, response)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 632, in http_response
+    response = self.parent.error(
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 561, in error
+    return self._call_chain(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 494, in _call_chain
+    result = func(*args)
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/urllib/request.py", line 641, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 522: <none>
+/Users/joey/Developer/ugc-ops/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/joey/Developer/ugc-ops/.venv/lib/python3.9/site-packages/pyannote/audio/core/io.py:212: UserWarning: torchaudio._backend.list_audio_backends has been deprecated. This deprecation is part of a large refactoring effort to transition TorchAudio into a maintenance phase. The decoding and encoding capabilities of PyTorch for both audio and video are being consolidated into TorchCodec. Please see https://github.com/pytorch/audio/issues/3902 for more information. It will be removed from the 2.9 release. 
+  torchaudio.list_audio_backends()
+/Users/joey/Developer/ugc-ops/.venv/lib/python3.9/site-packages/speechbrain/utils/torch_audio_backend.py:64: UserWarning: torchaudio._backend.list_audio_backends has been deprecated. This deprecation is part of a large refactoring effort to transition TorchAudio into a maintenance phase. The decoding and encoding capabilities of PyTorch for both audio and video are being consolidated into TorchCodec. Please see https://github.com/pytorch/audio/issues/3902 for more information. It will be removed from the 2.9 release. 
+  available_backends = torchaudio.list_audio_backends()
+worker: https://zaoqousjswryyvxdnfha.supabase.co
+  → [research] https://www.instagram.com/reel/DZMUP4KSjAG/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:15:58 - whisperx.asr - INFO - No language specified, language will be detected for each audio file (increases inference time)
+2026-07-24 12:15:58 - whisperx.vads.silero - INFO - Performing voice activity detection using Silero...
+Using cache found in /Users/joey/.cache/torch/hub/snakers4_silero-vad_master
+2026-07-24 12:16:11 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYqIJW8BzYP/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:17:26 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio
+    ✓ 11 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYJDJrXO-iz/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:18:34 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:18:44 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DajvuVfT-_1/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:19:30 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DbH_naFTyar/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:20:18 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:20:28 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Daa949Iw4dF/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:21:15 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Da_NdTtRCz_/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:22:25 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 16 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DafkY9iB1ur/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:23:41 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ5m-1zJouV/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:25:09 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 17 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaXuDPURtjR/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:26:48 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYQ019uuIu6/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:27:54 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:28:06 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXDN7rYEUev/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:28:53 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:29:07 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXKYn4zkeZL/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:29:50 - whisperx.vads.silero - WARNING - No active speech found in audio
+2026-07-24 12:29:50 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:30:03 - whisperx.asr - INFO - Detected language: ru (0.21) in first 30s of audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DarhwGZObN3/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:30:06 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:30:21 - whisperx.asr - INFO - Detected language: en (0.97) in first 30s of audio
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Da87kH5Rj2D/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:31:04 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZ887zMgJ5Q/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:31:59 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DbElCCTR9Cj/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:33:54 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 3 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaKz2NATodb/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:34:50 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 7 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXp5WMJEUMC/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:36:00 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:36:11 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Daxe4otzn8z/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:37:08 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXU_NHhEUlU/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:38:15 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:38:28 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 8 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXNYAGtgVlr/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:39:22 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 13 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXxnWaJxJRW/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:40:30 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:40:42 - whisperx.asr - INFO - Detected language: en (0.99) in first 30s of audio

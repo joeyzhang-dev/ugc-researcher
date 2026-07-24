@@ -111,9 +111,9 @@ export function buildDiscoveryInput(
   };
 }
 
-/** Instagram Reels for a profile. Many creators post video only under the
- *  Reels tab, which a `resultsType: "posts"` grid scrape misses entirely — so
- *  research (which studies video) merges these in on top of the posts scrape. */
+/** Instagram Reels for a profile — what research scrapes. A `resultsType:
+ *  "posts"` grid scrape returns photos/carousels we discard and misses
+ *  Reels-only accounts entirely, so video study always goes through here. */
 export function buildInstagramReelsInput(
   handles: string[],
   resultsLimit: number
