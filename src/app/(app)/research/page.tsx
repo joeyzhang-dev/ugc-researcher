@@ -9,6 +9,7 @@ import {
   inputClass, table, tableWrap, td, th, trHover,
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
+import { parseDays, withinWindow, RangePicker } from "@/components/range-picker";
 
 export const dynamic = "force-dynamic";
 // The add-creator action runs a deep Apify scrape inline.
@@ -19,9 +20,10 @@ export const maxDuration = 300;
 export default async function ResearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; days?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, days: daysParam } = await searchParams;
+  const days = parseDays(daysParam);
   const supabase = await createClient();
 
   const [{ data: creatorsData }, { data: videosData }] = await Promise.all([
@@ -74,7 +76,17 @@ export default async function ResearchPage({
       </Card>
 
       <div className="mt-5">
-        <Card title="Creators under study">
+        <Card
+          title="Creators under study"
+          action={
+            <span className="flex items-center gap-2 text-xs text-neutral-500">
+              <span className="hidden sm:inline">
+                {days == null ? "All time" : `Posted in last ${days} days`}
+              </span>
+              <RangePicker days={days} hrefForDays={(d) => (d ? `/research?days=${d}` : "/research")} />
+            </span>
+          }
+        >
           {creators.length === 0 ? (
             <EmptyState message="No research creators yet — paste a profile URL above." />
           ) : (
@@ -94,7 +106,7 @@ export default async function ResearchPage({
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
                   {creators.map((c) => {
-                    const vids = videosByCreator.get(c.id) ?? [];
+                    const vids = withinWindow(videosByCreator.get(c.id) ?? [], days);
                     const summary = summarizeCreator(vids);
                     const transcribed = vids.filter(
                       (v) => v.transcript_status === "transcribed"
@@ -103,7 +115,7 @@ export default async function ResearchPage({
                       <tr key={c.id} className={trHover}>
                         <td className={td}>
                           <Link
-                            href={`/research/${c.id}`}
+                            href={days ? `/research/${c.id}?days=${days}` : `/research/${c.id}`}
                             className="flex items-center gap-2.5 font-medium text-neutral-900 hover:underline"
                           >
                             <Avatar name={c.handle} src={c.avatar_url} size={28} />

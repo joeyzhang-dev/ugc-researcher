@@ -15,6 +15,7 @@ import {
   secondaryButtonClass, table, tableWrap, td, th, trHover,
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
+import { parseDays, withinWindow, RangePicker } from "@/components/range-picker";
 import { HoverVideo } from "@/components/hover-video";
 import {
   ResearchSelectTrigger,
@@ -64,17 +65,23 @@ export default async function ResearchCreatorPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ format?: string; view?: string }>;
+  searchParams: Promise<{ format?: string; view?: string; days?: string }>;
 }) {
   const { id } = await params;
-  const { format: formatFilter, view } = await searchParams;
+  const { format: formatFilter, view, days: daysParam } = await searchParams;
+  const days = parseDays(daysParam);
   const isGrid = view === "grid";
   const supabase = await createClient();
 
-  const hrefWith = (overrides: { format?: string | null; view?: string | null }) => {
+  const hrefWith = (overrides: {
+    format?: string | null;
+    view?: string | null;
+    days?: string | null;
+  }) => {
     const sp = new URLSearchParams();
     if (formatFilter) sp.set("format", formatFilter);
     if (view) sp.set("view", view);
+    if (days) sp.set("days", String(days));
     for (const [k, v] of Object.entries(overrides)) {
       if (v == null) sp.delete(k);
       else sp.set(k, v);
@@ -95,7 +102,9 @@ export default async function ResearchCreatorPage({
   const creator = creatorData as ResearchCreator | null;
   if (!creator) notFound();
 
-  const videos = (videosData ?? []) as ResearchVideo[];
+  // Recency filter: every metric below (lift, KPIs, format rollup, list) is
+  // computed on just the videos posted within the selected window.
+  const videos = withinWindow((videosData ?? []) as ResearchVideo[], days);
 
   // Timestamped transcript lines for the panel (WhisperX segments).
   const { data: segmentsData } = await supabase
@@ -155,6 +164,10 @@ export default async function ResearchCreatorPage({
         title={`@${creator.handle}`}
         action={
           <span className="flex items-center gap-2">
+            <RangePicker
+              days={days}
+              hrefForDays={(d) => hrefWith({ days: d ? String(d) : null })}
+            />
             <form action={retryFailedTranscripts.bind(null, creator.id)}>
               <SubmitButton pendingLabel="Requeueing…" className={secondaryButtonClass}>
                 Retry failed transcripts{failedTranscripts > 0 ? ` (${failedTranscripts})` : ""}
@@ -192,6 +205,11 @@ export default async function ResearchCreatorPage({
               </a>
             )}
             {creator.last_scraped_at && ` · last scraped ${formatDate(creator.last_scraped_at)}`}
+            {days != null && (
+              <span className="ml-1 font-medium text-neutral-700">
+                · showing videos posted in the last {days} days
+              </span>
+            )}
           </span>
         </span>
       </div>
@@ -371,7 +389,13 @@ export default async function ResearchCreatorPage({
           baseline, +2 per doubling: 7.0 = 2×, 8.0 ≈ 2.8×, 10 ≥ 5.7×.
         </p>
         {videos.length === 0 ? (
-          <EmptyState message="No videos scraped yet." />
+          <EmptyState
+            message={
+              days != null
+                ? `No videos posted in the last ${days} days. Try a wider range.`
+                : "No videos scraped yet."
+            }
+          />
         ) : visibleVideos.length === 0 ? (
           <EmptyState message={`No videos in "${formatFilter}".`} />
         ) : isGrid ? (
