@@ -203,16 +203,41 @@ def transcribe_whisperx(media: Path) -> list[dict] | None:
             device = "cuda"
     except ImportError:
         pass
+    # large-v3 is the most accurate Whisper checkpoint (turbo/distil variants
+    # trade accuracy for speed) — don't downgrade it for throughput.
     model_name = os.environ.get("WHISPERX_MODEL", "large-v3")
-    compute = os.environ.get("WHISPERX_COMPUTE_TYPE", "int8" if device == "cpu" else "float16")
+    # Accuracy over speed: float32 runs the model unquantized. int8 is ~3x
+    # faster and ~4x smaller but quantizes the weights; int8_float32 sits
+    # between. float32 large-v3 holds ~6GB resident, so drop to int8_float32
+    # if the machine starts swapping.
+    compute = os.environ.get("WHISPERX_COMPUTE_TYPE", "float32" if device == "cpu" else "float16")
     # Silero avoids the pyannote-VAD torch.load(weights_only=True) failure.
     vad_method = os.environ.get("WHISPERX_VAD_METHOD", "silero")
-    print(f"    whisperx: {model_name} on {device} ({compute}, vad={vad_method})")
+    # Pin the language instead of detecting per file. These reels are English,
+    # and on music-heavy audio detection guesses (one clip came back "ru" at
+    # 0.21 confidence) — which then transcribes into invented foreign text.
+    # Set WHISPERX_LANGUAGE="" to restore auto-detection.
+    language = os.environ.get("WHISPERX_LANGUAGE", "en") or None
+    # 4 performance + 6 efficiency cores here; CTranslate2 defaults to 4.
+    threads = int(os.environ.get("WHISPERX_THREADS", "8"))
+    # Smaller batches keep float32 activation memory in check.
+    batch_size = int(os.environ.get("WHISPERX_BATCH_SIZE", "4"))
+    print(
+        f"    whisperx: {model_name} on {device} "
+        f"({compute}, vad={vad_method}, lang={language or 'auto'}, batch={batch_size})"
+    )
     if _WHISPERX_MODEL is None:
-        _WHISPERX_MODEL = whisperx.load_model(model_name, device, compute_type=compute, vad_method=vad_method)
+        _WHISPERX_MODEL = whisperx.load_model(
+            model_name,
+            device,
+            compute_type=compute,
+            vad_method=vad_method,
+            language=language,
+            threads=threads,
+        )
     model = _WHISPERX_MODEL
     audio = whisperx.load_audio(str(media))
-    result = model.transcribe(audio, batch_size=8)
+    result = model.transcribe(audio, batch_size=batch_size)
     segs = []
     for i, seg in enumerate(result.get("segments", [])):
         text = (seg.get("text") or "").strip()

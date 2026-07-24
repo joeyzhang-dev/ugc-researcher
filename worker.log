@@ -514,3 +514,79 @@ processed 32 video(s)
     whisperx: large-v3 on cpu (int8, vad=silero)
 2026-07-24 12:47:33 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
 2026-07-24 12:47:49 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DRvsrpIjBNA/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:48:35 - whisperx.vads.silero - WARNING - No active speech found in audio
+2026-07-24 12:48:35 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:48:47 - whisperx.asr - INFO - Detected language: en (0.72) in first 30s of audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DY8hAzAAw0Y/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:49:07 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 17 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DaXW59Fpze6/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:50:28 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:50:41 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 5 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Dapk_Ojz2xC/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:51:38 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 12 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DXdWWo0jtzx/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:52:47 - whisperx.asr - WARNING - Audio is shorter than 30s, language detection may be inaccurate
+2026-07-24 12:53:00 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/Daikh0lpk_1/
+    whisperx: large-v3 on cpu (int8, vad=silero)
+2026-07-24 12:54:02 - whisperx.asr - INFO - Detected language: en (1.00) in first 30s of audio
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/multiprocessing/resource_tracker.py:216: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+/Users/joey/Developer/ugc-ops/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/joey/Developer/ugc-ops/.venv/lib/python3.9/site-packages/pyannote/audio/core/io.py:212: UserWarning: torchaudio._backend.list_audio_backends has been deprecated. This deprecation is part of a large refactoring effort to transition TorchAudio into a maintenance phase. The decoding and encoding capabilities of PyTorch for both audio and video are being consolidated into TorchCodec. Please see https://github.com/pytorch/audio/issues/3902 for more information. It will be removed from the 2.9 release. 
+  torchaudio.list_audio_backends()
+/Users/joey/Developer/ugc-ops/.venv/lib/python3.9/site-packages/speechbrain/utils/torch_audio_backend.py:64: UserWarning: torchaudio._backend.list_audio_backends has been deprecated. This deprecation is part of a large refactoring effort to transition TorchAudio into a maintenance phase. The decoding and encoding capabilities of PyTorch for both audio and video are being consolidated into TorchCodec. Please see https://github.com/pytorch/audio/issues/3902 for more information. It will be removed from the 2.9 release. 
+  available_backends = torchaudio.list_audio_backends()
+worker: https://zaoqousjswryyvxdnfha.supabase.co
+  → [research] https://www.instagram.com/reel/DPjeGo7keej/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 12:55:53 - whisperx.vads.silero - INFO - Performing voice activity detection using Silero...
+Using cache found in /Users/joey/.cache/torch/hub/snakers4_silero-vad_master
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYlNaCnth9k/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DY5w74SNG_M/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 10 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZpukVsMuAz/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    storage upload failed: <urlopen error [Errno 32] Broken pipe>
+    ✓ 4 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZYa7WxyfT9/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 12:58:54 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DTXWZI4gGT-/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 14 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DY8XxNbNfd0/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 2 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DZidLVvy7FL/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 13:01:18 - whisperx.vads.silero - WARNING - No active speech found in audio
+    ✗ media downloaded but no transcriber available — pip install whisperx (recommended) or set OPENAI_API_KEY
+  → [research] https://www.instagram.com/reel/DZ1CFZzNSOD/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 15 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYYbnF8tRzv/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+    ✓ 9 segments via whisperx local
+  → [research] https://www.instagram.com/reel/DYu8A4sSHFD/
+    whisperx: large-v3 on cpu (float32, vad=silero, lang=en, batch=4)
+2026-07-24 13:03:28 - whisperx.vads.silero - WARNING - No active speech found in audio
