@@ -111,6 +111,22 @@ export function buildDiscoveryInput(
   };
 }
 
+/** Instagram Reels for a profile. Many creators post video only under the
+ *  Reels tab, which a `resultsType: "posts"` grid scrape misses entirely — so
+ *  research (which studies video) merges these in on top of the posts scrape. */
+export function buildInstagramReelsInput(
+  handles: string[],
+  resultsLimit: number
+): Record<string, unknown> {
+  const clean = handles.map((h) => h.replace(/^@/, ""));
+  return {
+    directUrls: clean.map((h) => `https://www.instagram.com/${h}/`),
+    resultsType: "reels",
+    resultsLimit,
+    addParentData: false,
+  };
+}
+
 /** Analytics input: scrape specific posts by URL. */
 export function buildAnalyticsInput(
   platform: Platform,
