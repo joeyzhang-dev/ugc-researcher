@@ -93,3 +93,7 @@ npm warn Unknown global config "min-release-age-exclude". This will stop working
  GET /research 200 in 633ms
  ✓ Compiled in 112ms (246 modules)
  GET /research 200 in 88ms
+ ✓ Compiled in 936ms (719 modules)
+ GET /research 200 in 271ms
+ ✓ Compiled in 343ms (246 modules)
+ GET /research 200 in 396ms

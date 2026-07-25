@@ -13,9 +13,10 @@ import { detectFormatCategory, extractHashtags } from "@/lib/research";
 import { captureImage } from "@/lib/thumbnails";
 import type { Platform } from "@/lib/types";
 
-/** Research scrapes go deep — the lift baseline needs history, not just the
- *  newest posts. Apify charges per result, so cap it. */
-const DEFAULT_RESULTS_LIMIT = 100;
+/** Newest N reels per scrape (count-based — Apify has no date filter here).
+ *  Enough history for the trailing-10 lift baseline without paying Apify for
+ *  a creator's whole back catalogue. Override per call with resultsLimit. */
+const DEFAULT_RESULTS_LIMIT = 35;
 
 /** Instagram CDN URLs 403 when hotlinked and expire in days; anything we want
  *  to render must live in our own storage. */

@@ -98,8 +98,9 @@ detail page rolls formats up by median score.
   scrape job server-side (also lets us trigger scrapes from the CLI without
   the UI).
 
-Scrape depth: up to 100 recent posts per creator (non-video posts are skipped
-after normalization).
+Scrape depth: the newest 35 reels per creator (`DEFAULT_RESULTS_LIMIT`).
+Count-based, not date-based — Instagram scrapes request `resultsType: "reels"`,
+so there are no non-video posts to skip.
 
 ## Transcription (WhisperX, local worker)
 
