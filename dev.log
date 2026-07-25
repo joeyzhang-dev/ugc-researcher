@@ -26,3 +26,65 @@ npm warn Unknown global config "min-release-age-exclude". This will stop working
  GET /research 200 in 2395ms
  ✓ Compiled in 181ms (246 modules)
  GET /research 200 in 318ms
+ GET /login 200 in 280ms
+ GET / 307 in 797ms
+ GET /research 200 in 1767ms
+ ○ Compiling /creators ...
+ ✓ Compiled /creators in 3.1s (708 modules)
+ GET /creators 200 in 5097ms
+ GET /creators 200 in 775ms
+ ○ Compiling /api/jobs/research ...
+ ✓ Compiled /api/jobs/research in 1835ms (726 modules)
+ POST /api/jobs/research 200 in 107200ms
+ ✓ Compiled in 4.3s (246 modules)
+ GET /creators 200 in 4272ms
+ ✓ Compiled in 13.7s (719 modules)
+ GET /creators 200 in 7252ms
+ ✓ Compiled in 3.5s (719 modules)
+ ⨯ TypeError: Cannot read properties of undefined (reading 'id')
+    at eval (src/app/(app)/creators/page.tsx:282:69)
+    at Array.map (<anonymous>)
+    at OurCreatorsPage (src/app/(app)/creators/page.tsx:279:25)
+  280 |                     const c = creatorById.get(m.research_creator_id)!;
+  281 |                     const app = apps.find((a) => a.id === m.app_id);
+> 282 |                     const vids = withinWindow(videosByCreator.get(c.id) ?? [], days);
+      |                                                                     ^
+  283 |                     const summary = summarizeCreator(vids);
+  284 |                     const joined = (campaignsByCreator.get(c.id) ?? []).filter(
+  285 |                       (cm) => campaignById.get(cm.campaign_id)?.app_id === m.app_id {
+  digest: '1979594636'
+}
+ GET /creators 200 in 2626ms
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ✓ Compiled in 2.3s (719 modules)
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ⨯ TypeError: Cannot read properties of undefined (reading 'id')
+    at eval (src/app/(app)/creators/page.tsx:310:69)
+    at Array.map (<anonymous>)
+    at OurCreatorsPage (src/app/(app)/creators/page.tsx:307:25)
+  308 |                     const c = creatorById.get(m.research_creator_id)!;
+  309 |                     const app = apps.find((a) => a.id === m.app_id);
+> 310 |                     const vids = withinWindow(videosByCreator.get(c.id) ?? [], days);
+      |                                                                     ^
+  311 |                     const summary = summarizeCreator(vids);
+  312 |                     const joined = (campaignsByCreator.get(c.id) ?? []).filter(
+  313 |                       (cm) => campaignById.get(cm.campaign_id)?.app_id === m.app_id {
+  digest: '3871810029'
+}
+ GET /creators 500 in 2494ms
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ ✓ Compiled in 2.3s (719 modules)
+ ⚠ Fast Refresh had to perform a full reload due to a runtime error.
+ GET /creators 200 in 2680ms
+ ✓ Compiled in 699ms (719 modules)
+ GET /creators 200 in 377ms
+ ✓ Compiled in 226ms (719 modules)
+ GET /creators 200 in 427ms
+ ✓ Compiled in 517ms (719 modules)
+ GET /creators 200 in 719ms
+ ✓ Compiled in 360ms (719 modules)
+ GET /creators 200 in 272ms
+ ✓ Compiled in 241ms (719 modules)
+ GET /creators 200 in 400ms
+ ✓ Compiled in 266ms (719 modules)
+ GET /creators 200 in 392ms

@@ -24,6 +24,12 @@ import {
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
 import { parseDays, withinWindow, RangePicker } from "@/components/range-picker";
+import { compareValues, parseSort, SortHeader, type SortDir } from "@/components/sort-header";
+
+const SORT_KEYS = [
+  "creator", "app", "niche", "status", "followers", "videos", "views", "top", "scraped",
+] as const;
+type SortKey = (typeof SORT_KEYS)[number];
 
 export const dynamic = "force-dynamic";
 // Adding a roster creator runs a deep Apify scrape inline.
@@ -34,16 +40,27 @@ export const maxDuration = 300;
 export default async function OurCreatorsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; app?: string; days?: string }>;
+  searchParams: Promise<{
+    error?: string; app?: string; days?: string; sort?: string; dir?: string;
+  }>;
 }) {
-  const { error, app: appFilter, days: daysParam } = await searchParams;
+  const { error, app: appFilter, days: daysParam, sort: sortParam, dir: dirParam } =
+    await searchParams;
   const days = parseDays(daysParam);
+  const sort = parseSort<SortKey>(sortParam, dirParam, SORT_KEYS, {
+    key: "creator",
+    dir: "asc",
+  });
   const supabase = await createClient();
 
-  const hrefWith = (overrides: { app?: string | null; days?: string | null }) => {
+  const hrefWith = (overrides: {
+    app?: string | null; days?: string | null; sort?: string | null; dir?: string | null;
+  }) => {
     const sp = new URLSearchParams();
     if (appFilter) sp.set("app", appFilter);
     if (days) sp.set("days", String(days));
+    if (sortParam) sp.set("sort", sortParam);
+    if (dirParam) sp.set("dir", dirParam);
     for (const [k, v] of Object.entries(overrides)) {
       if (v == null) sp.delete(k);
       else sp.set(k, v);
@@ -100,11 +117,39 @@ export default async function OurCreatorsPage({
   const rows = memberships
     .filter((m) => creatorById.has(m.research_creator_id))
     .filter((m) => !appFilter || m.app_id === appFilter)
+    .map((m) => {
+      const c = creatorById.get(m.research_creator_id)!;
+      const app = apps.find((a) => a.id === m.app_id);
+      const summary = summarizeCreator(withinWindow(videosByCreator.get(c.id) ?? [], days));
+      const joined = (campaignsByCreator.get(c.id) ?? []).filter(
+        (cm) => campaignById.get(cm.campaign_id)?.app_id === m.app_id
+      );
+      const joinedIds = new Set(joined.map((cm) => cm.campaign_id));
+      const available = campaigns.filter(
+        (cp) => cp.app_id === m.app_id && !joinedIds.has(cp.id)
+      );
+      return { m, c, app, summary, joined, available };
+    })
     .sort((a, b) => {
-      const ca = creatorById.get(a.research_creator_id)!;
-      const cb = creatorById.get(b.research_creator_id)!;
-      return ca.handle.localeCompare(cb.handle);
+      const value = (r: (typeof rows)[number]): string | number | null => {
+        switch (sort.key) {
+          case "app": return r.app?.name ?? null;
+          case "niche": return r.m.niche;
+          case "status": return r.c.status;
+          case "followers": return r.c.follower_count;
+          case "videos": return r.summary.videoCount;
+          case "views": return r.summary.medianViews;
+          case "top": return r.summary.topRated;
+          case "scraped":
+            return r.c.last_scraped_at ? new Date(r.c.last_scraped_at).getTime() : null;
+          default: return r.c.handle;
+        }
+      };
+      // Handle is the tiebreaker so equal values keep a stable, readable order.
+      return compareValues(value(a), value(b), sort.dir) || a.c.handle.localeCompare(b.c.handle);
     });
+
+  const sortHref = (key: SortKey, dir: SortDir) => hrefWith({ sort: key, dir });
 
   return (
     <>
@@ -218,31 +263,48 @@ export default async function OurCreatorsPage({
               <table className={table}>
                 <thead>
                   <tr>
-                    <th className={th}>Creator</th>
-                    <th className={th}>App</th>
-                    <th className={th}>Niche</th>
+                    {(
+                      [
+                        ["Creator", "creator", "asc"],
+                        ["App", "app", "asc"],
+                        ["Niche", "niche", "asc"],
+                      ] as const
+                    ).map(([label, key, first]) => (
+                      <SortHeader
+                        key={key}
+                        label={label}
+                        sortKey={key}
+                        active={sort.key === key}
+                        dir={sort.dir}
+                        hrefFor={sortHref}
+                        firstDir={first}
+                      />
+                    ))}
                     <th className={th}>Campaigns</th>
-                    <th className={th}>Status</th>
-                    <th className={th}>Followers</th>
-                    <th className={th}>Videos</th>
-                    <th className={th}>Median views</th>
-                    <th className={th}>Rated 8.0+</th>
-                    <th className={th}>Last scraped</th>
+                    {(
+                      [
+                        ["Status", "status", "asc"],
+                        ["Followers", "followers", "desc"],
+                        ["Videos", "videos", "desc"],
+                        ["Median views", "views", "desc"],
+                        ["Rated 8.0+", "top", "desc"],
+                        ["Last scraped", "scraped", "desc"],
+                      ] as const
+                    ).map(([label, key, first]) => (
+                      <SortHeader
+                        key={key}
+                        label={label}
+                        sortKey={key}
+                        active={sort.key === key}
+                        dir={sort.dir}
+                        hrefFor={sortHref}
+                        firstDir={first}
+                      />
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
-                  {rows.map((m) => {
-                    const c = creatorById.get(m.research_creator_id)!;
-                    const app = apps.find((a) => a.id === m.app_id);
-                    const vids = withinWindow(videosByCreator.get(c.id) ?? [], days);
-                    const summary = summarizeCreator(vids);
-                    const joined = (campaignsByCreator.get(c.id) ?? []).filter(
-                      (cm) => campaignById.get(cm.campaign_id)?.app_id === m.app_id
-                    );
-                    const joinedIds = new Set(joined.map((cm) => cm.campaign_id));
-                    const available = campaigns.filter(
-                      (cp) => cp.app_id === m.app_id && !joinedIds.has(cp.id)
-                    );
+                  {rows.map(({ m, c, app, summary, joined, available }) => {
                     return (
                       <tr key={m.id} className={trHover}>
                         <td className={td}>

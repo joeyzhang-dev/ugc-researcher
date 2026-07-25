@@ -10,6 +10,12 @@ import {
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
 import { parseDays, withinWindow, RangePicker } from "@/components/range-picker";
+import { compareValues, parseSort, SortHeader, type SortDir } from "@/components/sort-header";
+
+const SORT_KEYS = [
+  "creator", "status", "followers", "videos", "views", "top", "transcribed", "scraped", "added",
+] as const;
+type SortKey = (typeof SORT_KEYS)[number];
 
 export const dynamic = "force-dynamic";
 // The add-creator action runs a deep Apify scrape inline.
@@ -20,10 +26,29 @@ export const maxDuration = 300;
 export default async function ResearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; days?: string }>;
+  searchParams: Promise<{ error?: string; days?: string; sort?: string; dir?: string }>;
 }) {
-  const { error, days: daysParam } = await searchParams;
+  const { error, days: daysParam, sort: sortParam, dir: dirParam } = await searchParams;
   const days = parseDays(daysParam);
+  const sort = parseSort<SortKey>(sortParam, dirParam, SORT_KEYS, {
+    key: "added",
+    dir: "desc",
+  });
+  const hrefWith = (overrides: {
+    days?: string | null; sort?: string | null; dir?: string | null;
+  }) => {
+    const sp = new URLSearchParams();
+    if (days) sp.set("days", String(days));
+    if (sortParam) sp.set("sort", sortParam);
+    if (dirParam) sp.set("dir", dirParam);
+    for (const [k, v] of Object.entries(overrides)) {
+      if (v == null) sp.delete(k);
+      else sp.set(k, v);
+    }
+    const qs = sp.toString();
+    return `/research${qs ? `?${qs}` : ""}`;
+  };
+  const sortHref = (key: SortKey, dir: SortDir) => hrefWith({ sort: key, dir });
   const supabase = await createClient();
 
   const [{ data: creatorsData }, { data: videosData }] = await Promise.all([
@@ -47,6 +72,33 @@ export default async function ResearchPage({
     (videosByCreator.get(v.research_creator_id) ??
       videosByCreator.set(v.research_creator_id, []).get(v.research_creator_id)!).push(v);
   }
+
+  const rows = creators
+    .map((c) => {
+      const vids = withinWindow(videosByCreator.get(c.id) ?? [], days);
+      return {
+        c,
+        summary: summarizeCreator(vids),
+        transcribed: vids.filter((v) => v.transcript_status === "transcribed").length,
+      };
+    })
+    .sort((a, b) => {
+      const value = (r: (typeof rows)[number]): string | number | null => {
+        switch (sort.key) {
+          case "creator": return r.c.handle;
+          case "status": return r.c.status;
+          case "followers": return r.c.follower_count;
+          case "videos": return r.summary.videoCount;
+          case "views": return r.summary.medianViews;
+          case "top": return r.summary.topRated;
+          case "transcribed": return r.transcribed;
+          case "scraped":
+            return r.c.last_scraped_at ? new Date(r.c.last_scraped_at).getTime() : null;
+          default: return new Date(r.c.created_at).getTime();
+        }
+      };
+      return compareValues(value(a), value(b), sort.dir) || a.c.handle.localeCompare(b.c.handle);
+    });
 
   return (
     <>
@@ -88,7 +140,10 @@ export default async function ResearchPage({
               <span className="hidden sm:inline">
                 {days == null ? "All time" : `Posted in last ${days} days`}
               </span>
-              <RangePicker days={days} hrefForDays={(d) => (d ? `/research?days=${d}` : "/research")} />
+              <RangePicker
+                days={days}
+                hrefForDays={(d) => hrefWith({ days: d ? String(d) : null })}
+              />
             </span>
           }
         >
@@ -99,23 +154,32 @@ export default async function ResearchPage({
               <table className={table}>
                 <thead>
                   <tr>
-                    <th className={th}>Creator</th>
-                    <th className={th}>Status</th>
-                    <th className={th}>Followers</th>
-                    <th className={th}>Videos</th>
-                    <th className={th}>Median views</th>
-                    <th className={th}>Rated 8.0+</th>
-                    <th className={th}>Transcribed</th>
-                    <th className={th}>Last scraped</th>
+                    {(
+                      [
+                        ["Creator", "creator", "asc"],
+                        ["Status", "status", "asc"],
+                        ["Followers", "followers", "desc"],
+                        ["Videos", "videos", "desc"],
+                        ["Median views", "views", "desc"],
+                        ["Rated 8.0+", "top", "desc"],
+                        ["Transcribed", "transcribed", "desc"],
+                        ["Last scraped", "scraped", "desc"],
+                      ] as const
+                    ).map(([label, key, first]) => (
+                      <SortHeader
+                        key={key}
+                        label={label}
+                        sortKey={key}
+                        active={sort.key === key}
+                        dir={sort.dir}
+                        hrefFor={sortHref}
+                        firstDir={first}
+                      />
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
-                  {creators.map((c) => {
-                    const vids = withinWindow(videosByCreator.get(c.id) ?? [], days);
-                    const summary = summarizeCreator(vids);
-                    const transcribed = vids.filter(
-                      (v) => v.transcript_status === "transcribed"
-                    ).length;
+                  {rows.map(({ c, summary, transcribed }) => {
                     return (
                       <tr key={c.id} className={trHover}>
                         <td className={td}>
