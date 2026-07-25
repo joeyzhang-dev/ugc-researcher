@@ -203,9 +203,11 @@ def transcribe_whisperx(media: Path) -> list[dict] | None:
             device = "cuda"
     except ImportError:
         pass
-    # large-v3 is the most accurate Whisper checkpoint (turbo/distil variants
-    # trade accuracy for speed) — don't downgrade it for throughput.
-    model_name = os.environ.get("WHISPERX_MODEL", "large-v3")
+    # distil-large-v3: distilled from large-v3, ~2-3x faster with WER within
+    # ~1% of it on English. ENGLISH-ONLY — it will produce nonsense on other
+    # languages, so the language pin below must stay "en". Set
+    # WHISPERX_MODEL=large-v3 for maximum accuracy or non-English audio.
+    model_name = os.environ.get("WHISPERX_MODEL", "distil-large-v3")
     # Accuracy over speed: float32 runs the model unquantized. int8 is ~3x
     # faster and ~4x smaller but quantizes the weights; int8_float32 sits
     # between. float32 large-v3 holds ~6GB resident, so drop to int8_float32
