@@ -241,12 +241,61 @@ def transcribe_whisperx(media: Path) -> list[dict] | None:
     model = _WHISPERX_MODEL
     audio = whisperx.load_audio(str(media))
     result = model.transcribe(audio, batch_size=batch_size)
+    raw = result.get("segments") or []
+
+    # Forced alignment gives word-level timings, which is what lets the chunker
+    # break lines on real pauses instead of guessing from character counts.
+    # Best-effort: a missing alignment model just falls back to text splitting.
+    if raw and os.environ.get("WHISPERX_ALIGN", "1") != "0":
+        aligned = align_words(whisperx, result, audio, device)
+        if aligned:
+            raw = aligned
+
     segs = []
-    for i, seg in enumerate(result.get("segments", [])):
+    for i, seg in enumerate(raw):
         text = (seg.get("text") or "").strip()
-        if text:
-            segs.append({"position": i, "start_time": seg.get("start"), "end_time": seg.get("end"), "text": text})
+        if not text:
+            continue
+        words = [
+            {"word": w.get("word"), "start": w.get("start"), "end": w.get("end")}
+            for w in (seg.get("words") or [])
+            if (w.get("word") or "").strip()
+        ]
+        segs.append({
+            "position": i,
+            "start_time": seg.get("start"),
+            "end_time": seg.get("end"),
+            "text": text,
+            "words": words,
+        })
     return segs or None
+
+
+_ALIGN_MODEL = None
+_ALIGN_META: dict | None = None
+
+
+def align_words(whisperx, result: dict, audio, device: str) -> list[dict] | None:
+    """Run WhisperX forced alignment, caching the model across videos."""
+    global _ALIGN_MODEL, _ALIGN_META
+    language = result.get("language") or os.environ.get("WHISPERX_LANGUAGE", "en") or "en"
+    try:
+        if _ALIGN_MODEL is None or (_ALIGN_META or {}).get("language") != language:
+            _ALIGN_MODEL, _ALIGN_META = whisperx.load_align_model(
+                language_code=language, device=device
+            )
+        aligned = whisperx.align(
+            result["segments"],
+            _ALIGN_MODEL,
+            _ALIGN_META,
+            audio,
+            device,
+            return_char_alignments=False,
+        )
+        return aligned.get("segments") or None
+    except Exception as e:
+        print(f"    alignment unavailable ({e}) — falling back to text splitting")
+        return None
 
 
 def transcribe_openai(media: Path) -> list[dict] | None:
@@ -312,31 +361,216 @@ def split_sentences(text: str) -> list[str]:
     ]
 
 
+# --- script-style line chunking ------------------------------------------------
+# Tuned for the review panel: roughly one to two rendered lines per entry, which
+# is also about what a person reads in one beat.
+MAX_LINE_CHARS = int(os.environ.get("TRANSCRIPT_MAX_LINE_CHARS", "90"))
+MIN_LINE_CHARS = int(os.environ.get("TRANSCRIPT_MIN_LINE_CHARS", "24"))
+MAX_LINE_SECONDS = float(os.environ.get("TRANSCRIPT_MAX_LINE_SECONDS", "6"))
+# A pause this long reads as a deliberate beat rather than normal word spacing.
+PAUSE_BREAK_SECONDS = float(os.environ.get("TRANSCRIPT_PAUSE_BREAK_SECONDS", "0.4"))
+
+SENTENCE_END_RE = re.compile(r"[.!?][\"'\u201d\u2019)\]]*$")
+# Whisper often returns unpunctuated run-ons, so these are the only grammatical
+# seams left to break on. Ordered by how clean the break reads.
+CLAUSE_WORDS = {
+    "and", "but", "so", "because", "cause", "cuz", "then", "when", "while",
+    "if", "or", "that", "which", "who", "after", "before", "since", "though",
+    "although", "however", "plus", "also", "until", "unless", "whereas",
+}
+
+
+def split_long_text(text: str, max_chars: int = MAX_LINE_CHARS) -> list[str]:
+    """Break an over-long run-on into readable lines, preferring clause seams.
+
+    Falls back to a plain word boundary when no conjunction sits near the cap,
+    so a line never exceeds the budget just because the speaker never took a
+    grammatical breath.
+    """
+    text = text.strip()
+    if len(text) <= max_chars:
+        return [text] if text else []
+
+    words = text.split()
+    lines: list[str] = []
+    current: list[str] = []
+
+    for word in words:
+        if current and len(" ".join(current)) + 1 + len(word) > max_chars:
+            # Look back over the tail for a conjunction to start the next line
+            # with — but only when the line left behind still reads as a line.
+            cut = len(current)
+            floor = max(3, len(current) - 8)
+            for i in range(len(current) - 1, floor - 1, -1):
+                head = " ".join(current[:i])
+                if (
+                    current[i].strip(".,!?;:\"'").lower() in CLAUSE_WORDS
+                    and len(head) >= MIN_LINE_CHARS
+                ):
+                    cut = i
+                    break
+            lines.append(" ".join(current[:cut]).strip())
+            current = current[cut:]
+        current.append(word)
+
+    if current:
+        tail = " ".join(current).strip()
+        if lines and len(tail) < MIN_LINE_CHARS and len(lines[-1]) + 1 + len(tail) <= max_chars * 1.3:
+            lines[-1] = f"{lines[-1]} {tail}".strip()
+        elif tail:
+            lines.append(tail)
+    return [l for l in lines if l]
+
+
 def refine_segments(segments: list[dict]) -> list[dict]:
-    """WhisperX + Silero VAD often returns 30s+ blocks on fast-talking reels.
-    Split each block into sentences, interpolating timestamps by character
-    position, so the app can show a readable line-by-line script."""
+    """Turn raw transcriber output into a readable, script-style line list.
+
+    WhisperX + Silero VAD returns 30s blocks on fast-talking reels, and Whisper
+    frequently emits those blocks as a single unpunctuated run-on — so splitting
+    on [.!?] alone left one 700-character paragraph pretending to be a caption.
+
+    Three passes, best signal first:
+      1. sentence punctuation, when the model gave us any;
+      2. word-level pauses, when alignment produced word timings — a real
+         breath is the most natural place to break a spoken line;
+      3. clause words / length caps, so an unpunctuated monologue still lands
+         on grammatical seams instead of arbitrary character counts.
+
+    Timestamps come from the word timings where available and are interpolated
+    by character position otherwise.
+    """
     out: list[dict] = []
     for seg in segments:
-        sentences = split_sentences(seg["text"])
-        if len(sentences) <= 1:
-            out.append({**seg, "position": len(out)})
-            continue
-        start = seg.get("start_time")
-        end = seg.get("end_time")
-        dur = (end - start) if (start is not None and end is not None and end > start) else None
-        total_chars = sum(len(s) for s in sentences) or 1
-        t = start
-        for s in sentences:
-            seg_end = (t + dur * (len(s) / total_chars)) if (dur is not None and t is not None) else None
+        for line in _split_segment(seg):
+            if not line["text"]:
+                continue
             out.append({
                 "position": len(out),
-                "start_time": round(t, 2) if t is not None else None,
-                "end_time": round(seg_end, 2) if seg_end is not None else None,
-                "text": s,
+                "start_time": round(line["start_time"], 2) if line["start_time"] is not None else None,
+                "end_time": round(line["end_time"], 2) if line["end_time"] is not None else None,
+                "text": line["text"],
             })
-            if seg_end is not None:
-                t = seg_end
+    return out
+
+
+def _split_segment(seg: dict) -> list[dict]:
+    """One raw segment -> one or more script lines."""
+    words = seg.get("words") or []
+    # Alignment can leave individual words without timings; they're still usable
+    # for text, just not for pause detection.
+    if words and any(w.get("start") is not None for w in words):
+        return _chunk_words(words, seg.get("start_time"), seg.get("end_time"))
+
+    text = (seg.get("text") or "").strip()
+    if not text:
+        return []
+    pieces: list[str] = []
+    for sentence in split_sentences(text):
+        pieces.extend(split_long_text(sentence))
+    # Short sentences ("Yeah." "It works!") read better grouped than as a stack
+    # of three-word rows, which is also how real subtitles are cut.
+    return _merge_slivers(_interpolate(pieces, seg.get("start_time"), seg.get("end_time")))
+
+
+def _chunk_words(words: list[dict], seg_start, seg_end) -> list[dict]:
+    """Greedy subtitle-style chunking over word timings."""
+    lines: list[dict] = []
+    current: list[dict] = []
+
+    def current_text() -> str:
+        return " ".join((w.get("word") or "").strip() for w in current).strip()
+
+    def flush() -> None:
+        nonlocal current
+        if not current:
+            return
+        text = current_text()
+        if text:
+            starts = [w["start"] for w in current if w.get("start") is not None]
+            ends = [w["end"] for w in current if w.get("end") is not None]
+            lines.append({
+                "text": text,
+                "start_time": starts[0] if starts else None,
+                "end_time": ends[-1] if ends else None,
+            })
+        current = []
+
+    prev_end = None
+    for word in words:
+        token = (word.get("word") or "").strip()
+        if not token:
+            continue
+        if current:
+            pending = current_text()
+            start = word.get("start")
+            gap = (start - prev_end) if (start is not None and prev_end is not None) else 0.0
+            line_start = next((w["start"] for w in current if w.get("start") is not None), None)
+            span = (prev_end - line_start) if (prev_end is not None and line_start is not None) else 0.0
+            long_enough = len(pending) >= MIN_LINE_CHARS
+            if (gap >= PAUSE_BREAK_SECONDS and long_enough) or span >= MAX_LINE_SECONDS:
+                flush()
+            elif len(pending) + 1 + len(token) > MAX_LINE_CHARS:
+                flush()
+
+        current.append(word)
+        if word.get("end") is not None:
+            prev_end = word["end"]
+        # A sentence end is a hard break, but never strand a two-word sliver.
+        if SENTENCE_END_RE.search(token) and len(current_text()) >= MIN_LINE_CHARS:
+            flush()
+
+    flush()
+    if not lines:
+        return []
+
+    # Backfill any missing edge timestamps from the parent segment.
+    if lines[0]["start_time"] is None:
+        lines[0]["start_time"] = seg_start
+    if lines[-1]["end_time"] is None:
+        lines[-1]["end_time"] = seg_end
+    return _merge_slivers(lines)
+
+
+def _merge_slivers(lines: list[dict]) -> list[dict]:
+    """Fold a too-short trailing fragment back into the previous line."""
+    merged: list[dict] = []
+    for line in lines:
+        if (
+            merged
+            and len(line["text"]) < MIN_LINE_CHARS
+            and len(merged[-1]["text"]) + 1 + len(line["text"]) <= MAX_LINE_CHARS
+        ):
+            merged[-1]["text"] = f"{merged[-1]['text']} {line['text']}".strip()
+            if line["end_time"] is not None:
+                merged[-1]["end_time"] = line["end_time"]
+            continue
+        merged.append(line)
+    return merged
+
+
+def _interpolate(pieces: list[str], start, end) -> list[dict]:
+    """Spread timestamps across text-only pieces by character share."""
+    pieces = [p for p in pieces if p]
+    if not pieces:
+        return []
+    if len(pieces) == 1:
+        return [{"text": pieces[0], "start_time": start, "end_time": end}]
+
+    duration = (end - start) if (start is not None and end is not None and end > start) else None
+    total_chars = sum(len(p) for p in pieces) or 1
+    out: list[dict] = []
+    cursor = start
+    for piece in pieces:
+        piece_end = (
+            cursor + duration * (len(piece) / total_chars)
+            if (duration is not None and cursor is not None)
+            else None
+        )
+        out.append({"text": piece, "start_time": cursor, "end_time": piece_end})
+        if piece_end is not None:
+            cursor = piece_end
+    if out and end is not None:
+        out[-1]["end_time"] = end
     return out
 
 

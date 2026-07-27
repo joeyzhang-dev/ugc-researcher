@@ -25,3 +25,7 @@ worker/.venv/
 # local run logs
 *.log
 *.log.old
+
+# python bytecode
+__pycache__/
+*.pyc
