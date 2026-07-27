@@ -1,4 +1,4 @@
-# trace-research — agent guide
+# ugc-researcher — agent guide
 
 Standalone research pool (extracted from `trace-ugc-tracker` 2026-07-23). Study
 outside UGC creators: Apify profile scrapes → view-lift math → format buckets →

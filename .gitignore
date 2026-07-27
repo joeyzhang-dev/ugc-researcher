@@ -21,3 +21,7 @@ test-results/
 # local worker media cache
 worker/data/
 worker/.venv/
+
+# local run logs
+*.log
+*.log.old

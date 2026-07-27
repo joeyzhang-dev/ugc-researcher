@@ -1,4 +1,4 @@
-# trace-research
+# ugc-researcher
 
 Standalone research pool, extracted from `trace-ugc-tracker` 2026-07-23. Study
 outside creators: Apify profile scrapes → view-lift math → format buckets →
