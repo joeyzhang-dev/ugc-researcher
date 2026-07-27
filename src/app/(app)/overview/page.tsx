@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import type { ResearchCreator, ResearchVideo } from "@/lib/types";
+import type { ResearchAppCreator, ResearchCreator, ResearchVideo } from "@/lib/types";
 import { computeLifts, median, type VideoLift } from "@/lib/research";
 import {
   Avatar, Card, EmptyState, KpiCard, PageHeader, PlatformIcon,
@@ -10,6 +10,8 @@ import { formatCompact, formatDate } from "@/lib/format";
 import { parseDays, withinWindow, RangePicker } from "@/components/range-picker";
 import { ResearchScoreChip, ResearchVideoPanel, type PanelSegment } from "@/components/research-panel";
 import { ResearchVideoTile } from "@/components/research-video-tile";
+import { ALL_APPS } from "@/lib/workspace";
+import { getWorkspace } from "@/lib/workspace/server";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,13 @@ const RANK_MODES = [
 ] as const;
 type RankMode = (typeof RANK_MODES)[number][0];
 
+/** Which side of the tool to summarise: outside creators we study, or ours. */
+const POOLS = [
+  ["research", "Research"],
+  ["roster", "Our creators"],
+] as const;
+type Pool = (typeof POOLS)[number][0];
+
 function fmtLift(n: number | null): string {
   return n == null ? "—" : `${n.toFixed(2)}×`;
 }
@@ -38,20 +47,29 @@ function parseRank(raw: string | undefined): RankMode {
   return RANK_MODES.some(([k]) => k === raw) ? (raw as RankMode) : "lift";
 }
 
+function parsePool(raw: string | undefined): Pool {
+  return POOLS.some(([k]) => k === raw) ? (raw as Pool) : "research";
+}
+
 /**
- * Cross-creator overview: the highest-lifting videos in the whole research
- * pool, plus which formats and creators produce them.
+ * Cross-creator overview: the highest-lifting videos in a whole pool of
+ * creators, plus which formats and creators produce them.
  *
  * Lift is always measured against a creator's OWN baseline, which is exactly
  * what makes a pool-wide ranking meaningful — a 3× from a 20k-view account and
  * a 3× from a 2M-view account both mean "this beat what the account normally
  * does", so they're directly comparable here.
+ *
+ * The pool is either the outside creators under study or our own roster. The
+ * roster additionally honours the workspace picked in the header/rail, matching
+ * /creators; the research pool is global, since creators we study aren't owned
+ * by one product.
  */
 export default async function ResearchOverviewPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    days?: string; format?: string; creator?: string; top?: string; rank?: string;
+    days?: string; format?: string; creator?: string; top?: string; rank?: string; pool?: string;
   }>;
 }) {
   const {
@@ -60,14 +78,17 @@ export default async function ResearchOverviewPage({
     creator: creatorFilter,
     top: topParam,
     rank: rankParam,
+    pool: poolParam,
   } = await searchParams;
   const days = parseDays(daysParam);
   const top = parseTop(topParam);
   const rank = parseRank(rankParam);
+  const poolKind = parsePool(poolParam);
+  const isRoster = poolKind === "roster";
 
   const hrefWith = (overrides: {
     days?: string | null; format?: string | null; creator?: string | null;
-    top?: string | null; rank?: string | null;
+    top?: string | null; rank?: string | null; pool?: string | null;
   }) => {
     const sp = new URLSearchParams();
     if (days) sp.set("days", String(days));
@@ -75,6 +96,7 @@ export default async function ResearchOverviewPage({
     if (creatorFilter) sp.set("creator", creatorFilter);
     if (topParam) sp.set("top", topParam);
     if (rankParam) sp.set("rank", rankParam);
+    if (poolParam) sp.set("pool", poolParam);
     for (const [k, v] of Object.entries(overrides)) {
       if (v == null) sp.delete(k);
       else sp.set(k, v);
@@ -84,21 +106,38 @@ export default async function ResearchOverviewPage({
   };
 
   const supabase = await createClient();
-  const [{ data: creatorsData }, { data: videosData }] = await Promise.all([
-    supabase.from("research_creators").select("*").eq("kind", "research"),
-    supabase
-      .from("research_videos")
-      .select(
-        "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category"
-      ),
-  ]);
-  const creators = (creatorsData ?? []) as ResearchCreator[];
+  const workspace = await getWorkspace();
+  const appFilter = workspace.current === ALL_APPS ? null : workspace.current;
+
+  const [{ data: creatorsData }, { data: videosData }, { data: membershipsData }] =
+    await Promise.all([
+      supabase.from("research_creators").select("*").eq("kind", poolKind),
+      supabase
+        .from("research_videos")
+        .select(
+          "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category"
+        ),
+      // Only the roster is scoped by app; skip the join entirely otherwise.
+      isRoster
+        ? supabase.from("research_app_creators").select("*")
+        : Promise.resolve({ data: [] as ResearchAppCreator[] }),
+    ]);
+
+  const memberships = (membershipsData ?? []) as ResearchAppCreator[];
+  const inWorkspace = new Set(
+    memberships.filter((m) => !appFilter || m.app_id === appFilter).map((m) => m.research_creator_id)
+  );
+  const creators = ((creatorsData ?? []) as ResearchCreator[]).filter(
+    // A roster creator with no membership row belongs to no app, so it can only
+    // appear in the unscoped "All apps" view.
+    (c) => !isRoster || (appFilter ? inWorkspace.has(c.id) : true)
+  );
   const creatorById = new Map(creators.map((c) => [c.id, c]));
   const allVideos = (videosData ?? []) as ResearchVideo[];
 
   const byCreator = new Map<string, ResearchVideo[]>();
   for (const v of allVideos) {
-    // Roster videos share the table — keep only the creators under study.
+    // Both pools share the videos table — keep only this pool's creators.
     if (!creatorById.has(v.research_creator_id)) continue;
     (byCreator.get(v.research_creator_id) ??
       byCreator.set(v.research_creator_id, []).get(v.research_creator_id)!).push(v);
@@ -203,17 +242,54 @@ export default async function ResearchOverviewPage({
       <PageHeader
         title="Overview"
         action={
-          <RangePicker days={days} hrefForDays={(d) => hrefWith({ days: d ? String(d) : null })} />
+          <span className="flex items-center gap-2">
+            <span className="inline-flex shrink-0 rounded-lg border border-neutral-200 bg-white p-0.5">
+              {POOLS.map(([key, label]) => (
+                <Link
+                  key={key}
+                  // Creator filters belong to one pool — carrying them across
+                  // would silently match nothing.
+                  href={hrefWith({
+                    pool: key === "research" ? null : key,
+                    creator: null,
+                    format: null,
+                  })}
+                  className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+                    poolKind === key
+                      ? "bg-neutral-900 font-medium text-white"
+                      : "text-neutral-500 hover:text-neutral-900"
+                  }`}
+                >
+                  {label}
+                </Link>
+              ))}
+            </span>
+            <RangePicker days={days} hrefForDays={(d) => hrefWith({ days: d ? String(d) : null })} />
+          </span>
         }
       />
       <p className="-mt-4 mb-5 max-w-3xl text-sm text-neutral-500">
-        Every research creator&apos;s best work in one place, ranked by <em>lift</em> — how far a
-        video beat the account&apos;s own baseline. Because lift is measured per creator, a big
-        account and a small one are directly comparable here.
+        {isRoster ? "Our roster's" : "Every research creator's"} best work in one place, ranked by{" "}
+        <em>lift</em> — how far a video beat the account&apos;s own baseline. Because lift is
+        measured per creator, a big account and a small one are directly comparable here.
+        {isRoster && (
+          <>
+            {" "}
+            Scoped to{" "}
+            <span className="font-medium text-neutral-700">
+              {workspace.app?.name ?? "all apps"}
+            </span>{" "}
+            — switch workspaces in the sidebar.
+          </>
+        )}
       </p>
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <KpiCard label="Creators studied" value={String(creatorRows.length)} icon="users" />
+        <KpiCard
+          label={isRoster ? "Roster creators" : "Creators studied"}
+          value={String(creatorRows.length)}
+          icon="users"
+        />
         <KpiCard label="Videos analysed" value={formatCompact(pool.length)} icon="play" />
         <KpiCard
           label="Rated 8.0+"
@@ -291,9 +367,13 @@ export default async function ResearchOverviewPage({
             {visible.length === 0 ? (
               <EmptyState
                 message={
-                  pool.length === 0
-                    ? "No research videos scraped yet — add a creator on the Research tab."
-                    : "No videos match this filter in the selected range."
+                  pool.length > 0
+                    ? "No videos match this filter in the selected range."
+                    : isRoster
+                      ? appFilter
+                        ? `No roster videos for ${workspace.app?.name ?? "this app"} yet — add a creator on the Our creators tab, or switch workspace.`
+                        : "No roster videos scraped yet — add a creator on the Our creators tab."
+                      : "No research videos scraped yet — add a creator on the Research tab."
                 }
               />
             ) : (
