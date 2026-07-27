@@ -93,6 +93,8 @@ export interface ResearchApp {
   id: string;
   name: string;
   notes: string | null;
+  /** Workspace logo in the public `thumbnails` bucket; null falls back to initials. */
+  logo_url: string | null;
   created_at: string;
 }
 

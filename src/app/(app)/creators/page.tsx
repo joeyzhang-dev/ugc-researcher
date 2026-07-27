@@ -9,6 +9,8 @@ import type {
   ResearchVideo,
 } from "@/lib/types";
 import { summarizeCreator } from "@/lib/research";
+import { ALL_APPS } from "@/lib/workspace";
+import { getWorkspace } from "@/lib/workspace/server";
 import {
   addRosterCreator,
   assignToCampaign,
@@ -41,23 +43,25 @@ export default async function OurCreatorsPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    error?: string; app?: string; days?: string; sort?: string; dir?: string;
+    error?: string; days?: string; sort?: string; dir?: string;
   }>;
 }) {
-  const { error, app: appFilter, days: daysParam, sort: sortParam, dir: dirParam } =
-    await searchParams;
+  const { error, days: daysParam, sort: sortParam, dir: dirParam } = await searchParams;
   const days = parseDays(daysParam);
   const sort = parseSort<SortKey>(sortParam, dirParam, SORT_KEYS, {
     key: "creator",
     dir: "asc",
   });
   const supabase = await createClient();
+  // The roster is scoped by the workspace picked in the header/rail rather than
+  // a per-page filter, so the choice follows you across the tool.
+  const { current: workspace } = await getWorkspace();
+  const appFilter = workspace === ALL_APPS ? null : workspace;
 
   const hrefWith = (overrides: {
-    app?: string | null; days?: string | null; sort?: string | null; dir?: string | null;
+    days?: string | null; sort?: string | null; dir?: string | null;
   }) => {
     const sp = new URLSearchParams();
-    if (appFilter) sp.set("app", appFilter);
     if (days) sp.set("days", String(days));
     if (sortParam) sp.set("sort", sortParam);
     if (dirParam) sp.set("dir", dirParam);
@@ -205,7 +209,7 @@ export default async function OurCreatorsPage({
           </form>
         </Card>
 
-        <Card title="Apps & campaigns">
+        <Card title="Apps &amp; campaigns" id="apps">
           <div className="space-y-3">
             <form action={createApp} className="flex items-end gap-2">
               <label className="flex-1">
@@ -235,24 +239,10 @@ export default async function OurCreatorsPage({
 
       <div className="mt-5">
         <Card
-          title="Roster"
+          title={appFilter ? `Roster — ${apps.find((a) => a.id === appFilter)?.name ?? ""}` : "Roster"}
           action={
-            <span className="flex items-center gap-1 text-xs">
-              <Link
-                href={hrefWith({ app: null })}
-                className={`rounded-md px-2.5 py-1 transition-colors ${!appFilter ? "bg-neutral-900 font-medium text-white" : "text-neutral-500 hover:text-neutral-900"}`}
-              >
-                All apps
-              </Link>
-              {apps.map((a) => (
-                <Link
-                  key={a.id}
-                  href={hrefWith({ app: appFilter === a.id ? null : a.id })}
-                  className={`rounded-md px-2.5 py-1 transition-colors ${appFilter === a.id ? "bg-neutral-900 font-medium text-white" : "text-neutral-500 hover:text-neutral-900"}`}
-                >
-                  {a.name}
-                </Link>
-              ))}
+            <span className="text-xs text-neutral-400">
+              {appFilter ? "Scoped by the workspace switcher" : "All apps"}
             </span>
           }
         >

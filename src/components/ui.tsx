@@ -56,9 +56,20 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export function Card({ title, children, action }: { title?: ReactNode; children: ReactNode; action?: ReactNode }) {
+export function Card({
+  title,
+  children,
+  action,
+  id,
+}: {
+  title?: ReactNode;
+  children: ReactNode;
+  action?: ReactNode;
+  /** Anchor target, so links like /creators#apps can scroll to a card. */
+  id?: string;
+}) {
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white">
+    <section id={id} className="scroll-mt-6 rounded-xl border border-neutral-200 bg-white">
       {(title || action) && (
         <header className="flex items-center justify-between px-5 pb-1 pt-4">
           {title && <h2 className="text-sm font-semibold tracking-tight text-neutral-900">{title}</h2>}

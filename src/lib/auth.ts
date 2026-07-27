@@ -31,3 +31,12 @@ export async function requireAdmin(): Promise<Profile> {
   if (profile.role !== "admin") throw new Error("Admin access required");
   return profile;
 }
+
+/** Throws unless the caller is signed-in staff. For actions that change a view
+ *  preference rather than data — viewers may do those, creators may not. */
+export async function requireStaff(): Promise<Profile> {
+  const profile = await getProfile();
+  if (!profile) throw new Error("Not signed in");
+  if (!isStaff(profile)) throw new Error("Staff access required");
+  return profile;
+}
