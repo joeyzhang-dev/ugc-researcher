@@ -209,7 +209,13 @@ export function ResearchVideoPanel({
             />
           ) : v.thumbnail_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={v.thumbnail_url} alt="" className="mx-auto aspect-[9/16] max-h-[420px] w-auto object-cover" />
+            <img
+              src={v.thumbnail_url}
+              alt=""
+              decoding="async"
+              referrerPolicy="no-referrer"
+              className="mx-auto aspect-[9/16] max-h-[420px] w-auto object-cover"
+            />
           ) : (
             <span className="flex aspect-[9/16] max-h-[420px] items-center justify-center text-neutral-600">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m10 9 5 3-5 3V9Z" /></svg>

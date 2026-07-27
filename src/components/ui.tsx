@@ -225,6 +225,9 @@ export function Avatar({ name, src, size = 24 }: { name: string; src?: string | 
       <img
         src={src}
         alt=""
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
         className="shrink-0 rounded-full object-cover"
         style={{ width: size, height: size }}
       />

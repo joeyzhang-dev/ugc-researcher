@@ -46,6 +46,20 @@ pip install whisperx                     # + ffmpeg, recommended
 python3 worker/transcribe_worker.py --once
 ```
 
+Maintenance:
+
+```bash
+npm run backfill:media                        # CDN thumbnails -> Supabase Storage
+node scripts/backfill-media.mjs --videos      # ...and the mp4 files too
+npm run rechunk:segments                      # re-split stored transcripts into script lines
+```
+
+Apify hands back signed CDN URLs that expire within days and are hotlink-blocked
+in the browser, so scraped media has to be copied into the `thumbnails` /
+`videos` storage buckets to keep rendering. `backfill:media` catches anything the
+scrape missed; video URLs expire fastest, and rows that 403 recover on the next
+scrape or when the worker re-downloads them with yt-dlp.
+
 Tests / typecheck: `npm test`, `npm run typecheck`.
 
 See `docs/research-plan.md` for the original design doc.

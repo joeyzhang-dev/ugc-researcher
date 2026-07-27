@@ -34,8 +34,9 @@ const securityHeaders = [
       // Dev additionally needs ws:/wss: for HMR (see connectSrc above).
       connectSrc,
       "img-src 'self' data: https://*.supabase.co https://*.cdninstagram.com https://*.fbcdn.net",
-      // Reel playback in review mode — video files live in Supabase storage.
-      "media-src 'self' https://*.supabase.co",
+      // Reel playback in review mode — video files live in Supabase storage,
+      // with the platform CDN as a fallback for reels not yet captured.
+      "media-src 'self' https://*.supabase.co https://*.cdninstagram.com https://*.fbcdn.net",
       "frame-ancestors 'none'",
       "form-action 'self'",
       "base-uri 'self'",

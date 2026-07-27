@@ -8,7 +8,9 @@
     "start": "next start",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "categorize:formats": "bash scripts/categorize-formats.sh"
+    "categorize:formats": "bash scripts/categorize-formats.sh",
+    "backfill:media": "node scripts/backfill-media.mjs",
+    "rechunk:segments": "python3 worker/rechunk_segments.py"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
