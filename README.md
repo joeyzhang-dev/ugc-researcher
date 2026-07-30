@@ -10,8 +10,12 @@ transcribe the winners locally.
 - `/research` — creator list + add form; `/research/[id]` — per-creator videos,
   lift analysis, format buckets, transcripts (staff login required, same
   Supabase auth + profiles as the tracker).
+- `/overview` — cross-creator leaderboard of the highest lifts, switchable
+  between the research pool and our roster.
+- `/settings` — scrape schedule, per-scrape reel count, and manual "Scrape all".
 - `POST /api/jobs/research` — CRON_SECRET-authorized scrape / categorize
-  endpoint (no cron is configured; scrapes are manual or API-triggered).
+  endpoint. `{"action":"scrape-all"}` runs the scheduled pass and is the hook to
+  point a cron or launchd job at (see Automatic scraping below).
 - `src/lib/research.ts` — lift math (trailing-10 median baseline, overall,
   ±45-day window) and caption/transcript format detection.
 - `src/lib/jobs/research.ts` — Apify profile scrape → upsert → thumbnail capture.
@@ -59,6 +63,32 @@ in the browser, so scraped media has to be copied into the `thumbnails` /
 `videos` storage buckets to keep rendering. `backfill:media` catches anything the
 scrape missed; video URLs expire fastest, and rows that 403 recover on the next
 scrape or when the worker re-downloads them with yt-dlp.
+
+## Scraping
+
+"Scrape all" on `/research`, `/creators` and `/settings` queues every creator in
+scope and works through them one at a time — a pull takes about a minute per
+creator, far longer than a single request can live, so the browser tab drives
+the loop and has to stay open. On the roster the button honours the workspace
+you're in; the research pool is always global.
+
+### Automatic scraping
+
+`/settings` stores the schedule (every N hours, or a time of day), how many
+reels each scrape pulls, and the pause between creators. Nothing fires it on its
+own, because this app only runs on your machine. To automate it, point a cron or
+launchd job at the endpoint — it no-ops unless the schedule says a run is due,
+so polling often is safe:
+
+```bash
+curl -sX POST http://localhost:3000/api/jobs/research \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H 'Content-Type: application/json' \
+  -d '{"action":"scrape-all"}'
+```
+
+Each call drains for up to 4 minutes and returns `remaining`; repeat until it
+reports `0` to finish a long queue. Add `"force": true` to ignore the schedule.
 
 Tests / typecheck: `npm test`, `npm run typecheck`.
 

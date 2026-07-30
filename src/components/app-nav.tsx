@@ -7,6 +7,7 @@ const TABS = [
   { href: "/overview", label: "Overview" }, // cross-creator highest lifts
   { href: "/research", label: "Research" }, // creators we study / steal from
   { href: "/creators", label: "Our creators" }, // our roster, per app + niche
+  { href: "/settings", label: "Settings" }, // scrape schedule + manual runs
 ];
 
 export function AppNav() {

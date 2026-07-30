@@ -31,6 +31,8 @@ export interface ResearchCreator {
   status: ResearchCreatorStatus;
   error_message: string | null;
   last_scraped_at: string | null;
+  /** Set while the creator is waiting in the bulk scrape queue. */
+  scrape_queued_at: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

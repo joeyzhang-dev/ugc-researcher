@@ -11,6 +11,7 @@ import {
 import { formatCompact, formatDate } from "@/lib/format";
 import { parseDays, withinWindow, RangePicker } from "@/components/range-picker";
 import { compareValues, parseSort, SortHeader, type SortDir } from "@/components/sort-header";
+import { ScrapeAllButton } from "@/components/scrape-all-button";
 
 const SORT_KEYS = [
   "creator", "status", "followers", "videos", "views", "top", "transcribed", "scraped", "added",
@@ -66,6 +67,7 @@ export default async function ResearchPage({
   ]);
   const creators = (creatorsData ?? []) as ResearchCreator[];
   const videos = (videosData ?? []) as ResearchVideo[];
+  const queuedCount = creators.filter((c) => c.scrape_queued_at != null).length;
 
   const videosByCreator = new Map<string, ResearchVideo[]>();
   for (const v of videos) {
@@ -137,6 +139,7 @@ export default async function ResearchPage({
           title="Creators under study"
           action={
             <span className="flex items-center gap-2 text-xs text-neutral-500">
+              <ScrapeAllButton kinds={["research"]} queued={queuedCount} />
               <span className="hidden sm:inline">
                 {days == null ? "All time" : `Posted in last ${days} days`}
               </span>

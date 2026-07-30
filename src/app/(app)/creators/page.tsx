@@ -27,6 +27,7 @@ import {
 import { formatCompact, formatDate } from "@/lib/format";
 import { parseDays, withinWindow, RangePicker } from "@/components/range-picker";
 import { compareValues, parseSort, SortHeader, type SortDir } from "@/components/sort-header";
+import { ScrapeAllButton } from "@/components/scrape-all-button";
 
 const SORT_KEYS = [
   "creator", "app", "niche", "status", "followers", "videos", "views", "top", "scraped",
@@ -91,6 +92,16 @@ export default async function OurCreatorsPage({
   const memberships = (membershipsData ?? []) as ResearchAppCreator[];
   const campaignMembers = (campaignMembersData ?? []) as ResearchCampaignCreator[];
   const creators = (creatorsData ?? []) as ResearchCreator[];
+
+  // Queue depth for the creators actually visible in this workspace.
+  const scopedCreatorIds = new Set(
+    memberships
+      .filter((m) => !appFilter || m.app_id === appFilter)
+      .map((m) => m.research_creator_id)
+  );
+  const queuedCount = creators.filter(
+    (c) => c.scrape_queued_at != null && (!appFilter || scopedCreatorIds.has(c.id))
+  ).length;
 
   const creatorIds = creators.map((c) => c.id);
   const { data: videosData } = creatorIds.length
@@ -241,8 +252,16 @@ export default async function OurCreatorsPage({
         <Card
           title={appFilter ? `Roster — ${apps.find((a) => a.id === appFilter)?.name ?? ""}` : "Roster"}
           action={
-            <span className="text-xs text-neutral-400">
-              {appFilter ? "Scoped by the workspace switcher" : "All apps"}
+            <span className="flex items-center gap-2 text-xs">
+              <ScrapeAllButton
+                kinds={["roster"]}
+                appId={appFilter}
+                queued={queuedCount}
+                label={appFilter ? "Scrape this workspace" : "Scrape all"}
+              />
+              <span className="text-neutral-400">
+                {appFilter ? "Scoped by the workspace switcher" : "All apps"}
+              </span>
             </span>
           }
         >
