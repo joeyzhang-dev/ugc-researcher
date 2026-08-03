@@ -15,8 +15,10 @@ export default async function LoginPage({
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-neutral-950 text-lg font-bold text-white">
             T
           </span>
-          <h1 className="text-xl font-semibold tracking-tight">Trace UGC</h1>
-          <p className="mt-1 text-sm text-neutral-400">Campaign OS — sign in to continue</p>
+          <h1 className="text-xl font-semibold tracking-tight">Trace Research</h1>
+          <p className="mt-1 text-sm text-neutral-400">
+            Creator &amp; format study — sign in to continue
+          </p>
         </div>
 
         <div className="rounded-xl border border-neutral-200 bg-white p-6">

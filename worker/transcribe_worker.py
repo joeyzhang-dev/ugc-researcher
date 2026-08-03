@@ -208,10 +208,15 @@ def transcribe_whisperx(media: Path) -> list[dict] | None:
     # languages, so the language pin below must stay "en". Set
     # WHISPERX_MODEL=large-v3 for maximum accuracy or non-English audio.
     model_name = os.environ.get("WHISPERX_MODEL", "distil-large-v3")
-    # Accuracy over speed: float32 runs the model unquantized. int8 is ~3x
-    # faster and ~4x smaller but quantizes the weights; int8_float32 sits
-    # between. float32 large-v3 holds ~6GB resident, so drop to int8_float32
-    # if the machine starts swapping.
+    # float32 runs the model unquantized. int8 quantizes the weights and is
+    # widely cited as ~3x faster — that is an x86 figure and does NOT hold
+    # here. Benchmarked on this Apple Silicon machine (isolated processes, two
+    # rounds, ASR only): float32 16.7s/clip vs int8 15.2s/clip, i.e. only 1.10x
+    # and inside the run-to-run noise, for 98.1% median word overlap (96.1%
+    # worst case). CTranslate2 has no INT8 hardware path to exploit on ARM, so
+    # int8 buys nothing but a small accuracy loss. Keep float32.
+    # int8_float32 remains useful only if the machine starts swapping —
+    # float32 large-v3 holds ~6GB resident.
     compute = os.environ.get("WHISPERX_COMPUTE_TYPE", "float32" if device == "cpu" else "float16")
     # Silero avoids the pyannote-VAD torch.load(weights_only=True) failure.
     vad_method = os.environ.get("WHISPERX_VAD_METHOD", "silero")
@@ -246,6 +251,12 @@ def transcribe_whisperx(media: Path) -> list[dict] | None:
     # Forced alignment gives word-level timings, which is what lets the chunker
     # break lines on real pauses instead of guessing from character counts.
     # Best-effort: a missing alignment model just falls back to text splitting.
+    #
+    # This is the single most expensive part of transcription — measured at
+    # 4.0s per clip, 43% overhead (13.2s vs 9.2s per clip; 0.40x vs 0.25x
+    # realtime). Set WHISPERX_ALIGN=0 to trade word-accurate timestamps for
+    # roughly a 40% speedup; lines still split correctly, but the timestamps
+    # get interpolated by character position and drift on fast speech.
     if raw and os.environ.get("WHISPERX_ALIGN", "1") != "0":
         aligned = align_words(whisperx, result, audio, device)
         if aligned:
