@@ -13,6 +13,10 @@ npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 .env*
+# ...but the template must ship: it is the only record of which keys the app
+# needs, and `.env*` above was quietly excluding it from the repo entirely.
+# It holds placeholders only, never real values.
+!.env.example
 artifacts/
 playwright-report/
 test-results/
