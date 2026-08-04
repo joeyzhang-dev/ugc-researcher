@@ -10,7 +10,7 @@ import {
   runActorSync,
 } from "@/lib/apify";
 import { detectFormatCategory, extractHashtags } from "@/lib/research";
-import { captureImage } from "@/lib/thumbnails";
+import { captureImage, captureVideo } from "@/lib/thumbnails";
 import type { Platform } from "@/lib/types";
 
 /** Newest N reels per scrape (count-based — Apify has no date filter here).
@@ -41,6 +41,8 @@ export interface ResearchScrapeResult {
   created: number;
   updated: number;
   skippedNonVideo: number;
+  /** mp4s copied into storage during this scrape. */
+  videosCaptured: number;
 }
 
 /**
@@ -129,6 +131,7 @@ export async function runResearchScrape(
     const seen = new Set<string>();
     // Thumbnail capture is deferred and parallelized after the row upserts.
     const thumbnailTasks: { rowId: string; cdnUrl: string }[] = [];
+    const videoTasks: { rowId: string; cdnUrl: string }[] = [];
 
     for (const rawItem of rawItems) {
       const item = normalizeItem(platform, rawItem);
@@ -172,6 +175,7 @@ export async function runResearchScrape(
         // Refresh metrics/caption but never clobber transcript/format fields —
         // or captured storage copies (the worker uploads playable video there).
         if (isStorageUrl(existing.video_url)) delete (row as Record<string, unknown>).video_url;
+        else if (item.videoUrl) videoTasks.push({ rowId: existing.id, cdnUrl: item.videoUrl });
         if (isStorageUrl(existing.thumbnail_url)) {
           delete (row as Record<string, unknown>).thumbnail_url;
         } else if (item.thumbnailUrl) {
@@ -193,6 +197,9 @@ export async function runResearchScrape(
         if (inserted && item.thumbnailUrl) {
           thumbnailTasks.push({ rowId: inserted.id, cdnUrl: item.thumbnailUrl });
         }
+        if (inserted && item.videoUrl) {
+          videoTasks.push({ rowId: inserted.id, cdnUrl: item.videoUrl });
+        }
       }
     }
 
@@ -208,6 +215,32 @@ export async function runResearchScrape(
               .from("research_videos")
               .update({ thumbnail_url: stored })
               .eq("id", rowId);
+          }
+        })
+      );
+    }
+
+    // Same for the mp4 itself.
+    //
+    // This used to be left entirely to the transcription worker, which uploads
+    // the file as a side effect of transcribing. That failed silently: when
+    // transcription errored the playable copy was never captured either, the
+    // row kept its signed CDN link, and days later the video simply stopped
+    // loading in the UI while its thumbnail carried on working. Capturing here
+    // decouples "we can play it" from "we managed to transcribe it".
+    //
+    // Videos are ~50x larger than thumbnails, so the batch is smaller. Still
+    // best-effort — a failure leaves the CDN URL and the worker gets another
+    // shot at it later.
+    const VIDEO_BATCH = 4;
+    let videosCaptured = 0;
+    for (let i = 0; i < videoTasks.length; i += VIDEO_BATCH) {
+      await Promise.all(
+        videoTasks.slice(i, i + VIDEO_BATCH).map(async ({ rowId, cdnUrl }) => {
+          const stored = await captureVideo(supabase, `research/${rowId}`, cdnUrl);
+          if (stored) {
+            videosCaptured++;
+            await supabase.from("research_videos").update({ video_url: stored }).eq("id", rowId);
           }
         })
       );
@@ -234,6 +267,7 @@ export async function runResearchScrape(
       created,
       updated,
       skippedNonVideo,
+      videosCaptured,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
