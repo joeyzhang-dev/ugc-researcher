@@ -125,3 +125,35 @@ export interface ResearchCampaignCreator {
   research_creator_id: string;
   created_at: string;
 }
+
+export type ResearchScriptStatus = "Draft" | "Active" | "Archived";
+export type ResearchAssignmentStatus = "Assigned" | "Posted" | "Skipped";
+
+/** A script we wrote and handed to our own creators. */
+export interface ResearchScript {
+  id: string;
+  /** Scopes the script to an app, like roster membership does. */
+  app_id: string | null;
+  code: string | null;
+  title: string;
+  /** The script as handed over — also what gets matched against transcripts. */
+  body: string | null;
+  hook: string | null;
+  angle: string | null;
+  notes: string | null;
+  status: ResearchScriptStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+/** One script handed to one creator; the video link arrives once they post. */
+export interface ResearchScriptAssignment {
+  id: string;
+  script_id: string;
+  research_creator_id: string;
+  research_video_id: string | null;
+  status: ResearchAssignmentStatus;
+  notes: string | null;
+  assigned_at: string;
+  posted_at: string | null;
+}
