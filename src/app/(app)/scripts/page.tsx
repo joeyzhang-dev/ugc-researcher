@@ -17,6 +17,7 @@ import {
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
 import { ResearchScoreChip } from "@/components/research-panel";
+import { NicheCombobox } from "@/components/niche-combobox";
 import { ALL_APPS } from "@/lib/workspace";
 import { getWorkspace } from "@/lib/workspace/server";
 
@@ -204,12 +205,7 @@ export default async function ScriptsPage({
           <div className="flex flex-wrap items-end gap-3">
             <label className="min-w-44 flex-1">
               <span className={labelClass}>Niche</span>
-              <input
-                name="niche"
-                list="script-niches"
-                placeholder="e.g. dating, looksmaxing"
-                className={inputClass}
-              />
+              <NicheCombobox options={knownNiches} />
             </label>
             <label className="min-w-36">
               <span className={labelClass}>App</span>
@@ -230,12 +226,6 @@ export default async function ScriptsPage({
             </label>
             <SubmitButton pendingLabel="Saving…">Create script</SubmitButton>
           </div>
-
-          <datalist id="script-niches">
-            {knownNiches.map((n) => (
-              <option key={n} value={n} />
-            ))}
-          </datalist>
         </form>
       </Card>
 
