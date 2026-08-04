@@ -42,11 +42,10 @@ function video(id: string, day: number, views: number, transcript?: string): Res
 const script = (over: Partial<ResearchScript> = {}): ResearchScript => ({
   id: "s1",
   app_id: null,
-  code: null,
   title: "Test script",
-  body: null,
   hook: null,
-  angle: null,
+  body: null,
+  niche: null,
   notes: null,
   status: "Active",
   created_at: "",

@@ -134,12 +134,13 @@ export interface ResearchScript {
   id: string;
   /** Scopes the script to an app, like roster membership does. */
   app_id: string | null;
-  code: string | null;
   title: string;
+  /** Opening line — the first thing said, and the reason a viewer stays. */
+  hook: string | null;
   /** The script as handed over — also what gets matched against transcripts. */
   body: string | null;
-  hook: string | null;
-  angle: string | null;
+  /** Content lane, same vocabulary as a roster creator's per-app niche. */
+  niche: string | null;
   notes: string | null;
   status: ResearchScriptStatus;
   created_at: string;

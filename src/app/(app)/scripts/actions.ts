@@ -24,10 +24,9 @@ export async function createScript(formData: FormData) {
     .insert({
       title,
       app_id: str(formData, "appId"),
-      code: str(formData, "code"),
-      body: str(formData, "body"),
       hook: str(formData, "hook"),
-      angle: str(formData, "angle"),
+      body: str(formData, "body"),
+      niche: str(formData, "niche"),
       notes: str(formData, "notes"),
       status: (str(formData, "status") as ResearchScriptStatus) ?? "Active",
     })
@@ -50,10 +49,9 @@ export async function updateScript(scriptId: string, formData: FormData) {
     .update({
       title,
       app_id: str(formData, "appId"),
-      code: str(formData, "code"),
-      body: str(formData, "body"),
       hook: str(formData, "hook"),
-      angle: str(formData, "angle"),
+      body: str(formData, "body"),
+      niche: str(formData, "niche"),
       notes: str(formData, "notes"),
       status: (str(formData, "status") as ResearchScriptStatus) ?? "Active",
     })
