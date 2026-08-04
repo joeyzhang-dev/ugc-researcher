@@ -25,6 +25,7 @@ import {
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
 import { ResearchScoreChip } from "@/components/research-panel";
+import { NicheCombobox } from "@/components/niche-combobox";
 import { Thumb } from "@/components/hover-video";
 import { getWorkspace } from "@/lib/workspace/server";
 
@@ -218,12 +219,7 @@ export default async function ScriptDetailPage({
             <div className="grid gap-3 sm:grid-cols-3">
               <label>
                 <span className={labelClass}>Niche</span>
-                <input
-                  name="niche"
-                  list="script-niches"
-                  defaultValue={script.niche ?? ""}
-                  className={inputClass}
-                />
+                <NicheCombobox options={knownNiches} defaultValue={script.niche ?? ""} />
               </label>
               <label>
                 <span className={labelClass}>App</span>
@@ -252,14 +248,8 @@ export default async function ScriptDetailPage({
                 className={`${inputClass} resize-y`}
               />
             </label>
-            <datalist id="script-niches">
-              {knownNiches.map((n) => (
-                <option key={n} value={n} />
-              ))}
-            </datalist>
             <SubmitButton pendingLabel="Saving…">Save script</SubmitButton>
-          </form>
-        </Card>
+          </form>        </Card>
 
         <div className="space-y-4">
           <Card title="Hand it to a creator">
