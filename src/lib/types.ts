@@ -33,6 +33,11 @@ export interface ResearchCreator {
   last_scraped_at: string | null;
   /** Set while the creator is waiting in the bulk scrape queue. */
   scrape_queued_at: string | null;
+  /** Roster only: Discord identity, filled by the worker's enrich step.
+   *  ⚠ Snowflake bigint — lossy as a JS number via `select *`; cast
+   *  `discord_user_id::text` in the query if the exact id ever matters here. */
+  discord_user_id: number | null;
+  discord_username: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -157,4 +162,53 @@ export interface ResearchScriptAssignment {
   notes: string | null;
   assigned_at: string;
   posted_at: string | null;
+}
+
+/* --- Discord (research_discord_*) ------------------------------------------
+   Ingested by worker/discord_pull_worker.py. Discord snowflake ids are bigints
+   beyond Number.MAX_SAFE_INTEGER, so every query casts them to ::text and the
+   types carry them as strings. */
+
+export type DiscordAuthorRole = "creator" | "coach" | "launchpoint" | "unknown";
+
+/** One tracked coaching-<name> channel, optionally linked to a roster creator. */
+export interface ResearchDiscordChannel {
+  channel_id: string;
+  guild_id: string;
+  channel_name: string | null;
+  research_creator_id: string | null;
+  is_tracked: boolean;
+  /** Cleaned content lane from the category ("Finance General"). */
+  niche: string | null;
+  /** Raw Discord category ("Not Creating 🚫" marks paused creators). */
+  category: string | null;
+}
+
+export interface ResearchDiscordAttachment {
+  id: string | null;
+  filename: string | null;
+  url: string;
+  content_type: string | null;
+  size: number | null;
+}
+
+export interface ResearchDiscordMessage {
+  id: number;
+  channel_id: string;
+  message_id: string;
+  author_discord_user_id: string | null;
+  author_role: DiscordAuthorRole;
+  is_bot: boolean;
+  content: string;
+  attachments: ResearchDiscordAttachment[];
+  posted_at: string | null;
+}
+
+export interface ResearchDiscordUser {
+  discord_user_id: string;
+  username: string | null;
+  global_name: string | null;
+  nickname: string | null;
+  display_name: string | null;
+  is_bot: boolean;
 }
