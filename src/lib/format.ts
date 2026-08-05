@@ -12,6 +12,21 @@ export function formatDate(iso: string | null | undefined): string {
   });
 }
 
+/**
+ * Like formatDate, but pinned to UTC. For calendar-day identities (e.g. which
+ * send-out batch a script belongs to): the day must match the UTC date used to
+ * group/filter, or a batch sent at 02:00 UTC renders as the previous day.
+ */
+export function formatDateUTC(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("en-US", {

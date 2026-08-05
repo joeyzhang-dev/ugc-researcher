@@ -180,7 +180,10 @@ export default async function ScriptDetailPage({
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1.25fr]">
+      {/* minmax(0,…): a 1fr grid track's implicit min-width is its content, so a
+          long single-line (truncated) caption would stretch the whole page
+          instead of ellipsizing. Zero min lets truncate actually clip. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
         <Card title="The script">
           <form action={updateScript.bind(null, script.id)} className="space-y-3">
             <label className="block">

@@ -15,7 +15,7 @@ import {
   Card, EmptyState, KpiCard, PageHeader, StatusBadge,
   inputClass, labelClass, table, tableWrap, td, th, trHover,
 } from "@/components/ui";
-import { formatCompact, formatDate } from "@/lib/format";
+import { formatCompact, formatDate, formatDateUTC } from "@/lib/format";
 import { ResearchScoreChip } from "@/components/research-panel";
 import { NicheCombobox } from "@/components/niche-combobox";
 import { ALL_APPS } from "@/lib/workspace";
@@ -38,9 +38,9 @@ function fmtLift(n: number | null): string {
 export default async function ScriptsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; status?: string; niche?: string }>;
+  searchParams: Promise<{ error?: string; status?: string; niche?: string; sent?: string }>;
 }) {
-  const { error, status: statusFilter, niche: nicheFilter } = await searchParams;
+  const { error, status: statusFilter, niche: nicheFilter, sent: sentFilter } = await searchParams;
   const supabase = await createClient();
   const { apps, current, app } = await getWorkspace();
   const appFilter = current === ALL_APPS ? null : current;
@@ -66,7 +66,8 @@ export default async function ScriptsPage({
   const inWorkspace = allScripts.filter((s) => !appFilter || s.app_id === appFilter);
   const scripts = inWorkspace
     .filter((s) => !statusFilter || s.status === statusFilter)
-    .filter((s) => !nicheFilter || s.niche === nicheFilter);
+    .filter((s) => !nicheFilter || s.niche === nicheFilter)
+    .filter((s) => !sentFilter || s.created_at.slice(0, 10) === sentFilter);
 
   // Lift needs each creator's full library, not just their scripted posts.
   const creatorIds = creators.map((c) => c.id);
@@ -102,14 +103,30 @@ export default async function ScriptsPage({
     ),
   ].sort();
 
+  // Each filter row is scoped by the OTHER active filter, so picking a niche
+  // leaves only that niche's send-out dates (and vice versa) — no dead combos.
   const nichesInView = [
-    ...new Set(inWorkspace.map((s) => s.niche).filter((n): n is string => !!n)),
+    ...new Set(
+      inWorkspace
+        .filter((s) => !sentFilter || s.created_at.slice(0, 10) === sentFilter)
+        .map((s) => s.niche)
+        .filter((n): n is string => !!n)
+    ),
   ].sort();
 
-  const hrefWith = (over: { status?: string | null; niche?: string | null }) => {
+  const sentDatesInView = [
+    ...new Set(
+      inWorkspace
+        .filter((s) => !nicheFilter || s.niche === nicheFilter)
+        .map((s) => s.created_at.slice(0, 10))
+    ),
+  ].sort().reverse();
+
+  const hrefWith = (over: { status?: string | null; niche?: string | null; sent?: string | null }) => {
     const sp = new URLSearchParams();
     if (statusFilter) sp.set("status", statusFilter);
     if (nicheFilter) sp.set("niche", nicheFilter);
+    if (sentFilter) sp.set("sent", sentFilter);
     for (const [k, v] of Object.entries(over)) {
       if (v == null) sp.delete(k);
       else sp.set(k, v);
@@ -252,6 +269,24 @@ export default async function ScriptsPage({
                   <span className="mx-1 h-4 w-px bg-neutral-200" />
                 </>
               )}
+              {sentDatesInView.length > 1 && (
+                <>
+                  {sentDatesInView.map((d) => (
+                    <Link
+                      key={d}
+                      href={hrefWith({ sent: sentFilter === d ? null : d })}
+                      className={`rounded-md px-2 py-1 tabular-nums transition-colors ${
+                        sentFilter === d
+                          ? "bg-neutral-700 font-medium text-white"
+                          : "text-neutral-500 hover:bg-neutral-100"
+                      }`}
+                    >
+                      {formatDateUTC(d)}
+                    </Link>
+                  ))}
+                  <span className="mx-1 h-4 w-px bg-neutral-200" />
+                </>
+              )}
               {STATUS_TABS.map(([value, label]) => (
                 <Link
                   key={label}
@@ -303,6 +338,11 @@ export default async function ScriptsPage({
                                 {p.script.niche}
                               </span>
                             )}
+                            {/* Which send-out the script came from, so same-niche
+                                batches from different days stay tellable apart. */}
+                            <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500">
+                              {formatDateUTC(p.script.created_at)}
+                            </span>
                             {p.script.status !== "Active" && (
                               <StatusBadge status={p.script.status} />
                             )}
