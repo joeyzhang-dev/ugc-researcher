@@ -21,19 +21,15 @@ import {
 import { SubmitButton } from "@/components/submit-button";
 import {
   Avatar, Card, EmptyState, KpiCard, PageHeader, StatusBadge,
-  inputClass, labelClass, secondaryButtonClass, table, tableWrap, td, th, trHover,
+  inputClass, labelClass, secondaryButtonClass,
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
-import { ResearchScoreChip } from "@/components/research-panel";
+import { ResearchVideoPanel, type PanelSegment } from "@/components/research-panel";
+import { ResearchVideoTile } from "@/components/research-video-tile";
 import { NicheCombobox } from "@/components/niche-combobox";
-import { Thumb } from "@/components/hover-video";
 import { getWorkspace } from "@/lib/workspace/server";
 
 export const dynamic = "force-dynamic";
-
-function fmtLift(n: number | null): string {
-  return n == null ? "—" : `${n.toFixed(2)}×`;
-}
 
 /** One script: the words, who ran it, and which post each of them produced. */
 export default async function ScriptDetailPage({
@@ -83,7 +79,7 @@ export default async function ScriptDetailPage({
     ? await supabase
         .from("research_videos")
         .select(
-          "id, research_creator_id, url, shortcode, caption, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_text, format_category"
+          "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category"
         )
         .in("research_creator_id", assignedIds)
     : { data: [] };
@@ -128,9 +124,36 @@ export default async function ScriptDetailPage({
     .sort((x, y) => (y.linked?.lift ?? -1) - (x.linked?.lift ?? -1));
 
   const posted = rows.filter((r) => r.linked);
+  // "Who ran it" manages only the open questions; confirmed posts live in the
+  // mosaic below, so showing them here twice was pure duplication.
+  const waiting = rows.filter((r) => !r.linked);
   const unassigned = creators.filter(
     (c) => !assignments.some((a) => a.research_creator_id === c.id)
   );
+
+  // Transcript segments for the panel, only for the videos actually on screen —
+  // linked posts plus the suggested candidates (their tiles open the panel too).
+  const postedVideoIds = [
+    ...new Set([
+      ...posted.map((r) => r.linked!.video.id),
+      ...waiting.flatMap((r) => r.suggestions.map((s) => s.video.id)),
+    ]),
+  ];
+  const { data: segmentsData } = postedVideoIds.length
+    ? await supabase
+        .from("research_video_segments")
+        .select("research_video_id, position, start_time, text")
+        .in("research_video_id", postedVideoIds)
+        .order("position", { ascending: true })
+    : { data: [] };
+  const segmentsByVideo: Record<string, PanelSegment[]> = {};
+  for (const s of (segmentsData ?? []) as (PanelSegment & { research_video_id: string })[]) {
+    (segmentsByVideo[s.research_video_id] ??= []).push({
+      position: s.position,
+      start_time: s.start_time,
+      text: s.text,
+    });
+  }
 
   const medianScore = median(
     posted.map((r) => r.linked!.score).filter((n): n is number => n != null)
@@ -142,7 +165,7 @@ export default async function ScriptDetailPage({
   return (
     <>
       <PageHeader
-        title={script.title}
+        title={script.hook || script.title}
         action={
           <Link href="/scripts" className={secondaryButtonClass}>
             ← All scripts
@@ -242,37 +265,38 @@ export default async function ScriptDetailPage({
                 </select>
               </label>
             </div>
-            <label className="block">
-              <span className={labelClass}>Notes</span>
-              <textarea
-                name="notes"
-                rows={2}
-                defaultValue={script.notes ?? ""}
-                className={`${inputClass} resize-y`}
-              />
-            </label>
             <SubmitButton pendingLabel="Saving…">Save script</SubmitButton>
           </form>        </Card>
 
         <div className="space-y-4">
-          <Card title="Hand it to a creator">
-            {unassigned.length === 0 ? (
-              <EmptyState message="Every roster creator already has this script." />
-            ) : (
-              <form action={assignScript.bind(null, script.id)} className="flex items-end gap-2">
-                <label className="flex-1">
-                  <span className={labelClass}>Creator</span>
-                  <select name="creatorId" className={inputClass} required>
-                    {unassigned.map((c) => (
-                      <option key={c.id} value={c.id}>@{c.handle}</option>
-                    ))}
-                  </select>
-                </label>
-                <SubmitButton pendingLabel="Adding…">Add</SubmitButton>
-              </form>
-            )}
-          </Card>
-
+          {posted.length > 0 && (
+            /* The videos this script produced, same mosaic as the overview:
+               hover plays the stored copy, click opens the transcript panel. */
+            <Card title="Posts from this script">
+              <div className="grid [grid-template-columns:repeat(auto-fill,minmax(160px,1fr))]">
+                {posted.map(({ a, creator, linked }) => (
+                  <div key={a.id} className="flex flex-col">
+                    <ResearchVideoTile row={linked!} creatorHandle={creator?.handle} showLift />
+                    <span className="flex items-center justify-between px-1.5 py-1 text-[11px]">
+                      <Link
+                        href={`/research/${a.research_creator_id}`}
+                        className="truncate font-medium text-neutral-600 hover:text-neutral-900 hover:underline"
+                      >
+                        @{creator?.handle ?? "unknown"}
+                      </Link>
+                      <form action={linkAssignmentVideo.bind(null, a.id)} className="shrink-0">
+                        <input type="hidden" name="scriptId" value={script.id} />
+                        <input type="hidden" name="videoId" value="" />
+                        <button type="submit" className="text-neutral-400 hover:text-red-600">
+                          unlink
+                        </button>
+                      </form>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
           <Card
             title="Who ran it"
             action={
@@ -285,9 +309,11 @@ export default async function ScriptDetailPage({
           >
             {rows.length === 0 ? (
               <EmptyState message="Not handed to anyone yet." />
+            ) : waiting.length === 0 ? (
+              <EmptyState message="Everyone who has this script already posted — see the videos below." />
             ) : (
               <div className="space-y-2.5">
-                {rows.map(({ a, creator, linked, pool, suggestions }) => (
+                {waiting.map(({ a, creator, pool, suggestions }) => (
                   <div key={a.id} className="rounded-xl border border-neutral-200 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
@@ -308,82 +334,46 @@ export default async function ScriptDetailPage({
                       </span>
                     </div>
 
-                    {linked ? (
-                      <div className="mt-2.5 flex items-center gap-2.5">
-                        <Thumb
-                          src={linked.video.thumbnail_url}
-                          className="h-14 w-10 shrink-0 rounded-md"
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2">
-                            <ResearchScoreChip score={linked.score} />
-                            <span className="text-xs tabular-nums text-neutral-500">
-                              {fmtLift(linked.lift)} · {formatCompact(linked.video.view_count)} views
-                              {" · "}
-                              {formatDate(linked.video.posted_at)}
-                            </span>
-                          </span>
-                          <span className="mt-1 block truncate text-xs text-neutral-500">
-                            {linked.video.caption?.split("\n")[0] || linked.video.shortcode}
-                          </span>
-                        </span>
-                        <span className="flex shrink-0 flex-col items-end gap-1">
-                          <a
-                            href={linked.video.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-neutral-400 hover:text-neutral-700"
-                          >
-                            open ↗
-                          </a>
-                          <form action={linkAssignmentVideo.bind(null, a.id)}>
-                            <input type="hidden" name="scriptId" value={script.id} />
-                            <input type="hidden" name="videoId" value="" />
-                            <button
-                              type="submit"
-                              className="text-xs text-neutral-400 hover:text-red-600"
-                            >
-                              unlink
-                            </button>
-                          </form>
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="mt-2.5 space-y-2">
+                    <div className="mt-2.5 space-y-2">
                         {suggestions.length > 0 && (
                           <div>
                             <p className="mb-1 text-[11px] font-semibold text-neutral-500">
-                              Likely matches from their transcripts
+                              Likely matches — hover to watch, click for the transcript
                             </p>
-                            <div className="space-y-1">
-                              {suggestions.map((s) => (
-                                <form
-                                  key={s.video.id}
-                                  action={linkAssignmentVideo.bind(null, a.id)}
-                                  className="flex items-center gap-2"
-                                >
-                                  <input type="hidden" name="scriptId" value={script.id} />
-                                  <input type="hidden" name="videoId" value={s.video.id} />
-                                  <span
-                                    className={`w-10 shrink-0 rounded px-1 py-0.5 text-center text-[10px] font-bold ${
-                                      s.score >= 0.6
-                                        ? "bg-emerald-50 text-emerald-700"
-                                        : "bg-neutral-100 text-neutral-500"
-                                    }`}
-                                  >
-                                    {Math.round(s.score * 100)}%
-                                  </span>
-                                  <span className="min-w-0 flex-1 truncate text-xs text-neutral-600">
-                                    {s.video.caption?.split("\n")[0] || s.video.shortcode}
-                                  </span>
-                                  <button
-                                    type="submit"
-                                    className="shrink-0 rounded-md border border-neutral-200 px-2 py-0.5 text-[11px] font-medium text-neutral-600 hover:border-neutral-900 hover:text-neutral-900"
-                                  >
-                                    link
-                                  </button>
-                                </form>
-                              ))}
+                            {/* Same tiles as everywhere else: a shortcode means
+                                nothing to someone scanning the dashboard, a
+                                playing preview answers "is this the one?". */}
+                            <div className="grid gap-x-2 [grid-template-columns:repeat(auto-fill,minmax(110px,1fr))]">
+                              {suggestions.map((s) => {
+                                const liftRow = liftById.get(s.video.id);
+                                return (
+                                  <div key={s.video.id} className="flex flex-col">
+                                    {liftRow && <ResearchVideoTile row={liftRow} />}
+                                    <span className="flex items-center justify-between px-1 py-1 text-[11px]">
+                                      <span
+                                        className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                          s.score >= 0.6
+                                            ? "bg-emerald-50 text-emerald-700"
+                                            : "bg-neutral-100 text-neutral-500"
+                                        }`}
+                                        title="How much of the script's wording shows up in this transcript"
+                                      >
+                                        {Math.round(s.score * 100)}%
+                                      </span>
+                                      <form action={linkAssignmentVideo.bind(null, a.id)}>
+                                        <input type="hidden" name="scriptId" value={script.id} />
+                                        <input type="hidden" name="videoId" value={s.video.id} />
+                                        <button
+                                          type="submit"
+                                          className="rounded-md border border-neutral-200 px-2 py-0.5 font-medium text-neutral-600 hover:border-neutral-900 hover:text-neutral-900"
+                                        >
+                                          link
+                                        </button>
+                                      </form>
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         )}
@@ -423,62 +413,41 @@ export default async function ScriptDetailPage({
                           </form>
                         )}
                       </div>
-                    )}
                   </div>
                 ))}
               </div>
             )}
           </Card>
+
+          {/* Assignments normally arrive from the Discord import; handing a
+              script out by hand is the exception, so it hides behind a small
+              disclosure instead of holding a whole card open. */}
+          {unassigned.length > 0 && (
+            <details className="group">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-neutral-400 hover:text-neutral-700 [&::-webkit-details-marker]:hidden">
+                <span className="transition-transform group-open:rotate-45">+</span>
+                Hand it to another creator
+              </summary>
+              <form
+                action={assignScript.bind(null, script.id)}
+                className="mt-2 flex items-end gap-2"
+              >
+                <label className="flex-1">
+                  <span className={labelClass}>Creator</span>
+                  <select name="creatorId" className={inputClass} required>
+                    {unassigned.map((c) => (
+                      <option key={c.id} value={c.id}>@{c.handle}</option>
+                    ))}
+                  </select>
+                </label>
+                <SubmitButton pendingLabel="Adding…">Add</SubmitButton>
+              </form>
+            </details>
+          )}
         </div>
       </div>
 
-      {posted.length > 0 && (
-        <div className="mt-5">
-          <Card title="Posts from this script">
-            <div className={tableWrap}>
-              <table className={table}>
-                <thead>
-                  <tr>
-                    <th className={th}>Creator</th>
-                    <th className={th}>Score</th>
-                    <th className={th}>Lift</th>
-                    <th className={th}>Views</th>
-                    <th className={th}>Posted</th>
-                    <th className={th}>Caption</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-100">
-                  {posted.map(({ a, creator, linked }) => (
-                    <tr key={a.id} className={trHover}>
-                      <td className={td}>
-                        <Link
-                          href={`/research/${a.research_creator_id}`}
-                          className="font-medium text-neutral-900 hover:underline"
-                        >
-                          @{creator?.handle}
-                        </Link>
-                      </td>
-                      <td className={td}>
-                        <ResearchScoreChip score={linked!.score} />
-                      </td>
-                      <td className={`${td} tabular-nums`}>{fmtLift(linked!.lift)}</td>
-                      <td className={`${td} tabular-nums`}>
-                        {formatCompact(linked!.video.view_count)}
-                      </td>
-                      <td className={td}>{formatDate(linked!.video.posted_at)}</td>
-                      <td className={`${td} max-w-80`}>
-                        <span className="block truncate text-neutral-500">
-                          {linked!.video.caption?.split("\n")[0] || linked!.video.shortcode}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-      )}
+      <ResearchVideoPanel segmentsByVideo={segmentsByVideo} />
     </>
   );
 }

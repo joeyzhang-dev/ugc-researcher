@@ -52,7 +52,10 @@ export async function updateScript(scriptId: string, formData: FormData) {
       hook: str(formData, "hook"),
       body: str(formData, "body"),
       niche: str(formData, "niche"),
-      notes: str(formData, "notes"),
+      // Notes are kept server-side but no longer editable in the form —
+      // only write the field when a form actually sends it, otherwise every
+      // save would silently wipe the stored notes.
+      ...(formData.get("notes") != null ? { notes: str(formData, "notes") } : {}),
       status: (str(formData, "status") as ResearchScriptStatus) ?? "Active",
     })
     .eq("id", scriptId);
