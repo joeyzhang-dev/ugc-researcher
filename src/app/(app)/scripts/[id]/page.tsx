@@ -297,22 +297,54 @@ export default async function ScriptDetailPage({
               </div>
             </Card>
           )}
-          <Card
-            title="Who ran it"
-            action={
-              !script.body && !script.hook ? (
-                <span className="text-xs text-amber-600">
-                  Write the script to get match suggestions
-                </span>
-              ) : null
-            }
-          >
-            {rows.length === 0 ? (
-              <EmptyState message="Not handed to anyone yet." />
-            ) : waiting.length === 0 ? (
-              <EmptyState message="Everyone who has this script already posted — see the videos below." />
-            ) : (
-              <div className="space-y-2.5">
+
+          {/* Assignments normally arrive from the Discord import; handing a
+              script out by hand is the exception, so it hides behind a small
+              disclosure instead of holding a whole card open. */}
+          {unassigned.length > 0 && (
+            <details className="group">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-neutral-400 hover:text-neutral-700 [&::-webkit-details-marker]:hidden">
+                <span className="transition-transform group-open:rotate-45">+</span>
+                Hand it to another creator
+              </summary>
+              <form
+                action={assignScript.bind(null, script.id)}
+                className="mt-2 flex items-end gap-2"
+              >
+                <label className="flex-1">
+                  <span className={labelClass}>Creator</span>
+                  <select name="creatorId" className={inputClass} required>
+                    {unassigned.map((c) => (
+                      <option key={c.id} value={c.id}>@{c.handle}</option>
+                    ))}
+                  </select>
+                </label>
+                <SubmitButton pendingLabel="Adding…">Add</SubmitButton>
+              </form>
+            </details>
+          )}
+        </div>
+      </div>
+
+      {/* Full width, outside the two-column grid: these cards tile, and inside
+          the narrow right-hand column they had no room to sit side by side. */}
+      <div className="mt-4">
+        <Card
+          title="Who ran it"
+          action={
+            !script.body && !script.hook ? (
+              <span className="text-xs text-amber-600">
+                Write the script to get match suggestions
+              </span>
+            ) : null
+          }
+        >
+          {rows.length === 0 ? (
+            <EmptyState message="Not handed to anyone yet." />
+          ) : waiting.length === 0 ? (
+            <EmptyState message="Everyone who has this script already posted — see the videos above." />
+          ) : (
+            <div className="grid items-start gap-3 [grid-template-columns:repeat(auto-fill,minmax(290px,1fr))]">
                 {waiting.map(({ a, creator, pool, suggestions }) => (
                   <div key={a.id} className="rounded-xl border border-neutral-200 p-3">
                     <div className="flex items-center justify-between gap-2">
@@ -379,10 +411,10 @@ export default async function ScriptDetailPage({
                         )}
                         <form
                           action={linkAssignmentVideo.bind(null, a.id)}
-                          className="flex items-end gap-2"
+                          className="flex flex-wrap items-end gap-2"
                         >
                           <input type="hidden" name="scriptId" value={script.id} />
-                          <label className="min-w-0 flex-1">
+                          <label className="min-w-0 flex-1 basis-full sm:basis-auto">
                             <span className="mb-1 block text-[11px] text-neutral-400">
                               {suggestions.length > 0
                                 ? "or pick manually"
@@ -417,34 +449,7 @@ export default async function ScriptDetailPage({
                 ))}
               </div>
             )}
-          </Card>
-
-          {/* Assignments normally arrive from the Discord import; handing a
-              script out by hand is the exception, so it hides behind a small
-              disclosure instead of holding a whole card open. */}
-          {unassigned.length > 0 && (
-            <details className="group">
-              <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-neutral-400 hover:text-neutral-700 [&::-webkit-details-marker]:hidden">
-                <span className="transition-transform group-open:rotate-45">+</span>
-                Hand it to another creator
-              </summary>
-              <form
-                action={assignScript.bind(null, script.id)}
-                className="mt-2 flex items-end gap-2"
-              >
-                <label className="flex-1">
-                  <span className={labelClass}>Creator</span>
-                  <select name="creatorId" className={inputClass} required>
-                    {unassigned.map((c) => (
-                      <option key={c.id} value={c.id}>@{c.handle}</option>
-                    ))}
-                  </select>
-                </label>
-                <SubmitButton pendingLabel="Adding…">Add</SubmitButton>
-              </form>
-            </details>
-          )}
-        </div>
+        </Card>
       </div>
 
       <ResearchVideoPanel segmentsByVideo={segmentsByVideo} />
