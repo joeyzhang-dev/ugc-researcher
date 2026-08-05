@@ -189,7 +189,9 @@ export function KpiCard({
 }: {
   label: string;
   value: string;
-  sub?: string;
+  /** Text, or a node when the detail is worth more than a caption (an avatar
+   *  stack under a headcount says who, not just how many). */
+  sub?: ReactNode;
   /** Key into KPI_ICONS, or a custom node. */
   icon?: string | ReactNode;
   tone?: KpiTone;
@@ -229,6 +231,48 @@ export function KpiCard({
 }
 
 /** Creator avatar: profile picture when captured, initials otherwise. */
+/**
+ * Overlapping avatars for a headcount — who, not just how many.
+ *
+ * Capped, because a script handed to a dozen creators would otherwise push the
+ * card wider than its neighbours and break the KPI row's alignment.
+ */
+export function AvatarStack({
+  people,
+  size = 22,
+  max = 6,
+}: {
+  people: { handle: string; avatarUrl?: string | null }[];
+  size?: number;
+  max?: number;
+}) {
+  if (people.length === 0) return null;
+  const shown = people.slice(0, max);
+  const rest = people.length - shown.length;
+  return (
+    <span className="flex items-center">
+      {shown.map((p, i) => (
+        <span
+          key={`${p.handle}-${i}`}
+          title={`@${p.handle}`}
+          className="rounded-full ring-2 ring-white"
+          style={{ marginLeft: i === 0 ? 0 : -size / 3 }}
+        >
+          <Avatar name={p.handle} src={p.avatarUrl} size={size} />
+        </span>
+      ))}
+      {rest > 0 && (
+        <span
+          className="flex items-center justify-center rounded-full bg-neutral-100 font-medium text-neutral-500 ring-2 ring-white"
+          style={{ width: size, height: size, marginLeft: -size / 3, fontSize: size * 0.4 }}
+        >
+          +{rest}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export function Avatar({ name, src, size = 24 }: { name: string; src?: string | null; size?: number }) {
   if (src) {
     return (

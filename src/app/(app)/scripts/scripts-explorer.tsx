@@ -142,8 +142,12 @@ export function ScriptsExplorer({
     [rows, status, niches, sents]
   );
 
-  // Each filter row is scoped by the OTHER active filter, so picking a niche
-  // leaves only that niche's send-out dates (and vice versa) — no dead combos.
+  // Every niche and every send-out date is always rendered, so the filter row
+  // never changes height. It used to list only the combinations that still had
+  // results, which meant clicking a date removed niche pills, the row reflowed,
+  // and the entire page below it jumped — the amount depending on which pill
+  // you happened to click. The cross-filtered sets below now only decide which
+  // pills are dimmed, never how many exist.
   const nichesInView = useMemo(
     () =>
       [
@@ -171,11 +175,22 @@ export function ScriptsExplorer({
     [rows, niches]
   );
 
+  const allNiches = useMemo(
+    () => [...new Set(rows.map((r) => r.niche).filter((n): n is string => !!n))].sort(),
+    [rows]
+  );
+  const allSentDays = useMemo(
+    () => [...new Set(rows.map((r) => r.sentDay))].sort().reverse(),
+    [rows]
+  );
+
   const totalPosts = filtered.reduce((s, r) => s + r.posts, 0);
   const totalPending = filtered.reduce((s, r) => s + r.pending, 0);
   const best = filtered.find((r) => r.medianScore != null) ?? null;
 
-  const hasFilterRow = nichesInView.length > 0 || sentDatesInView.length > 1;
+  // Based on the full sets, not the cross-filtered ones: if this flipped false
+  // mid-filtering the whole row would vanish and take the page with it.
+  const hasFilterRow = allNiches.length > 0 || allSentDays.length > 1;
 
   return (
     <>
@@ -240,33 +255,49 @@ export function ScriptsExplorer({
 
         {hasFilterRow && (
           <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-neutral-100 px-6 py-3.5">
-            {nichesInView.map((n) => {
+            {allNiches.map((n) => {
               const c = colorOf(n);
+              const on = niches.includes(n);
+              // Dimmed rather than removed: it would return nothing under the
+              // dates currently selected, but it keeps its place in the row.
+              const dead = !on && !nichesInView.includes(n);
               return (
                 <button
                   key={n}
                   type="button"
+                  disabled={dead}
+                  title={dead ? "No scripts in this niche for the selected dates" : undefined}
                   onClick={() => apply(status, toggled(niches, n), sents)}
-                  className={`${pillBase} border ${niches.includes(n) ? c.active : c.pill}`}
+                  className={`${pillBase} border ${on ? c.active : c.pill} ${
+                    dead ? "cursor-default opacity-35" : ""
+                  }`}
                 >
                   {n}
                 </button>
               );
             })}
-            {nichesInView.length > 0 && sentDatesInView.length > 1 && (
+            {allNiches.length > 0 && allSentDays.length > 1 && (
               <span className="mx-1.5 h-4 w-px bg-neutral-200" />
             )}
-            {sentDatesInView.length > 1 &&
-              sentDatesInView.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => apply(status, niches, toggled(sents, d))}
-                  className={`tabular-nums ${sents.includes(d) ? pillActive : pillIdle}`}
-                >
-                  {formatDateUTC(d)}
-                </button>
-              ))}
+            {allSentDays.length > 1 &&
+              allSentDays.map((d) => {
+                const on = sents.includes(d);
+                const dead = !on && !sentDatesInView.includes(d);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    disabled={dead}
+                    title={dead ? "No scripts on this date in the selected niches" : undefined}
+                    onClick={() => apply(status, niches, toggled(sents, d))}
+                    className={`tabular-nums ${on ? pillActive : pillIdle} ${
+                      dead ? "cursor-default opacity-35" : ""
+                    }`}
+                  >
+                    {formatDateUTC(d)}
+                  </button>
+                );
+              })}
             {(niches.length > 0 || sents.length > 0) && (
               <button
                 type="button"

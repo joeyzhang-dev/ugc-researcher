@@ -20,7 +20,7 @@ import {
 } from "../actions";
 import { SubmitButton } from "@/components/submit-button";
 import {
-  Avatar, Card, EmptyState, KpiCard, PageHeader, StatusBadge,
+  Avatar, AvatarStack, Card, EmptyState, KpiCard, PageHeader, StatusBadge,
   inputClass, labelClass, secondaryButtonClass,
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
@@ -186,7 +186,19 @@ export default async function ScriptDetailPage({
       </div>
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard label="Handed to" value={String(assignments.length)} icon="users" />
+        <KpiCard
+          label="Handed to"
+          value={String(assignments.length)}
+          icon="users"
+          sub={
+            <AvatarStack
+              people={rows.map(({ creator }) => ({
+                handle: creator?.handle ?? "unknown",
+                avatarUrl: creator?.avatar_url,
+              }))}
+            />
+          }
+        />
         <KpiCard label="Posted" value={String(posted.length)} icon="play" tone="emerald" />
         <KpiCard
           label="Median score"
