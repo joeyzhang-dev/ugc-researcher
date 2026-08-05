@@ -33,3 +33,51 @@ export const NICHE_PALETTE = [
 ] as const;
 
 export type NicheColor = (typeof NICHE_PALETTE)[number];
+
+/* Send-out weeks ------------------------------------------------------------
+   Send-outs land on individual days, but they are planned as batches, and two
+   days in the same week are one batch in practice. Grouping by week keeps the
+   filter row short as months accumulate.
+
+   All arithmetic is UTC. The day keys come from created_at.slice(0,10), which
+   is already a UTC date, so doing the maths locally would shift a batch sent
+   late in the day into the wrong week for anyone west of UTC. */
+
+/** ISO day (UTC) of the Monday that starts the week containing `day`. */
+export function weekKeyUTC(day: string): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  // getUTCDay: 0 = Sunday. Shift so Monday starts the week.
+  const shift = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - shift);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Monday of the current week, in UTC. */
+export function currentWeekKeyUTC(now: Date = new Date()): string {
+  return weekKeyUTC(now.toISOString().slice(0, 10));
+}
+
+/** The week before `key`. */
+export function previousWeekKeyUTC(key: string): string {
+  const d = new Date(`${key}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 7);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * "This week" / "Last week", else the batch's own date without a year.
+ *
+ * Older weeks are labelled by the most recent send-out actually in them rather
+ * than by the Monday that starts them — a pill reading "Jul 21" when nothing
+ * was sent until the 23rd is a date that never existed for this data.
+ */
+export function weekLabel(key: string, latestDayInWeek: string, now: Date = new Date()): string {
+  const thisWeek = currentWeekKeyUTC(now);
+  if (key === thisWeek) return "This week";
+  if (key === previousWeekKeyUTC(thisWeek)) return "Last week";
+  return new Date(`${latestDayInWeek}T00:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}

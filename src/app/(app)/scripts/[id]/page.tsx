@@ -27,6 +27,7 @@ import { formatCompact, formatDate } from "@/lib/format";
 import { ResearchVideoPanel, type PanelSegment } from "@/components/research-panel";
 import { ResearchVideoTile } from "@/components/research-video-tile";
 import { NicheCombobox } from "@/components/niche-combobox";
+import { AppSelect } from "@/components/app-select";
 import { getWorkspace } from "@/lib/workspace/server";
 
 export const dynamic = "force-dynamic";
@@ -290,17 +291,14 @@ export default async function ScriptDetailPage({
                 than they explain next to a niche chip, an app and a status. */}
             <div className="grid gap-2 sm:grid-cols-3">
               <NicheCombobox options={knownNiches} defaultValue={script.niche ?? ""} />
-              <select
-                name="appId"
-                aria-label="App"
-                className={inputClass}
+              <AppSelect
+                apps={apps.map((a: ResearchApp) => ({
+                  id: a.id,
+                  name: a.name,
+                  logoUrl: a.logo_url,
+                }))}
                 defaultValue={script.app_id ?? ""}
-              >
-                <option value="">— no app —</option>
-                {apps.map((a: ResearchApp) => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
-              </select>
+              />
               <select
                 name="status"
                 aria-label="Status"

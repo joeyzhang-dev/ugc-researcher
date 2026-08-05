@@ -12,6 +12,7 @@ import { createScript } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
 import { inputClass } from "@/components/ui";
 import { NicheCombobox } from "@/components/niche-combobox";
+import { AppSelect } from "@/components/app-select";
 import { ALL_APPS } from "@/lib/workspace";
 import { getWorkspace } from "@/lib/workspace/server";
 import { ScriptsExplorer, type ScriptRow } from "./scripts-explorer";
@@ -131,19 +132,15 @@ export default async function ScriptsPage({
 
   return (
     <>
-      <h1 className="text-[28px] font-semibold tracking-[-0.02em] text-neutral-900">Scripts</h1>
-      <p className="mb-8 mt-1.5 max-w-2xl text-sm leading-relaxed text-neutral-500">
-        Scripts we hand to our own creators, and how each one actually performed. Ranked by{" "}
-        <em>lift</em> rather than views — a script is only good if it makes the creator who ran it
-        beat their own baseline, which raw view counts would hide behind whoever has the biggest
-        following.
+      {/* No standing description: it explained the lift ranking once and then
+          cost a block of screen on every visit thereafter. The workspace is
+          still named, since that one changes what you are looking at. */}
+      <h1 className="mb-4 flex items-baseline gap-2 text-[28px] font-semibold tracking-[-0.02em] text-neutral-900">
+        Scripts
         {app && (
-          <>
-            {" "}
-            Scoped to <span className="font-medium text-neutral-900">{app.name}</span>.
-          </>
+          <span className="text-sm font-normal text-neutral-400">{app.name}</span>
         )}
-      </p>
+      </h1>
 
       {error && (
         <p className="mb-6 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
@@ -167,9 +164,16 @@ export default async function ScriptsPage({
           ) : undefined
         }
         formSlot={
-          <section className={`${card} p-6`}>
-            <h2 className={cardTitle}>Write a script</h2>
-            <form action={createScript} className="mt-4 space-y-4">
+          <details className={`${card} group overflow-visible`}>
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-6 py-4 [&::-webkit-details-marker]:hidden">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 transition-transform group-open:rotate-45">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+              </span>
+              <span className={cardTitle}>Create script</span>
+            </summary>
+            <form action={createScript} className="space-y-4 px-6 pb-6">
               <label className="block">
                 <span className={calLabel}>Title</span>
                 <input
@@ -211,14 +215,16 @@ export default async function ScriptsPage({
                   <span className={calLabel}>Niche</span>
                   <NicheCombobox options={knownNiches} />
                 </label>
-                <label className="min-w-36">
+                <label className="min-w-44">
                   <span className={calLabel}>App</span>
-                  <select name="appId" className={inputClass} defaultValue={appFilter ?? ""}>
-                    <option value="">— none —</option>
-                    {apps.map((a: ResearchApp) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
-                  </select>
+                  <AppSelect
+                    apps={apps.map((a: ResearchApp) => ({
+                      id: a.id,
+                      name: a.name,
+                      logoUrl: a.logo_url,
+                    }))}
+                    defaultValue={appFilter ?? ""}
+                  />
                 </label>
                 <label className="min-w-32">
                   <span className={calLabel}>Status</span>
@@ -233,7 +239,7 @@ export default async function ScriptsPage({
                 </SubmitButton>
               </div>
             </form>
-          </section>
+          </details>
         }
       />
     </>

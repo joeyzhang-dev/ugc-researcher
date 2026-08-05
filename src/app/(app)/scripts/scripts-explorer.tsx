@@ -2,9 +2,8 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { KPI_ICONS } from "@/components/ui";
 import { ResearchScoreChip } from "@/components/research-panel";
-import { formatCompact, formatDate, formatDateUTC } from "@/lib/format";
+import { formatCompact, formatDateUTC } from "@/lib/format";
 import {
   NICHE_PALETTE,
   card,
@@ -15,6 +14,8 @@ import {
   rowPill,
   td,
   th,
+  weekKeyUTC,
+  weekLabel,
 } from "./cal";
 
 /** Slim, serializable projection of ScriptPerf — the full thing drags every
@@ -53,33 +54,21 @@ function fmtLift(n: number | null): string {
   return n == null ? "—" : `${n.toFixed(2)}×`;
 }
 
-function Kpi({
-  label,
-  value,
-  sub,
-  icon,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  icon: string;
-}) {
+/** One cell of the stat strip. Four short numbers did not justify four cards
+ *  stretched across the page, each with its own icon disc. */
+function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className={`flex items-start gap-3 p-4 ${card}`}>
-      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-900">
-        {KPI_ICONS[icon]}
-      </span>
-      <span className="block min-w-0">
-        <span className="block truncate text-[13px] font-medium text-neutral-500">{label}</span>
-        <span className="mt-0.5 block text-2xl font-semibold tracking-tight tabular-nums text-neutral-900">
-          {value}
+    <span className="flex min-w-0 flex-col justify-center gap-0.5 px-4 py-2">
+      <span className="truncate text-[11px] font-medium text-neutral-500">{label}</span>
+      <span className="flex min-w-0 items-baseline gap-1.5">
+        <span className="text-xl font-semibold tabular-nums text-neutral-900">{value}</span>
+        {/* Rendered even when empty so a filter that leaves nothing scored
+            cannot change the strip's height and nudge the page. */}
+        <span className="min-w-0 max-w-40 truncate text-xs text-neutral-400">
+          {sub || "\u00A0"}
         </span>
-        {/* Always rendered, even when empty: this line only appears on one of
-            the four cards, so letting it vanish when a filter leaves no best
-            script changed the row's height and nudged the whole page. */}
-        <span className="mt-0.5 block truncate text-xs text-neutral-400">{sub || "\u00A0"}</span>
       </span>
-    </div>
+    </span>
   );
 }
 
@@ -141,7 +130,7 @@ export function ScriptsExplorer({
       rows
         .filter((r) => !status || r.status === status)
         .filter((r) => !niches.length || (!!r.niche && niches.includes(r.niche)))
-        .filter((r) => !sents.length || sents.includes(r.sentDay)),
+        .filter((r) => !sents.length || sents.includes(weekKeyUTC(r.sentDay))),
     [rows, status, niches, sents]
   );
 
@@ -156,7 +145,7 @@ export function ScriptsExplorer({
       [
         ...new Set(
           rows
-            .filter((r) => !sents.length || sents.includes(r.sentDay))
+            .filter((r) => !sents.length || sents.includes(weekKeyUTC(r.sentDay)))
             .map((r) => r.niche)
             .filter((n): n is string => !!n)
         ),
@@ -170,7 +159,7 @@ export function ScriptsExplorer({
         ...new Set(
           rows
             .filter((r) => !niches.length || (!!r.niche && niches.includes(r.niche)))
-            .map((r) => r.sentDay)
+            .map((r) => weekKeyUTC(r.sentDay))
         ),
       ]
         .sort()
@@ -182,10 +171,18 @@ export function ScriptsExplorer({
     () => [...new Set(rows.map((r) => r.niche).filter((n): n is string => !!n))].sort(),
     [rows]
   );
-  const allSentDays = useMemo(
-    () => [...new Set(rows.map((r) => r.sentDay))].sort().reverse(),
-    [rows]
-  );
+  const allWeeks = useMemo(() => {
+    // Latest actual send-out in each week, so an older week's pill shows a date
+    // that really happened rather than the Monday that starts it.
+    const latest = new Map<string, string>();
+    for (const r of rows) {
+      const k = weekKeyUTC(r.sentDay);
+      if (!latest.has(k) || r.sentDay > latest.get(k)!) latest.set(k, r.sentDay);
+    }
+    return [...latest.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([key, latestDay]) => ({ key, label: weekLabel(key, latestDay) }));
+  }, [rows]);
 
   const totalPosts = filtered.reduce((s, r) => s + r.posts, 0);
   const totalPending = filtered.reduce((s, r) => s + r.pending, 0);
@@ -193,19 +190,18 @@ export function ScriptsExplorer({
 
   // Based on the full sets, not the cross-filtered ones: if this flipped false
   // mid-filtering the whole row would vanish and take the page with it.
-  const hasFilterRow = allNiches.length > 0 || allSentDays.length > 1;
+  const hasFilterRow = allNiches.length > 0 || allWeeks.length > 1;
 
   return (
     <>
-      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Kpi label="Scripts" value={String(totalScripts)} icon="badge" />
-        <Kpi label="Posts measured" value={String(totalPosts)} icon="play" />
-        <Kpi label="Awaiting a post" value={String(totalPending)} icon="clock" />
+      <div className={`mb-4 inline-flex max-w-full flex-wrap items-stretch divide-x divide-neutral-200 overflow-hidden ${card}`}>
+        <Kpi label="Scripts" value={String(totalScripts)} />
+        <Kpi label="Posts measured" value={String(totalPosts)} />
+        <Kpi label="Awaiting a post" value={String(totalPending)} />
         <Kpi
           label="Best median score"
           value={best?.medianScore?.toFixed(1) ?? "—"}
           sub={best?.label}
-          icon="trend"
         />
       </div>
 
@@ -279,25 +275,25 @@ export function ScriptsExplorer({
                 </button>
               );
             })}
-            {allNiches.length > 0 && allSentDays.length > 1 && (
+            {allNiches.length > 0 && allWeeks.length > 1 && (
               <span className="mx-1.5 h-4 w-px bg-neutral-200" />
             )}
-            {allSentDays.length > 1 &&
-              allSentDays.map((d) => {
-                const on = sents.includes(d);
-                const dead = !on && !sentDatesInView.includes(d);
+            {allWeeks.length > 1 &&
+              allWeeks.map(({ key, label }) => {
+                const on = sents.includes(key);
+                const dead = !on && !sentDatesInView.includes(key);
                 return (
                   <button
-                    key={d}
+                    key={key}
                     type="button"
                     disabled={dead}
-                    title={dead ? "No scripts on this date in the selected niches" : undefined}
-                    onClick={() => apply(status, niches, toggled(sents, d))}
+                    title={dead ? "No scripts sent this week in the selected niches" : undefined}
+                    onClick={() => apply(status, niches, toggled(sents, key))}
                     className={`tabular-nums ${on ? pillActive : pillIdle} ${
                       dead ? "cursor-default opacity-35" : ""
                     }`}
                   >
-                    {formatDateUTC(d)}
+                    {label}
                   </button>
                 );
               })}
@@ -390,34 +386,37 @@ export function ScriptsExplorer({
               <table className="min-w-full divide-y divide-neutral-200">
                 <thead>
                   <tr>
+                    <th className={th}>Sent</th>
+                    <th className={th}>Niche</th>
                     <th className={th}>Script</th>
                     <th className={th}>Score</th>
                     <th className={th}>Lift</th>
                     <th className={th}>Views</th>
                     <th className={th}>Ran by</th>
-                    <th className={th}>Best post</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
                   {filtered.map((r) => (
                     <tr key={r.id} className="transition-colors hover:bg-[#f8f9fa]">
-                      <td className={`${td} max-w-96`}>
+                      <td className={`${td} whitespace-nowrap tabular-nums text-neutral-500`}>
+                        {formatDateUTC(r.createdAt)}
+                      </td>
+                      <td className={td}>
+                        {r.niche ? (
+                          <span
+                            className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(r.niche).row}`}
+                          >
+                            {r.niche}
+                          </span>
+                        ) : (
+                          <span className="text-neutral-300">—</span>
+                        )}
+                      </td>
+                      <td className={`${td} max-w-[32rem]`}>
                         <Link href={`/scripts/${r.id}`} className="group block">
                           <span className="flex items-center gap-1.5">
                             <span className="truncate font-medium text-neutral-900 group-hover:underline">
                               {r.label}
-                            </span>
-                            {r.niche && (
-                              <span
-                                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(r.niche).row}`}
-                              >
-                                {r.niche}
-                              </span>
-                            )}
-                            {/* Which send-out the script came from, so same-niche
-                                batches from different days stay tellable apart. */}
-                            <span className={`${rowPill} tabular-nums text-neutral-500`}>
-                              {formatDateUTC(r.createdAt)}
                             </span>
                             {r.status !== "Active" && (
                               <span className={`${rowPill} text-neutral-500`}>{r.status}</span>
@@ -439,20 +438,6 @@ export function ScriptsExplorer({
                           <span className={`ml-1.5 ${rowPill} text-neutral-500`}>
                             {r.pending} waiting
                           </span>
-                        )}
-                      </td>
-                      <td className={`${td} max-w-56`}>
-                        {r.best ? (
-                          <span className="flex items-center gap-2">
-                            <ResearchScoreChip score={r.best.score} />
-                            <span className="min-w-0 truncate text-xs text-neutral-500">
-                              @{r.best.handle}
-                              {" · "}
-                              {formatDate(r.best.postedAt)}
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="text-xs text-neutral-400">no posts yet</span>
                         )}
                       </td>
                     </tr>
