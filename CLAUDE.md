@@ -47,13 +47,37 @@ Rules for new migrations in this repo:
 - `worker/transcribe_worker.py` — local transcription (yt-dlp / Apify / stored
   CDN URL → WhisperX or OpenAI Whisper); polls `research_videos.pending` every
   60s. Media stays in `worker/data/media/` (gitignored).
+- `src/app/(app)/discord/` — the Folk UGC Discord CRM (consolidated from the
+  retired standalone `discord-crm` project): per-channel cards with AI
+  summaries, message feeds with Discord deep links, manual channel↔creator
+  linking. Data lives in `research_discord_*` tables.
+- `worker/discord_pull_worker.py` — stdlib-only 24/7 Discord ingester
+  (REST pull every 60s → normalize → attribute roles → idempotent upsert),
+  plus subcommands: `discover` (channels/niches from guild categories),
+  `enrich` (creator discord ids, coach/launchpoint roles, re-attribution),
+  `sync` (launchpoint `## Script N/M` messages → `research_scripts` +
+  assignments, dedupe marker `[lp:<md5(body)[:10]>]`), `summarize`
+  (channel summaries via `claude -p`). The loop runs sync after every pull
+  and discover+summarize every 15 min.
+- `worker/discord_bot/` + `worker/run_discord_bot.py` — the "mach ugc"
+  gateway bot (discord.py, lives in `worker/.venv`): slash commands
+  `/onboard /offboard /link /creator /creators /health /help` + real-time
+  ingestion sharing the pull worker's dedupe semantics. `/link` binds a
+  creator's Instagram ↔ Discord profile ↔ coaching channel in one command.
+  Run exactly ONE instance per bot token (the old discord-crm deployment
+  must stay off).
 
 ## Env
 
 `.env.local` (gitignored) carries the same Supabase + Apify keys as the
 tracker's `.env.local`, plus `SUPABASE_ACCESS_TOKEN` for migrations. If a key
 is rotated, re-copy it from `~/Developer/trace-ugc-tracker/.env.local`.
+Discord: `DISCORD_BOT_TOKEN` (the mach ugc bot) + `DISCORD_GUILD_ID`; the
+`ONBOARD_*` / `CREATOR_ROLE_*` overrides default to the live Folk ids in
+`worker/discord_bot/config.py`.
 
 ## Verify
 
-`npm run typecheck` · `npm test` · `python3 -m py_compile worker/transcribe_worker.py`
+`npm run typecheck` · `npm test` ·
+`python3 -m py_compile worker/transcribe_worker.py worker/discord_pull_worker.py` ·
+`worker/.venv/bin/python -m py_compile worker/discord_bot/*.py worker/run_discord_bot.py`
