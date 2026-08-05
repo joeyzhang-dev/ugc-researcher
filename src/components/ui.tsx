@@ -33,6 +33,17 @@ const STATUS_COLORS: Record<string, string> = {
   "Warm-up": "bg-violet-50 text-violet-700",
   Trial: "bg-violet-50 text-violet-700",
   Standard: "bg-neutral-100 text-neutral-600",
+  // discord channel states (category-driven)
+  Creating: "bg-emerald-50 text-emerald-700",
+  "Not creating": "bg-amber-50 text-amber-700",
+  // discord summary workflow states (claude-generated)
+  Onboarding: "bg-sky-50 text-sky-700",
+  "Awaiting videos": "bg-amber-50 text-amber-700",
+  "Needs video review": "bg-violet-50 text-violet-700",
+  "Revision requested": "bg-orange-50 text-orange-700",
+  "Ready to post": "bg-emerald-50 text-emerald-700",
+  "In discussion": "bg-neutral-100 text-neutral-600",
+  Inactive: "bg-neutral-100 text-neutral-400",
   // assignment states
   Assigned: "bg-sky-50 text-sky-700",
   Submitted: "bg-amber-50 text-amber-700",
