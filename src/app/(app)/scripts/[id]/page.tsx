@@ -20,7 +20,7 @@ import {
 } from "../actions";
 import { SubmitButton } from "@/components/submit-button";
 import {
-  Avatar, AvatarStack, Card, EmptyState, KpiCard, PageHeader, StatusBadge,
+  Avatar, AvatarStack, Card, EmptyState, PageHeader, StatusBadge,
   inputClass, labelClass, secondaryButtonClass,
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
@@ -30,6 +30,16 @@ import { NicheCombobox } from "@/components/niche-combobox";
 import { getWorkspace } from "@/lib/workspace/server";
 
 export const dynamic = "force-dynamic";
+
+/** One cell of the stat strip: caption over value, sized to its contents. */
+function Stat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <span className="flex flex-col justify-center gap-0.5 px-4 py-2">
+      <span className="text-[11px] font-medium text-neutral-500">{label}</span>
+      {children}
+    </span>
+  );
+}
 
 /** One script: the words, who ran it, and which post each of them produced. */
 export default async function ScriptDetailPage({
@@ -185,34 +195,49 @@ export default async function ScriptDetailPage({
         <span>Created {formatDate(script.created_at)}</span>
       </div>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard
-          label="Handed to"
-          value={String(assignments.length)}
-          icon="users"
-          sub={
+      {/* One content-width strip instead of four cards stretched across the
+          page. These are four short numbers; a full-width grid of them spent a
+          whole band of screen on whitespace before the script even began.
+          inline-flex keeps it exactly as wide as its contents. */}
+      <div className="mb-4 inline-flex max-w-full flex-wrap items-stretch divide-x divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+        <Stat label="Handed to">
+          <span className="flex items-center gap-2">
+            <span className="text-xl font-semibold tabular-nums text-neutral-900">
+              {assignments.length}
+            </span>
+            {/* Sized to the number beside it: at avatar-chip scale the faces
+                were unrecognisable, which defeats showing them at all. */}
             <AvatarStack
+              size={26}
               people={rows.map(({ creator }) => ({
                 handle: creator?.handle ?? "unknown",
                 avatarUrl: creator?.avatar_url,
               }))}
             />
-          }
-        />
-        <KpiCard label="Posted" value={String(posted.length)} icon="play" tone="emerald" />
-        <KpiCard
-          label="Median score"
-          value={medianScore?.toFixed(1) ?? "—"}
-          sub={medianLift != null ? `${medianLift.toFixed(2)}× lift` : undefined}
-          icon="trend"
-          tone="violet"
-        />
-        <KpiCard
-          label="Total views"
-          value={formatCompact(posted.reduce((s, r) => s + (r.linked!.video.view_count ?? 0), 0))}
-          icon="eye"
-          tone="sky"
-        />
+          </span>
+        </Stat>
+        <Stat label="Posted">
+          <span className="text-xl font-semibold tabular-nums text-neutral-900">
+            {posted.length}
+          </span>
+        </Stat>
+        <Stat label="Median score">
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-xl font-semibold tabular-nums text-neutral-900">
+              {medianScore?.toFixed(1) ?? "—"}
+            </span>
+            {medianLift != null && (
+              <span className="text-xs tabular-nums text-neutral-400">
+                {medianLift.toFixed(2)}×
+              </span>
+            )}
+          </span>
+        </Stat>
+        <Stat label="Total views">
+          <span className="text-xl font-semibold tabular-nums text-neutral-900">
+            {formatCompact(posted.reduce((s, r) => s + (r.linked!.video.view_count ?? 0), 0))}
+          </span>
+        </Stat>
       </div>
 
       {/* minmax(0,…): a 1fr grid track's implicit min-width is its content, so a

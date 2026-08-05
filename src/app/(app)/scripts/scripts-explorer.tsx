@@ -74,7 +74,10 @@ function Kpi({
         <span className="mt-0.5 block text-2xl font-semibold tracking-tight tabular-nums text-neutral-900">
           {value}
         </span>
-        {sub && <span className="mt-0.5 block truncate text-xs text-neutral-400">{sub}</span>}
+        {/* Always rendered, even when empty: this line only appears on one of
+            the four cards, so letting it vanish when a filter leaves no best
+            script changed the row's height and nudged the whole page. */}
+        <span className="mt-0.5 block truncate text-xs text-neutral-400">{sub || "\u00A0"}</span>
       </span>
     </div>
   );
