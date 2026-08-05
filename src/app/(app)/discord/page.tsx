@@ -13,6 +13,7 @@ import { formatCompact } from "@/lib/format";
 import { NICHE_PALETTE } from "../scripts/cal";
 import { DiscordLink } from "@/components/discord-link";
 import { channelUrl, cleanSnippet, messageUrl, ROLE_CHIP, ROLE_SENDER } from "@/lib/discord-render";
+import { linkChannelToCreator } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +33,9 @@ interface ChannelSummary {
 export default async function DiscordPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; error?: string }>;
 }) {
-  const { status: statusParam, q } = await searchParams;
+  const { status: statusParam, q, error } = await searchParams;
   const status = statusParam === "creating" || statusParam === "paused" ? statusParam : "all";
   const supabase = await createClient();
 
@@ -160,6 +161,13 @@ export default async function DiscordPage({
 
   const creating = channels.filter((c) => c.category !== NOT_CREATING).length;
   const linked = channels.filter((c) => c.research_creator_id).length;
+  // Roster creators not yet claimed by a channel — the link dropdown's options.
+  const linkedCreatorIds = new Set(
+    channels.map((c) => c.research_creator_id).filter(Boolean)
+  );
+  const linkableCreators = creators
+    .filter((c) => !linkedCreatorIds.has(c.id))
+    .sort((a, b) => a.handle.localeCompare(b.handle));
   const hrefWith = (s: string) => {
     const sp = new URLSearchParams();
     if (s !== "all") sp.set("status", s);
@@ -176,6 +184,12 @@ export default async function DiscordPage({
         workflow stands and the last few messages. The local worker pulls every minute, re-summarizes
         what changed every 15, and syncs launchpoint scripts into Scripts automatically.
       </p>
+
+      {error && (
+        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-700">
+          {error}
+        </p>
+      )}
 
       <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
@@ -309,6 +323,17 @@ export default async function DiscordPage({
                   >
                     {name}
                   </DiscordLink>
+                  {creator && (
+                    <a
+                      href={creator.profile_url ?? `https://www.instagram.com/${creator.handle}/`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block truncate text-[11px] text-neutral-400 underline-offset-2 hover:text-neutral-900 hover:underline"
+                      title="Open their Instagram"
+                    >
+                      @{creator.handle}
+                    </a>
+                  )}
                   <p className="mt-1 flex flex-wrap items-center gap-1">
                     {ch.niche ? (
                       <span
@@ -320,6 +345,26 @@ export default async function DiscordPage({
                       <StatusBadge status={paused ? "Not creating" : "Creating"} />
                     )}
                   </p>
+                  {!creator && (
+                    <form action={linkChannelToCreator} className="mt-1.5 flex items-center gap-1">
+                      <input type="hidden" name="channelId" value={ch.channel_id} />
+                      <input
+                        name="creator"
+                        list="roster-creator-handles"
+                        required
+                        placeholder="link @instagram…"
+                        className="w-36 rounded-md border border-neutral-200 bg-white px-1.5 py-0.5 text-xs text-neutral-700 placeholder:text-neutral-300 focus:border-neutral-400 focus:outline-none"
+                        title="Type the creator's Instagram handle or profile URL — a new one is added to the roster and queued for scraping"
+                      />
+                      <button
+                        type="submit"
+                        className="text-xs text-neutral-400 hover:text-neutral-900"
+                        title="Link this channel to the creator"
+                      >
+                        ✓
+                      </button>
+                    </form>
+                  )}
                 </div>
               </div>
 
@@ -384,6 +429,12 @@ export default async function DiscordPage({
             </li>
           ))}
         </ul>
+        {/* Suggestions for the link input: roster creators no channel claims yet. */}
+        <datalist id="roster-creator-handles">
+          {linkableCreators.map((c) => (
+            <option key={c.id} value={`@${c.handle}`} />
+          ))}
+        </datalist>
       </Card>
     </>
   );

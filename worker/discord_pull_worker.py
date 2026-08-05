@@ -257,6 +257,13 @@ def cmd_discover() -> None:
         r["handle"]: r["id"]
         for r in sb_all("research_creators?select=id,handle&kind=eq.roster")
     }
+    # Links already in the DB (auto or hand-made in the UI) always win over
+    # this run's name-matching — a human link must survive re-discovery.
+    existing_links = {
+        c["channel_id"]: c["research_creator_id"]
+        for c in sb_all("research_discord_channels?select=channel_id,research_creator_id")
+        if c["research_creator_id"]
+    }
     payload, unlinked = [], []
     for row in rows:
         creator_id = match_roster(row["creator_name"], roster)
@@ -285,6 +292,8 @@ def cmd_discover() -> None:
                     p["research_creator_id"] = None
     for p in payload:
         del p["_exact"]
+        if p["channel_id"] in existing_links:
+            p["research_creator_id"] = existing_links[p["channel_id"]]
         if p["research_creator_id"] is None:
             unlinked.append(p["channel_name"])
     if payload:
