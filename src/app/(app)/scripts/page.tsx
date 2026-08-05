@@ -164,16 +164,25 @@ export default async function ScriptsPage({
           ) : undefined
         }
         formSlot={
-          <details className={`${card} group overflow-visible`}>
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-6 py-4 [&::-webkit-details-marker]:hidden">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 transition-transform group-open:rotate-45">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </span>
-              <span className={cardTitle}>Create script</span>
+          // Closed, this is a button beside the stats; open, it takes the full
+          // row so the form is not squeezed into a flex column.
+          <details className="group ml-auto [&[open]]:w-full">
+            <summary className={`${calButton} w-fit cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                className="transition-transform group-open:rotate-45"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              Create script
             </summary>
-            <form action={createScript} className="space-y-4 px-6 pb-6">
+            <form action={createScript} className={`${card} mt-3 space-y-4 p-6`}>
               <label className="block">
                 <span className={calLabel}>Title</span>
                 <input

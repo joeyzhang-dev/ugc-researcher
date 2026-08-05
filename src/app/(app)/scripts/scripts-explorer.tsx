@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ResearchScoreChip } from "@/components/research-panel";
 import { formatCompact, formatDateUTC } from "@/lib/format";
@@ -50,24 +50,38 @@ const STATUS_TABS = [
   ["Archived", "Archived"],
 ] as const;
 
+/** Sentinel niche key for scripts that have none, so they still group. */
+const UNGROUPED = "\u0000none";
+
+function Chevron({ open, small = false }: { open: boolean; small?: boolean }) {
+  const n = small ? 11 : 13;
+  return (
+    <svg
+      width={n}
+      height={n}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      className={`shrink-0 text-neutral-400 transition-transform ${open ? "" : "-rotate-90"}`}
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 function fmtLift(n: number | null): string {
   return n == null ? "—" : `${n.toFixed(2)}×`;
 }
 
-/** One cell of the stat strip. Four short numbers did not justify four cards
- *  stretched across the page, each with its own icon disc. */
-function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
+/** One cell of the stat strip. Short numbers did not justify a card each,
+ *  stretched across the page with its own icon disc. */
+function Kpi({ label, value }: { label: string; value: string }) {
   return (
     <span className="flex min-w-0 flex-col justify-center gap-0.5 px-4 py-2">
       <span className="truncate text-[11px] font-medium text-neutral-500">{label}</span>
-      <span className="flex min-w-0 items-baseline gap-1.5">
-        <span className="text-xl font-semibold tabular-nums text-neutral-900">{value}</span>
-        {/* Rendered even when empty so a filter that leaves nothing scored
-            cannot change the strip's height and nudge the page. */}
-        <span className="min-w-0 max-w-40 truncate text-xs text-neutral-400">
-          {sub || "\u00A0"}
-        </span>
-      </span>
+      <span className="text-xl font-semibold tabular-nums text-neutral-900">{value}</span>
     </span>
   );
 }
@@ -184,9 +198,57 @@ export function ScriptsExplorer({
       .map(([key, latestDay]) => ({ key, label: weekLabel(key, latestDay) }));
   }, [rows]);
 
+  // Rows arrive flat but are read in batches: everything sent in one week,
+  // split by niche. Grouping in the table means you can fold a week away
+  // instead of scrolling past it.
+  const grouped = useMemo(() => {
+    const weeks = new Map<string, { latestDay: string; rows: ScriptRow[] }>();
+    for (const r of filtered) {
+      const k = weekKeyUTC(r.sentDay);
+      const w = weeks.get(k) ?? { latestDay: r.sentDay, rows: [] };
+      if (r.sentDay > w.latestDay) w.latestDay = r.sentDay;
+      w.rows.push(r);
+      weeks.set(k, w);
+    }
+    return [...weeks.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .map(([key, w]) => {
+        const byNiche = new Map<string, ScriptRow[]>();
+        for (const r of w.rows) {
+          const n = r.niche ?? UNGROUPED;
+          (byNiche.get(n) ?? byNiche.set(n, []).get(n)!).push(r);
+        }
+        return {
+          key,
+          label: weekLabel(key, w.latestDay),
+          count: w.rows.length,
+          niches: [...byNiche.entries()]
+            .sort((a, b) =>
+              // Unniched last, otherwise alphabetical.
+              a[0] === UNGROUPED ? 1 : b[0] === UNGROUPED ? -1 : a[0].localeCompare(b[0])
+            )
+            .map(([niche, rs]) => ({ niche, rows: rs })),
+        };
+      });
+  }, [filtered]);
+
+  const [collapsedWeeks, setCollapsedWeeks] = useState<Set<string>>(new Set());
+  const [collapsedNiches, setCollapsedNiches] = useState<Set<string>>(new Set());
+  const toggleWeek = (k: string) =>
+    setCollapsedWeeks((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(k)) next.add(k);
+      return next;
+    });
+  const toggleNiche = (k: string) =>
+    setCollapsedNiches((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(k)) next.add(k);
+      return next;
+    });
+
   const totalPosts = filtered.reduce((s, r) => s + r.posts, 0);
   const totalPending = filtered.reduce((s, r) => s + r.pending, 0);
-  const best = filtered.find((r) => r.medianScore != null) ?? null;
 
   // Based on the full sets, not the cross-filtered ones: if this flipped false
   // mid-filtering the whole row would vanish and take the page with it.
@@ -194,18 +256,16 @@ export function ScriptsExplorer({
 
   return (
     <>
-      <div className={`mb-4 inline-flex max-w-full flex-wrap items-stretch divide-x divide-neutral-200 overflow-hidden ${card}`}>
-        <Kpi label="Scripts" value={String(totalScripts)} />
-        <Kpi label="Posts measured" value={String(totalPosts)} />
-        <Kpi label="Awaiting a post" value={String(totalPending)} />
-        <Kpi
-          label="Best median score"
-          value={best?.medianScore?.toFixed(1) ?? "—"}
-          sub={best?.label}
-        />
+      {/* Composer shares the row with the stats — closed it is just a button,
+          and it only claims a line of its own once opened. */}
+      <div className="mb-4 flex flex-wrap items-start gap-3">
+        <div className={`inline-flex max-w-full flex-wrap items-stretch divide-x divide-neutral-200 overflow-hidden ${card}`}>
+          <Kpi label="Scripts" value={String(totalScripts)} />
+          <Kpi label="Posts measured" value={String(totalPosts)} />
+          <Kpi label="Awaiting a post" value={String(totalPending)} />
+        </div>
+        {formSlot}
       </div>
-
-      {formSlot}
 
       <section className={`mt-8 ${card}`}>
         <header className="flex flex-wrap items-center justify-between gap-3 px-6 pt-5">
@@ -396,52 +456,103 @@ export function ScriptsExplorer({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
-                  {filtered.map((r) => (
-                    <tr key={r.id} className="transition-colors hover:bg-[#f8f9fa]">
-                      <td className={`${td} whitespace-nowrap tabular-nums text-neutral-500`}>
-                        {formatDateUTC(r.createdAt)}
-                      </td>
-                      <td className={td}>
-                        {r.niche ? (
-                          <span
-                            className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(r.niche).row}`}
-                          >
-                            {r.niche}
-                          </span>
-                        ) : (
-                          <span className="text-neutral-300">—</span>
-                        )}
-                      </td>
-                      <td className={`${td} max-w-[32rem]`}>
-                        <Link href={`/scripts/${r.id}`} className="group block">
-                          <span className="flex items-center gap-1.5">
-                            <span className="truncate font-medium text-neutral-900 group-hover:underline">
-                              {r.label}
-                            </span>
-                            {r.status !== "Active" && (
-                              <span className={`${rowPill} text-neutral-500`}>{r.status}</span>
-                            )}
-                          </span>
-                        </Link>
-                      </td>
-                      <td className={td}>
-                        <ResearchScoreChip score={r.medianScore} />
-                      </td>
-                      <td className={`${td} tabular-nums`}>{fmtLift(r.medianLift)}</td>
-                      <td className={`${td} tabular-nums`}>{formatCompact(r.medianViews)}</td>
-                      <td className={`${td} whitespace-nowrap tabular-nums`}>
-                        <span className="font-medium">{r.posts}</span>
-                        <span className="text-neutral-400">
-                          /{r.creators} creator{r.creators === 1 ? "" : "s"}
-                        </span>
-                        {r.pending > 0 && (
-                          <span className={`ml-1.5 ${rowPill} text-neutral-500`}>
-                            {r.pending} waiting
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {grouped.map((week) => {
+                    const weekOpen = !collapsedWeeks.has(week.key);
+                    return (
+                      <Fragment key={week.key}>
+                        <tr className="bg-[#f8f9fa]">
+                          <td colSpan={7} className="px-3 py-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleWeek(week.key)}
+                              className="flex w-full items-center gap-2 text-left text-[13px] font-semibold text-neutral-900"
+                            >
+                              <Chevron open={weekOpen} />
+                              {week.label}
+                              <span className="font-normal tabular-nums text-neutral-400">
+                                {week.count}
+                              </span>
+                            </button>
+                          </td>
+                        </tr>
+                        {weekOpen &&
+                          week.niches.map((group) => {
+                            const groupKey = `${week.key}|${group.niche}`;
+                            const groupOpen = !collapsedNiches.has(groupKey);
+                            return (
+                              <Fragment key={groupKey}>
+                                {/* Only worth a sub-header when the week
+                                    actually spans more than one niche. */}
+                                {week.niches.length > 1 && (
+                                  <tr>
+                                    <td colSpan={7} className="px-3 py-1.5 pl-8">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleNiche(groupKey)}
+                                        className="flex items-center gap-2 text-left text-[12px] font-medium text-neutral-500"
+                                      >
+                                        <Chevron open={groupOpen} small />
+                                        {group.niche === UNGROUPED ? "No niche" : group.niche}
+                                        <span className="tabular-nums text-neutral-400">
+                                          {group.rows.length}
+                                        </span>
+                                      </button>
+                                    </td>
+                                  </tr>
+                                )}
+                                {(groupOpen || week.niches.length === 1) &&
+                                  group.rows.map((r) => (
+                            <tr key={r.id} className="transition-colors hover:bg-[#f8f9fa]">
+                              <td className={`${td} whitespace-nowrap tabular-nums text-neutral-500`}>
+                                {formatDateUTC(r.createdAt)}
+                              </td>
+                              <td className={td}>
+                                {r.niche ? (
+                                  <span
+                                    className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(r.niche).row}`}
+                                  >
+                                    {r.niche}
+                                  </span>
+                                ) : (
+                                  <span className="text-neutral-300">—</span>
+                                )}
+                              </td>
+                              <td className={`${td} max-w-[32rem]`}>
+                                <Link href={`/scripts/${r.id}`} className="group block">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="truncate font-medium text-neutral-900 group-hover:underline">
+                                      {r.label}
+                                    </span>
+                                    {r.status !== "Active" && (
+                                      <span className={`${rowPill} text-neutral-500`}>{r.status}</span>
+                                    )}
+                                  </span>
+                                </Link>
+                              </td>
+                              <td className={td}>
+                                <ResearchScoreChip score={r.medianScore} />
+                              </td>
+                              <td className={`${td} tabular-nums`}>{fmtLift(r.medianLift)}</td>
+                              <td className={`${td} tabular-nums`}>{formatCompact(r.medianViews)}</td>
+                              <td className={`${td} whitespace-nowrap tabular-nums`}>
+                                <span className="font-medium">{r.posts}</span>
+                                <span className="text-neutral-400">
+                                  /{r.creators} creator{r.creators === 1 ? "" : "s"}
+                                </span>
+                                {r.pending > 0 && (
+                                  <span className={`ml-1.5 ${rowPill} text-neutral-500`}>
+                                    {r.pending} waiting
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                                  ))}
+                              </Fragment>
+                            );
+                          })}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
