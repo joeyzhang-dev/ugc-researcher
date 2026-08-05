@@ -208,65 +208,75 @@ export default async function ScriptDetailPage({
           instead of ellipsizing. Zero min lets truncate actually clip. */}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
         <Card title="The script">
-          <form action={updateScript.bind(null, script.id)} className="space-y-3">
-            <label className="block">
-              <span className={labelClass}>Title</span>
-              <input name="title" defaultValue={script.title} className={inputClass} required />
-            </label>
+          {/* Every row of chrome here is a row of script you cannot see, so the
+              labels are folded into the controls themselves and the body gets
+              the height that buys. */}
+          <form action={updateScript.bind(null, script.id)} className="space-y-2.5">
+            <div className="flex items-center gap-2">
+              <input
+                name="title"
+                defaultValue={script.title}
+                aria-label="Title"
+                placeholder="Title"
+                required
+                className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-neutral-900 outline-none hover:border-neutral-200 focus:border-neutral-300 focus:bg-white"
+              />
+              <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
+            </div>
 
             {/* Hook sits above the body in one frame — it is the opening line,
                 not a separate piece of metadata. */}
             <div className="overflow-hidden rounded-xl border border-neutral-200">
-              <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-2">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+              <div className="flex items-baseline gap-2 border-b border-neutral-200 bg-neutral-50 px-3 py-1.5">
+                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
                   Hook
                 </span>
                 <input
                   name="hook"
                   defaultValue={script.hook ?? ""}
                   placeholder="The first line out of their mouth"
-                  className="w-full border-0 bg-transparent p-0 text-sm font-semibold text-neutral-900 outline-none placeholder:font-normal placeholder:text-neutral-400"
+                  className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-semibold text-neutral-900 outline-none placeholder:font-normal placeholder:text-neutral-400"
                 />
               </div>
-              <div className="px-3 py-2">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                  Script
-                </span>
-                <textarea
-                  name="body"
-                  rows={7}
-                  defaultValue={script.body ?? ""}
-                  placeholder="Everything after the hook. This is what gets matched against the transcript of what they actually posted."
-                  className="w-full resize-y border-0 bg-transparent p-0 text-sm leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
-                />
-              </div>
+              {/* No "Script" label: the block under the hook can only be the
+                  script, and the label cost a line of it. */}
+              <textarea
+                name="body"
+                rows={18}
+                defaultValue={script.body ?? ""}
+                placeholder="Everything after the hook. This is what gets matched against the transcript of what they actually posted."
+                className="block w-full resize-y border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
+              />
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <label>
-                <span className={labelClass}>Niche</span>
-                <NicheCombobox options={knownNiches} defaultValue={script.niche ?? ""} />
-              </label>
-              <label>
-                <span className={labelClass}>App</span>
-                <select name="appId" className={inputClass} defaultValue={script.app_id ?? ""}>
-                  <option value="">— none —</option>
-                  {apps.map((a: ResearchApp) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span className={labelClass}>Status</span>
-                <select name="status" className={inputClass} defaultValue={script.status}>
-                  {["Active", "Draft", "Archived"].map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </label>
+            {/* Labelled by aria only — three stacked captions cost more height
+                than they explain next to a niche chip, an app and a status. */}
+            <div className="grid gap-2 sm:grid-cols-3">
+              <NicheCombobox options={knownNiches} defaultValue={script.niche ?? ""} />
+              <select
+                name="appId"
+                aria-label="App"
+                className={inputClass}
+                defaultValue={script.app_id ?? ""}
+              >
+                <option value="">— no app —</option>
+                {apps.map((a: ResearchApp) => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+              <select
+                name="status"
+                aria-label="Status"
+                className={inputClass}
+                defaultValue={script.status}
+              >
+                {["Active", "Draft", "Archived"].map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
             </div>
-            <SubmitButton pendingLabel="Saving…">Save script</SubmitButton>
-          </form>        </Card>
+          </form>
+        </Card>
 
         <div className="space-y-4">
           {posted.length > 0 && (
