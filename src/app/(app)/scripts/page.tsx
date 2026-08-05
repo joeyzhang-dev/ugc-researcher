@@ -103,6 +103,8 @@ export default async function ScriptsPage({
           score: p.best.score,
           handle: creatorById.get(p.best.video.research_creator_id)?.handle ?? "—",
           postedAt: p.best.video.posted_at,
+          // Gallery view needs a face, not another row of numbers.
+          thumbnailUrl: p.best.video.thumbnail_url,
         }
       : null,
   }));

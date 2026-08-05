@@ -234,7 +234,7 @@ export default async function ScriptDetailPage({
                 </span>
                 <textarea
                   name="body"
-                  rows={14}
+                  rows={7}
                   defaultValue={script.body ?? ""}
                   placeholder="Everything after the hook. This is what gets matched against the transcript of what they actually posted."
                   className="w-full resize-y border-0 bg-transparent p-0 text-sm leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"

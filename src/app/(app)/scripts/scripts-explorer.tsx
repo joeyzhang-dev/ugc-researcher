@@ -33,8 +33,14 @@ export type ScriptRow = {
   posts: number;
   creators: number;
   pending: number;
-  best: { score: number | null; handle: string; postedAt: string | null } | null;
+  best: { score: number | null; handle: string; postedAt: string | null; thumbnailUrl: string | null } | null;
 };
+
+const VIEWS = [
+  ["table", "Table"],
+  ["grid", "Gallery"],
+] as const;
+type ViewMode = (typeof VIEWS)[number][0];
 
 const STATUS_TABS = [
   ["", "All"],
@@ -105,6 +111,9 @@ export function ScriptsExplorer({
   const [status, setStatus] = useState(initialStatus);
   const [niches, setNiches] = useState(initialNiches);
   const [sents, setSents] = useState(initialSents);
+  // View is a local preference, not a filter — keeping it out of the URL means
+  // a shared link still lands on the recipient's own preferred layout.
+  const [view, setView] = useState<ViewMode>("table");
 
   const apply = (nextStatus: string, nextNiches: string[], nextSents: string[]) => {
     setStatus(nextStatus);
@@ -193,7 +202,24 @@ export function ScriptsExplorer({
             </span>
           </h2>
           {/* cal.com's signature pill-in-pill segmented control. */}
-          <span className="inline-flex items-center gap-0.5 rounded-full bg-neutral-100 p-1">
+          <span className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-neutral-100 p-1">
+              {VIEWS.map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setView(value)}
+                  className={`rounded-full px-3.5 py-1 text-[13px] font-medium transition-colors ${
+                    view === value
+                      ? "bg-white text-neutral-900 shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+                      : "text-neutral-500 hover:text-neutral-900"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </span>
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-neutral-100 p-1">
             {STATUS_TABS.map(([value, label]) => (
               <button
                 key={label}
@@ -208,6 +234,7 @@ export function ScriptsExplorer({
                 {label}
               </button>
             ))}
+            </span>
           </span>
         </header>
 
@@ -262,6 +289,68 @@ export function ScriptsExplorer({
                 ? "No scripts yet — write one above, hand it to a creator, then link the video they post."
                 : "No scripts match these filters in the current workspace."}
             </p>
+          ) : view === "grid" ? (
+            /* Gallery: the hook plus the face of its best post. Scanning 102
+               scripts as rows of numbers tells you nothing about what they
+               are; the thumbnail and the opening line do. */
+            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(230px,1fr))]">
+              {filtered.map((r) => (
+                <Link
+                  key={r.id}
+                  href={`/scripts/${r.id}`}
+                  className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white transition hover:border-neutral-300 hover:shadow-sm"
+                >
+                  <span className="relative block aspect-[4/3] w-full overflow-hidden bg-neutral-100">
+                    {r.best?.thumbnailUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={r.best.thumbnailUrl}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        referrerPolicy="no-referrer"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center text-[11px] text-neutral-400">
+                        no posts yet
+                      </span>
+                    )}
+                    <span className="absolute right-2 top-2">
+                      <ResearchScoreChip score={r.medianScore} />
+                    </span>
+                    {r.niche && (
+                      <span
+                        className={`absolute left-2 top-2 max-w-[70%] truncate rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(r.niche).row}`}
+                      >
+                        {r.niche}
+                      </span>
+                    )}
+                  </span>
+
+                  <span className="flex min-w-0 flex-1 flex-col gap-1.5 p-3">
+                    <span className="line-clamp-2 text-[13px] font-medium leading-snug text-neutral-900 group-hover:underline">
+                      {r.label}
+                    </span>
+                    <span className="mt-auto flex items-center justify-between gap-2 text-[11px] tabular-nums text-neutral-500">
+                      <span>
+                        {fmtLift(r.medianLift)} · {formatCompact(r.medianViews)} views
+                      </span>
+                      <span className="shrink-0">
+                        {r.posts}/{r.creators}
+                        {r.pending > 0 && (
+                          <span className="ml-1 text-amber-600">+{r.pending}</span>
+                        )}
+                      </span>
+                    </span>
+                    <span className="text-[11px] tabular-nums text-neutral-400">
+                      {formatDateUTC(r.createdAt)}
+                      {r.status !== "Active" && ` · ${r.status}`}
+                    </span>
+                  </span>
+                </Link>
+              ))}
+            </div>
           ) : (
             <div className="-mx-6 overflow-x-auto px-6">
               <table className="min-w-full divide-y divide-neutral-200">
