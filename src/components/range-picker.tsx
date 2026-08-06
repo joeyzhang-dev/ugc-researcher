@@ -5,7 +5,7 @@ import type { ResearchVideo } from "@/lib/types";
 // how recently a video was posted. Server-rendered segmented buttons (no client
 // JS); each page supplies hrefForDays so other query params are preserved.
 
-export const DAY_PRESETS = [7, 14, 21, 30] as const;
+export const DAY_PRESETS = [3, 7, 14, 21, 30] as const;
 export type DayPreset = (typeof DAY_PRESETS)[number];
 
 /** Parse the `days` search param → a valid preset, or null (= All time). */
