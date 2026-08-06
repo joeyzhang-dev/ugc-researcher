@@ -51,11 +51,21 @@ const nextConfig: NextConfig = {
   // a separate dir instead: NEXT_DIST_DIR=.next-build npm run build
   // (Vercel builds don't set the var, so deploys keep the default .next.)
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // undici is loaded by src/instrumentation.ts to force HTTP/1.1. Webpack
+  // can't bundle it — its mock agent imports node:console, an unhandled
+  // scheme — so leave it to the Node runtime's own require.
+  serverExternalPackages: ["undici"],
   // The transcription worker writes downloaded media into worker/data/ and
   // appends to worker.log / dev.log — all inside the repo. Without these
   // ignores the dev server rebuilds on every download, which starves the CPU
   // and leaves real page compiles (e.g. /research) stuck behind the loop.
-  webpack(config) {
+  webpack(config, { isServer }) {
+    // serverExternalPackages doesn't cover the instrumentation bundle, so
+    // externalize undici here too — otherwise webpack tries to parse its mock
+    // agent's `node:console` import and the build fails.
+    if (isServer) {
+      config.externals = [...(config.externals || []), { undici: "commonjs undici" }];
+    }
     config.watchOptions = {
       ...config.watchOptions,
       ignored: [

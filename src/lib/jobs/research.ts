@@ -246,7 +246,11 @@ export async function runResearchScrape(
       );
     }
 
-    await supabase
+    // Check this one. It is the last write of the scrape, so it is the most
+    // likely to hit a connection that went stale while we waited on Apify —
+    // and swallowing it leaves the creator pinned to "scraping" forever with a
+    // successful-looking 200 and no error anywhere to explain it.
+    const { error: readyError } = await supabase
       .from("research_creators")
       .update({
         status: "ready",
@@ -258,6 +262,7 @@ export async function runResearchScrape(
         ...(displayName ? { display_name: displayName } : {}),
       })
       .eq("id", creator.id);
+    if (readyError) throw new Error(`Scraped ${videos} videos but could not mark creator ready: ${readyError.message}`);
 
     return {
       creatorId: creator.id,
