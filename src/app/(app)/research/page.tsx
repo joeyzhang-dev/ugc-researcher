@@ -19,7 +19,7 @@ const SORT_KEYS = [
 type SortKey = (typeof SORT_KEYS)[number];
 
 export const dynamic = "force-dynamic";
-// The add-creator action runs a deep Apify scrape inline.
+// The add-creator action runs a full profile scrape inline.
 export const maxDuration = 300;
 
 /** Outside-creator research: scrape a profile, study which videos lift above

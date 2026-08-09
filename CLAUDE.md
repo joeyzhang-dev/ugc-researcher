@@ -1,7 +1,7 @@
 # ugc-researcher
 
 Standalone research pool, extracted from `trace-ugc-tracker` 2026-07-23. Study
-outside creators: Apify profile scrapes → view-lift math → format buckets →
+outside creators: Scrape Creators profile scrapes → view-lift math → format buckets →
 local transcription. **Localhost-only by design** — Joey runs it with
 `npm run dev` for his own use; do not add deployment/CI/Vercel infrastructure
 unless he asks.
@@ -41,10 +41,10 @@ Rules for new migrations in this repo:
 - `src/app/(app)/research/` — creator list + detail pages (server components,
   server actions in `actions.ts`).
 - `src/lib/research.ts` — lift math + format detection (pure, unit-tested).
-- `src/lib/jobs/research.ts` — Apify scrape → upsert → thumbnail capture.
+- `src/lib/jobs/research.ts` — profile scrape → upsert → thumbnail capture.
 - `src/app/api/jobs/research/route.ts` — CRON_SECRET- or admin-authorized
   scrape endpoint (no cron exists; scrapes are manual).
-- `worker/transcribe_worker.py` — local transcription (yt-dlp / Apify / stored
+- `worker/transcribe_worker.py` — local transcription (yt-dlp / Scrape Creators / stored
   CDN URL → WhisperX or OpenAI Whisper); polls `research_videos.pending` every
   60s. Media stays in `worker/data/media/` (gitignored).
 - `src/app/(app)/discord/` — the Folk UGC Discord CRM (consolidated from the
@@ -69,9 +69,10 @@ Rules for new migrations in this repo:
 
 ## Env
 
-`.env.local` (gitignored) carries the same Supabase + Apify keys as the
+`.env.local` (gitignored) carries the same Supabase keys as the
 tracker's `.env.local`, plus `SUPABASE_ACCESS_TOKEN` for migrations. If a key
 is rotated, re-copy it from `~/Developer/trace-ugc-tracker/.env.local`.
+Scraping: `SCRAPECREATORS_API_KEY` (this repo only — the tracker doesn't use it).
 Discord: `DISCORD_BOT_TOKEN` (the mach ugc bot) + `DISCORD_GUILD_ID`; the
 `ONBOARD_*` / `CREATOR_ROLE_*` overrides default to the live Folk ids in
 `worker/discord_bot/config.py`.

@@ -2,7 +2,7 @@
 
 Standalone research pool, extracted from `trace-ugc-tracker` on 2026-07-23 so it
 can evolve as a dedicated project. Study outside creators (not campaign
-creators): scrape their reels via Apify, compute view lift, bucket formats, and
+creators): scrape their reels via Scrape Creators, compute view lift, bucket formats, and
 transcribe the winners locally.
 
 ## What's here
@@ -18,9 +18,9 @@ transcribe the winners locally.
   point a cron or launchd job at (see Automatic scraping below).
 - `src/lib/research.ts` — lift math (trailing-10 median baseline, overall,
   ±45-day window) and caption/transcript format detection.
-- `src/lib/jobs/research.ts` — Apify profile scrape → upsert → thumbnail capture.
+- `src/lib/jobs/research.ts` — profile scrape → upsert → thumbnail capture.
 - `worker/transcribe_worker.py` — local transcription worker: polls
-  `research_videos.pending` every 60s, downloads media (yt-dlp / Apify / stored
+  `research_videos.pending` every 60s, downloads media (yt-dlp / Scrape Creators / stored
   CDN URL, DASH muxing via ffmpeg), transcribes with WhisperX or OpenAI
   Whisper, uploads a playable mp4 to the `videos` storage bucket.
 
@@ -38,7 +38,7 @@ migrations, so a standalone database needs those first.
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in Supabase + Apify + CRON_SECRET
+cp .env.example .env.local   # fill in Supabase + Scrape Creators + CRON_SECRET
 npm run dev
 ```
 
@@ -58,7 +58,7 @@ node scripts/backfill-media.mjs --videos      # ...and the mp4 files too
 npm run rechunk:segments                      # re-split stored transcripts into script lines
 ```
 
-Apify hands back signed CDN URLs that expire within days and are hotlink-blocked
+Scrapes hand back signed CDN URLs that expire within days and are hotlink-blocked
 in the browser, so scraped media has to be copied into the `thumbnails` /
 `videos` storage buckets to keep rendering. `backfill:media` catches anything the
 scrape missed; video URLs expire fastest, and rows that 403 recover on the next
@@ -67,10 +67,12 @@ scrape or when the worker re-downloads them with yt-dlp.
 ## Scraping
 
 "Scrape all" on `/research`, `/creators` and `/settings` queues every creator in
-scope and works through them one at a time — a pull takes about a minute per
-creator, far longer than a single request can live, so the browser tab drives
-the loop and has to stay open. On the roster the button honours the workspace
-you're in; the research pool is always global.
+scope and works through them one at a time — a pull takes roughly half a minute
+per creator, most of it spent copying thumbnails and mp4s into storage rather
+than talking to the API. That's still longer than a full pass can live inside
+one request, so the browser tab drives the loop and has to stay open. On the
+roster the button honours the workspace you're in; the research pool is always
+global.
 
 ### Automatic scraping
 

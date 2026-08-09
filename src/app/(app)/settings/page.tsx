@@ -115,8 +115,9 @@ export default async function SettingsPage() {
                     className={inputClass}
                   />
                   <span className="mt-1 block text-xs text-neutral-400">
-                    Seconds to wait between creators. Apify bills per run and Instagram
-                    rate-limits, so a full pass back-to-back is worth spacing out.
+                    Seconds to wait between creators. Scrape Creators bills per request
+                    and Instagram rate-limits, so a full pass back-to-back is worth
+                    spacing out.
                   </span>
                 </label>
               </div>

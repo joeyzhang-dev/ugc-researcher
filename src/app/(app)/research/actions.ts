@@ -8,8 +8,8 @@ import { runFormatCategorization, runResearchScrape } from "@/lib/jobs/research"
 import { parseCreatorInput } from "@/lib/creator-input";
 import type { Platform } from "@/lib/types";
 
-/** Add (or re-scrape) a research creator. Runs the Apify scrape inline —
- *  expect it to take a minute or two for a deep profile pull. */
+/** Add (or re-scrape) a research creator. Runs the scrape inline — expect
+ *  tens of seconds, mostly spent copying thumbnails and mp4s into storage. */
 export async function addResearchCreator(formData: FormData) {
   await requireAdmin();
   const fail = (m: string): never => redirect(`/research?error=${encodeURIComponent(m)}`);

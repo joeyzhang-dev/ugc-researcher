@@ -15,7 +15,7 @@ type Phase = "idle" | "queuing" | "running" | "stopping";
 /**
  * "Scrape all" button plus the loop that works through the queue.
  *
- * Each Apify pull takes tens of seconds, so a full pass over 30+ creators can't
+ * Each pull takes tens of seconds, so a full pass over 30+ creators can't
  * happen in one request. The server drains a single creator per call and this
  * component keeps calling until the queue empties, which also gives live
  * progress and a stop button. The page has to stay open for the run to

@@ -6,7 +6,7 @@
 //   node scripts/backfill-media.mjs --videos     # thumbnails + video files
 //   node scripts/backfill-media.mjs --limit 50   # process at most 50 rows
 //
-// Why this exists: Apify hands back signed CDN URLs that expire within days and
+// Why this exists: scrapes hand back signed CDN URLs that expire within days and
 // are hotlink-blocked in the browser, so a third of the grid rendered as blank
 // tiles. `src/lib/jobs/research.ts` already captures thumbnails on scrape and
 // the transcription worker uploads the mp4 — this backfills everything scraped

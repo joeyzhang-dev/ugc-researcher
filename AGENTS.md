@@ -1,7 +1,7 @@
 # ugc-researcher — agent guide
 
 Standalone research pool (extracted from `trace-ugc-tracker` 2026-07-23). Study
-outside UGC creators: Apify profile scrapes → view-lift math → format buckets →
+outside UGC creators: Scrape Creators profile scrapes → view-lift math → format buckets →
 local transcription. **Localhost-only** — Joey runs `npm run dev` for his own
 use. Do not add deploy/CI/Vercel infrastructure unless asked.
 
@@ -49,6 +49,6 @@ Copilot — favor thoroughness over brevity.
 
 - `src/app/(app)/research/` — creator list + detail pages, `actions.ts`
 - `src/lib/research.ts` — lift math + regex `detectFormatCategory`
-- `src/lib/jobs/research.ts` — Apify scrape → upsert → thumbnails
+- `src/lib/jobs/research.ts` — profile scrape → upsert → thumbnails
 - `scripts/categorize-formats.sh` — Copilot drainer (model-pinned)
 - `worker/transcribe_worker.py` — local WhisperX/Whisper transcription

@@ -56,7 +56,7 @@ export async function saveScrapeSettings(formData: FormData) {
 
 /**
  * Queue every creator in scope for scraping. Enqueueing is instant; the actual
- * Apify pulls are done by drainScrapeQueue, one creator per call, because a
+ * scrapes are done by drainScrapeQueue, one creator per call, because a
  * full pass over 30+ creators runs far longer than a single request may live.
  */
 export async function enqueueScrapeAll(scope: EnqueueScope) {

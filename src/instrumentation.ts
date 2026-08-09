@@ -14,7 +14,7 @@
  *
  * Retrying does not help — the poisoned session stays pooled — so the fix is
  * to not speak h2 at all. Keep-alive is left long since the same connection is
- * reused across a scrape's minutes-long Apify waits.
+ * reused across a scrape's long run of storage uploads.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;

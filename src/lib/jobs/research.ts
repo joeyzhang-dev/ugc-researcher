@@ -1,21 +1,14 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import {
-  buildDiscoveryInput,
-  buildInstagramReelsInput,
-  buildProfileDetailsInput,
-  canonicalVideoUrl,
-  getApifyConfig,
-  normalizeItem,
-  normalizeProfile,
-  runActorSync,
-} from "@/lib/apify";
+import { fetchProfile, fetchProfileVideos } from "@/lib/scrapecreators";
+import { canonicalVideoUrl } from "@/lib/social-urls";
 import { detectFormatCategory, extractHashtags } from "@/lib/research";
 import { captureImage, captureVideo } from "@/lib/thumbnails";
 import type { Platform } from "@/lib/types";
 
-/** Newest N reels per scrape (count-based — Apify has no date filter here).
- *  Enough history for the trailing-10 lift baseline without paying Apify for
- *  a creator's whole back catalogue. Override per call with resultsLimit. */
+/** Newest N videos per scrape (count-based — there's no date filter on the
+ *  profile endpoints). Enough history for the trailing-10 lift baseline
+ *  without paging through a creator's whole back catalogue. Override per call
+ *  with resultsLimit. */
 const DEFAULT_RESULTS_LIMIT = 35;
 
 /** Instagram CDN URLs 403 when hotlinked and expire in days; anything we want
@@ -86,43 +79,31 @@ export async function runResearchScrape(
   }
 
   try {
-    const config = getApifyConfig(platform);
-
-    // Profile details (followers, avatar, display name) — cheap one-item run.
+    // Profile details (followers, avatar, display name) — one cheap call.
     // Best-effort: never fail the scrape over bio data.
     let followerCount: number | null = null;
     let avatarUrl: string | null = null;
     let displayName: string | null = null;
     try {
-      const profileItems = await runActorSync(config, buildProfileDetailsInput(platform, [handle]));
-      const raw = profileItems[0];
-      if (raw) {
-        const profile = normalizeProfile(platform, raw);
-        followerCount = profile.followersCount;
-        if (profile.profilePicUrl) {
-          // Copy off the CDN — the raw URL 403s when hotlinked from our app.
-          avatarUrl = await captureImage(
-            supabase,
-            `research/avatars/${creator.id}`,
-            profile.profilePicUrl
-          );
-        }
-        const fullName = raw["fullName"] ?? raw["full_name"] ?? raw["nickname"];
-        displayName = typeof fullName === "string" && fullName.length > 0 ? fullName : null;
+      const profile = await fetchProfile(platform, handle);
+      followerCount = profile.followersCount;
+      displayName = profile.displayName;
+      if (profile.profilePicUrl) {
+        // Copy off the CDN — the raw URL 403s when hotlinked from our app.
+        avatarUrl = await captureImage(
+          supabase,
+          `research/avatars/${creator.id}`,
+          profile.profilePicUrl
+        );
       }
     } catch {
       // fall through — post scrape still runs
     }
 
-    // Reels only. A grid ("posts") scrape returns photos/carousels we discard
-    // anyway, misses Reels-only accounts entirely, and costs an extra Apify run
-    // per creator. TikTok's profile scrape is already all-video.
-    const rawItems = await runActorSync(
-      config,
-      platform === "instagram"
-        ? buildInstagramReelsInput([handle], resultsLimit)
-        : buildDiscoveryInput(platform, [handle], resultsLimit)
-    );
+    // Reels only on Instagram: the grid endpoint returns photos/carousels we
+    // discard anyway and misses Reels-only accounts entirely. TikTok's profile
+    // feed is already video-first (photo carousels are filtered per item).
+    const items = await fetchProfileVideos(platform, handle, resultsLimit);
 
     let videos = 0;
     let created = 0;
@@ -133,8 +114,7 @@ export async function runResearchScrape(
     const thumbnailTasks: { rowId: string; cdnUrl: string }[] = [];
     const videoTasks: { rowId: string; cdnUrl: string }[] = [];
 
-    for (const rawItem of rawItems) {
-      const item = normalizeItem(platform, rawItem);
+    for (const item of items) {
       // Profile scrapes can drag in tagged/related posts — keep only the owner's.
       if (item.ownerUsername && item.ownerUsername.toLowerCase() !== handle) continue;
       if (!item.url) continue;
@@ -247,7 +227,7 @@ export async function runResearchScrape(
     }
 
     // Check this one. It is the last write of the scrape, so it is the most
-    // likely to hit a connection that went stale while we waited on Apify —
+    // likely to hit a connection that went stale while we were off scraping —
     // and swallowing it leaves the creator pinned to "scraping" forever with a
     // successful-looking 200 and no error anywhere to explain it.
     const { error: readyError } = await supabase
@@ -267,7 +247,7 @@ export async function runResearchScrape(
     return {
       creatorId: creator.id,
       handle,
-      scraped: rawItems.length,
+      scraped: items.length,
       videos,
       created,
       updated,

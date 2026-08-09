@@ -3,7 +3,7 @@
 Local research transcription worker (runs on your machine, not Vercel).
 
 Claims `pending` rows from `research_videos`, then per video:
-  1. fetch media — stored CDN URL, yt-dlp, or Apify fallback (muxing DASH
+  1. fetch media — stored CDN URL, yt-dlp, or Scrape Creators fallback (muxing DASH
      video-only + audio renditions with ffmpeg when needed)
   2. upload the playable mp4 to the public `videos` storage bucket
   3. transcribe with WhisperX (if installed) or OpenAI Whisper (if key set)
@@ -17,8 +17,7 @@ Run:    python3 worker/transcribe_worker.py --once      (process queue and exit)
         python3 worker/transcribe_worker.py             (poll every 60s)
 
 Env (read from ../.env.local automatically): NEXT_PUBLIC_SUPABASE_URL,
-SUPABASE_SERVICE_ROLE_KEY, optional OPENAI_API_KEY, APIFY_TOKEN,
-APIFY_INSTAGRAM_ACTOR_ID, APIFY_TIKTOK_ACTOR_ID.
+SUPABASE_SERVICE_ROLE_KEY, optional OPENAI_API_KEY, SCRAPECREATORS_API_KEY.
 """
 from __future__ import annotations
 
@@ -138,40 +137,54 @@ def ytdlp_download(url: str, dest_stem: Path) -> Path | None:
     return None
 
 
-# --- Apify fallback (stubborn Instagram/TikTok downloads) --------------------
+# --- Scrape Creators fallback (stubborn Instagram/TikTok downloads) ---------
 
-def apify_download(url: str, platform: str | None, dest_stem: Path) -> tuple[Path | None, dict]:
-    token = os.environ.get("APIFY_TOKEN")
-    if not token or platform not in ("instagram", "tiktok"):
+def scrapecreators_download(url: str, platform: str | None, dest_stem: Path) -> tuple[Path | None, dict]:
+    """Re-fetch a post through Scrape Creators to get a fresh media URL.
+
+    The stored CDN link is signed and expires within days, so by the time a
+    retry runs it is usually dead. Asking for the post again is the cheapest
+    way to get a live one (1 credit).
+    """
+    key = os.environ.get("SCRAPECREATORS_API_KEY")
+    if not key or platform not in ("instagram", "tiktok"):
         return None, {}
     if platform == "instagram":
-        actor = os.environ.get("APIFY_INSTAGRAM_ACTOR_ID", "apify~instagram-scraper")
-        payload = {"directUrls": [url], "resultsLimit": 1, "resultsType": "posts"}
+        endpoint = "https://api.scrapecreators.com/v1/instagram/post"
     else:
-        actor = os.environ.get("APIFY_TIKTOK_ACTOR_ID", "clockworks~tiktok-scraper")
-        payload = {"postURLs": [url], "resultsPerPage": 1, "shouldDownloadVideos": True}
-    actor = actor.replace("/", "~")
-    endpoint = f"https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items?token={urllib.parse.quote(token)}&timeout=180"
+        endpoint = "https://api.scrapecreators.com/v2/tiktok/video"
+    endpoint += "?" + urllib.parse.urlencode({"url": url})
     try:
-        req = urllib.request.Request(endpoint, data=json.dumps(payload).encode(),
-                                     headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=200) as r:
-            items = json.loads(r.read())
+        req = urllib.request.Request(endpoint, headers={"x-api-key": key})
+        with urllib.request.urlopen(req, timeout=90) as r:
+            payload = json.loads(r.read())
     except Exception as e:
-        print(f"    apify failed: {e}")
+        print(f"    scrapecreators failed: {e}")
         return None, {}
-    if not items:
-        return None, {}
-    item = items[0]
-    # We transcribe, so AUDIO is what matters. IG often serves DASH renditions
-    # where videoUrl is video-only and the audio track is separate (audioUrl).
-    candidates = [
-        (item.get("audioUrl"), ".m4a"),
-        (item.get("videoUrl") or item.get("video_url"), ".mp4"),
-        ((item.get("videoUrls") or [None])[0], ".mp4"),
-        ((item.get("mediaUrls") or [None])[0], ".mp4"),
-        ((item.get("videoMeta") or {}).get("downloadAddr"), ".mp4"),
-    ]
+
+    def url_list_first(node):
+        if isinstance(node, dict):
+            lst = node.get("url_list") or []
+            return lst[0] if lst else None
+        return None
+
+    if platform == "instagram":
+        item = ((payload.get("data") or {}).get("xdt_shortcode_media")) or {}
+        # We transcribe, so AUDIO is what matters. IG serves DASH renditions
+        # where video_url can be video-only and audio lives in a separate track.
+        candidates = [
+            (item.get("audio_url"), ".m4a"),
+            (item.get("video_url"), ".mp4"),
+            (((item.get("video_versions") or [{}])[0]).get("url"), ".mp4"),
+        ]
+    else:
+        item = payload.get("aweme_detail") or {}
+        vid = item.get("video") or {}
+        candidates = [
+            (url_list_first(vid.get("play_addr")), ".mp4"),
+            (url_list_first(vid.get("download_addr")), ".mp4"),
+        ]
+
     for media_url, ext in candidates:
         if not media_url:
             continue
@@ -181,7 +194,7 @@ def apify_download(url: str, platform: str | None, dest_stem: Path) -> tuple[Pat
                 f.write(r.read())
             return dest, item
         except Exception as e:
-            print(f"    apify media download failed ({ext}): {e}")
+            print(f"    scrapecreators media download failed ({ext}): {e}")
     return None, item
 
 
@@ -679,7 +692,7 @@ def acquire_research_media(video: dict) -> tuple[Path | None, Path | None]:
     if not video_f:
         video_f = ytdlp_download(url, stem)  # yt-dlp merges A/V itself
     if not video_f:
-        video_f, _ = apify_download(url, detect_platform(url), stem)
+        video_f, _ = scrapecreators_download(url, detect_platform(url), stem)
 
     if video_f and has_audio(video_f):
         return video_f, video_f
@@ -715,7 +728,7 @@ def process_research(video: dict) -> None:
     playable, transcribe_src = acquire_research_media(video)
     if not transcribe_src:
         raise RuntimeError(
-            "could not fetch audio (stored URLs, yt-dlp and apify all failed or were audio-less)"
+            "could not fetch audio (stored URLs, yt-dlp and Scrape Creators all failed or were audio-less)"
         )
 
     segments = transcribe_whisperx(transcribe_src)

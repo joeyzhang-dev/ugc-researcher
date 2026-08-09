@@ -23,7 +23,7 @@ as reference; a banner on the page points at Research. No functional changes.
 
 | Piece | Reused from |
 |---|---|
-| Apify profile scrape (`buildDiscoveryInput`, `runActorSync`, `normalizeInstagramItem`) | `src/lib/apify.ts` |
+| Scrape Creators profile scrape (`fetchProfile`, `fetchProfileVideos`, `normalizeInstagramItem`) | `src/lib/scrapecreators.ts` |
 | Lift concept (views vs creator's median) | `src/lib/script-performance.ts` |
 | Local WhisperX worker (yt-dlp → WhisperX → Supabase) | `worker/transcribe_worker.py` |
 | CRON_SECRET-guarded job route pattern | `src/app/api/jobs/*` |
@@ -89,7 +89,7 @@ detail page rolls formats up by median score.
 
 - **`/research`** — list of researched creators (KPIs: videos, median views,
   followers, S-tier count) + "Add creator" form (paste profile URL or handle →
-  server-side Apify scrape).
+  server-side scrape).
 - **`/research/[id]`** — creator detail: header stats, lift distribution, and
   the video table sorted by lift (tier chip, views, lift ×, engagement %,
   hashtags, posted date, link to the reel, transcript status, format
@@ -109,7 +109,7 @@ where `transcript_status = 'pending'`, processed **highest view count first**
 (so likely S-tier videos get transcripts soonest). Per video:
 
 1. Try the stored signed `video_url` from the scrape (fresh, no rate limits).
-2. Fall back to yt-dlp captions / download, then Apify re-scrape (existing code).
+2. Fall back to yt-dlp captions / download, then a Scrape Creators re-fetch (existing code).
 3. Transcribe with WhisperX (large-v3, local), fall back to OpenAI Whisper.
 4. Write `transcript_text` + segments, mark `transcribed`.
 

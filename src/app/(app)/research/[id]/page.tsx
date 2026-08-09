@@ -25,7 +25,7 @@ import {
 } from "@/components/research-panel";
 
 export const dynamic = "force-dynamic";
-// Re-scrape runs a deep Apify pull inline.
+// Re-scrape runs a full profile pull inline.
 export const maxDuration = 300;
 
 function scoreStyle(score: number): string {

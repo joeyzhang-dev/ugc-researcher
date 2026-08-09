@@ -35,7 +35,7 @@ const SORT_KEYS = [
 type SortKey = (typeof SORT_KEYS)[number];
 
 export const dynamic = "force-dynamic";
-// Adding a roster creator runs a deep Apify scrape inline.
+// Adding a roster creator runs a full profile scrape inline.
 export const maxDuration = 300;
 
 /** Our creators, organised per app: which niche each runs for that app, which
