@@ -62,7 +62,9 @@ async function scGet<T>(
           `Scrape Creators ${path} failed (${res.status}): ${body.slice(0, 500)}`
         );
       }
-      return (await res.json()) as T;
+      const payload = (await res.json()) as T;
+      assertNotAnErrorEnvelope(path, payload);
+      return payload;
     } catch (e) {
       const isNetworkError = e instanceof TypeError;
       if (isNetworkError && attempt === 0) continue;
@@ -74,6 +76,34 @@ async function scGet<T>(
       throw e;
     }
   }
+}
+
+/**
+ * Reject the API's in-body failures.
+ *
+ * A missing or deactivated account comes back as HTTP 200 with
+ * `success: true` and the real outcome buried in the body:
+ *   { success: true, error: "not_found", errorStatus: 404, message: "Account doesn't exist" }
+ *   { success: true, account_deactivated: true, message: "Account doesn't exist" }
+ * Trusting the status code alone let a typo'd handle normalize to all-nulls
+ * and an empty video list, which the scrape then recorded as a creator with
+ * status 'ready', no followers and no videos — indistinguishable from a real
+ * account that simply hasn't posted. Fail loudly here instead so the creator
+ * row carries the reason.
+ *
+ * Keyed on explicit failure fields rather than sniffing `message`, so a
+ * successful response that happens to carry a note is never misread.
+ */
+function assertNotAnErrorEnvelope(path: string, payload: unknown): void {
+  const body = obj(payload);
+  const error = str(body["error"]);
+  const status = num(body["errorStatus"]);
+  const deactivated = body["account_deactivated"] === true;
+  if (!error && !deactivated && (status == null || status < 400)) return;
+
+  const detail = str(body["message"]) ?? error ?? "account unavailable";
+  const reason = deactivated ? "account_deactivated" : (error ?? `status ${status}`);
+  throw new Error(`Scrape Creators ${path}: ${detail} (${reason})`);
 }
 
 // ===========================================================================

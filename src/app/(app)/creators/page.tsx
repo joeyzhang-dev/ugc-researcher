@@ -35,6 +35,10 @@ const SORT_KEYS = [
 ] as const;
 type SortKey = (typeof SORT_KEYS)[number];
 
+/** Sentinel app id for roster creators that belong to no app yet. Not a real
+ *  app row — it only exists to give them a band to render in. */
+const UNASSIGNED_APP = "__unassigned__";
+
 export const dynamic = "force-dynamic";
 // Adding a roster creator runs a full profile scrape inline.
 export const maxDuration = 300;
@@ -130,7 +134,26 @@ export default async function OurCreatorsPage({
 
   // One row per app↔creator membership (a creator promoting two apps appears
   // under each, with its per-app niche). App filter narrows to one app.
-  const rows = memberships
+  //
+  // A roster creator with no membership row has no app to appear under, so it
+  // used to drop out of this page entirely — scraped, collecting videos, and
+  // visible on /overview, but absent here with nothing to hint it existed.
+  // Synthesize a membership-shaped row for those in the unfiltered view so
+  // they surface (in an "Unassigned" band) instead of vanishing.
+  const unassigned: typeof memberships = appFilter
+    ? []
+    : creators
+        .filter((c) => !memberships.some((m) => m.research_creator_id === c.id))
+        .map((c) => ({
+          id: `unassigned:${c.id}`,
+          app_id: UNASSIGNED_APP,
+          research_creator_id: c.id,
+          niche: null,
+          notes: null,
+          created_at: c.created_at,
+        }));
+
+  const rows = [...memberships, ...unassigned]
     .filter((m) => creatorById.has(m.research_creator_id))
     .filter((m) => !appFilter || m.app_id === appFilter)
     .map((m) => {
@@ -175,13 +198,15 @@ export default async function OurCreatorsPage({
     (rowsByApp.get(r.m.app_id) ??
       rowsByApp.set(r.m.app_id, []).get(r.m.app_id)!).push(r);
   }
-  const orderedGroups: { app: ResearchApp | undefined; groupRows: typeof rows }[] = [];
+  const orderedGroups: { appId: string; app: ResearchApp | undefined; groupRows: typeof rows }[] = [];
   for (const app of apps) {
     const groupRows = rowsByApp.get(app.id);
-    if (groupRows?.length) orderedGroups.push({ app, groupRows });
+    if (groupRows?.length) orderedGroups.push({ appId: app.id, app, groupRows });
   }
   for (const [appId, groupRows] of rowsByApp) {
-    if (!apps.some((a) => a.id === appId)) orderedGroups.push({ app: undefined, groupRows });
+    if (!apps.some((a) => a.id === appId)) {
+      orderedGroups.push({ appId, app: undefined, groupRows });
+    }
   }
   const creatorCount = new Set(rows.map((r) => r.c.id)).size;
 
@@ -331,20 +356,30 @@ export default async function OurCreatorsPage({
                       (sum, r) => sum + (r.c.follower_count ?? 0),
                       0
                     );
+                    const unassignedBand = group.appId === UNASSIGNED_APP;
                     return (
-                      <Fragment key={group.app?.id ?? "unknown"}>
+                      <Fragment key={group.appId}>
                         {/* App band: the grouping IS the structure, so the app name
                             stops repeating down an "App" column. */}
                         <tr className="bg-surface-sunken">
                           <td colSpan={9} className="px-3 py-2">
                             <div className="flex items-center gap-2.5">
-                              <Avatar name={group.app?.name ?? "?"} src={group.app?.logo_url} size={22} />
+                              {!unassignedBand && (
+                                <Avatar name={group.app?.name ?? "?"} src={group.app?.logo_url} size={22} />
+                              )}
                               <span className="text-sm font-semibold tracking-[-0.01em] text-neutral-900">
-                                {group.app?.name ?? "Unknown app"}
+                                {unassignedBand
+                                  ? "Unassigned"
+                                  : (group.app?.name ?? "Unknown app")}
                               </span>
                               <span className="font-mono text-[11px] text-neutral-400">
                                 {group.groupRows.length} creator{group.groupRows.length === 1 ? "" : "s"} · {formatCompact(totalFollowers)} followers
                               </span>
+                              {unassignedBand && (
+                                <span className="rounded-full bg-warning/[0.1] px-2 py-0.5 text-[11px] font-medium text-warning ring-1 ring-inset ring-warning/[0.22]">
+                                  No app yet — pick one below to file them
+                                </span>
+                              )}
                             </div>
                           </td>
                         </tr>

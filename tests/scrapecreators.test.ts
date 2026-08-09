@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  fetchProfile,
+  fetchProfileVideos,
   normalizeInstagramItem,
   normalizeInstagramProfile,
   normalizeTikTokItem,
@@ -274,5 +276,67 @@ describe("url helpers", () => {
     expect(isPostUrl("https://www.instagram.com/adriel.motivates/")).toBe(false);
     expect(isPostUrl("https://www.tiktok.com/@mrbeast")).toBe(false);
     expect(isPostUrl("https://www.instagram.com/reel/ABC123/")).toBe(true);
+  });
+});
+
+/**
+ * The API reports a missing or deactivated account as HTTP 200 with
+ * `success: true` and the failure buried in the body. Trusting the status code
+ * let a typo'd handle normalize to all-nulls and an empty video list, which the
+ * scrape recorded as a creator with status 'ready' and no videos — visually
+ * identical to a real account that hadn't posted. These pin the loud failure.
+ */
+describe("in-body error envelopes", () => {
+  const withFetch = async (body: unknown, run: () => Promise<unknown>) => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    process.env.SCRAPECREATORS_API_KEY ??= "test-key";
+    try {
+      return await run();
+    } finally {
+      globalThis.fetch = original;
+    }
+  };
+
+  it("rejects a not_found instagram profile", async () => {
+    await withFetch(
+      {
+        success: true,
+        error: "not_found",
+        errorStatus: 404,
+        message: "Account doesn't exist",
+      },
+      async () => {
+        await expect(fetchProfile("instagram", "nope")).rejects.toThrow(/Account doesn't exist/);
+      }
+    );
+  });
+
+  it("rejects a deactivated tiktok account, which carries no error field", async () => {
+    await withFetch(
+      { success: true, account_deactivated: true, message: "Account doesn't exist" },
+      async () => {
+        await expect(fetchProfile("tiktok", "nope")).rejects.toThrow(/account_deactivated/);
+      }
+    );
+  });
+
+  it("rejects a paged video fetch for a missing account", async () => {
+    await withFetch({ success: true, error: "not_found", errorStatus: 404 }, async () => {
+      await expect(fetchProfileVideos("instagram", "nope", 10)).rejects.toThrow(/not_found/);
+    });
+  });
+
+  it("does not mistake a successful payload for a failure", async () => {
+    await withFetch(
+      { success: true, status: "ok", status_code: 0, data: { user: { username: "real" } } },
+      async () => {
+        expect((await fetchProfile("instagram", "real")).username).toBe("real");
+      }
+    );
   });
 });
