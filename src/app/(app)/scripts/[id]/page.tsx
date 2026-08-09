@@ -35,7 +35,7 @@ export const dynamic = "force-dynamic";
 /** One cell of the stat strip: caption over value, sized to its contents. */
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <span className="flex flex-col justify-center gap-0.5 px-4 py-2">
+    <span className="flex flex-col justify-center gap-0.5 px-4 py-2.5">
       <span className="text-[11px] font-medium text-neutral-500">{label}</span>
       {children}
     </span>
@@ -187,7 +187,7 @@ export default async function ScriptDetailPage({
       <div className="-mt-4 mb-5 flex flex-wrap items-center gap-2 text-sm text-neutral-500">
         <StatusBadge status={script.status} />
         {script.niche && (
-          <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium text-violet-700">
+          <span className="rounded-md bg-violet-500/[0.1] px-1.5 py-0.5 text-[11px] font-medium text-violet-700 ring-1 ring-inset ring-violet-500/[0.2]">
             {script.niche}
           </span>
         )}
@@ -200,10 +200,10 @@ export default async function ScriptDetailPage({
           page. These are four short numbers; a full-width grid of them spent a
           whole band of screen on whitespace before the script even began.
           inline-flex keeps it exactly as wide as its contents. */}
-      <div className="mb-4 inline-flex max-w-full flex-wrap items-stretch divide-x divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+      <div className="mb-4 inline-flex max-w-full flex-wrap items-stretch divide-x divide-hairline overflow-hidden rounded-2xl bg-surface shadow-ambient ring-1 ring-hairline inset-shadow-highlight">
         <Stat label="Handed to">
           <span className="flex items-center gap-2">
-            <span className="text-xl font-semibold tabular-nums text-neutral-900">
+            <span className="text-lg font-semibold tabular-nums text-neutral-900">
               {assignments.length}
             </span>
             {/* Sized to the number beside it: at avatar-chip scale the faces
@@ -218,13 +218,13 @@ export default async function ScriptDetailPage({
           </span>
         </Stat>
         <Stat label="Posted">
-          <span className="text-xl font-semibold tabular-nums text-neutral-900">
+          <span className="text-lg font-semibold tabular-nums text-neutral-900">
             {posted.length}
           </span>
         </Stat>
         <Stat label="Median score">
           <span className="flex items-baseline gap-1.5">
-            <span className="text-xl font-semibold tabular-nums text-neutral-900">
+            <span className="text-lg font-semibold tabular-nums text-neutral-900">
               {medianScore?.toFixed(1) ?? "—"}
             </span>
             {medianLift != null && (
@@ -235,7 +235,7 @@ export default async function ScriptDetailPage({
           </span>
         </Stat>
         <Stat label="Total views">
-          <span className="text-xl font-semibold tabular-nums text-neutral-900">
+          <span className="text-lg font-semibold tabular-nums text-neutral-900">
             {formatCompact(posted.reduce((s, r) => s + (r.linked!.video.view_count ?? 0), 0))}
           </span>
         </Stat>
@@ -257,15 +257,15 @@ export default async function ScriptDetailPage({
                 aria-label="Title"
                 placeholder="Title"
                 required
-                className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-neutral-900 outline-none hover:border-neutral-200 focus:border-neutral-300 focus:bg-white"
+                className="min-w-0 flex-1 rounded-lg bg-transparent px-2 py-1 text-sm font-medium text-neutral-900 outline-none ring-1 ring-transparent transition hover:ring-hairline focus:bg-surface focus:ring-2 focus:ring-inset focus:ring-accent/45"
               />
               <SubmitButton pendingLabel="Saving…">Save</SubmitButton>
             </div>
 
             {/* Hook sits above the body in one frame — it is the opening line,
                 not a separate piece of metadata. */}
-            <div className="overflow-hidden rounded-xl border border-neutral-200">
-              <div className="flex items-baseline gap-2 border-b border-neutral-200 bg-neutral-50 px-3 py-1.5">
+            <div className="overflow-hidden rounded-xl bg-surface ring-1 ring-hairline">
+              <div className="flex items-baseline gap-2 border-b border-hairline bg-surface-sunken px-3 py-1.5">
                 <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
                   Hook
                 </span>
@@ -332,7 +332,7 @@ export default async function ScriptDetailPage({
                       <form action={linkAssignmentVideo.bind(null, a.id)} className="shrink-0">
                         <input type="hidden" name="scriptId" value={script.id} />
                         <input type="hidden" name="videoId" value="" />
-                        <button type="submit" className="text-neutral-400 hover:text-red-600">
+                        <button type="submit" className="text-neutral-400 transition-colors hover:text-danger">
                           unlink
                         </button>
                       </form>
@@ -378,7 +378,7 @@ export default async function ScriptDetailPage({
           title="Who ran it"
           action={
             !script.body && !script.hook ? (
-              <span className="text-xs text-amber-600">
+              <span className="text-xs text-warning">
                 Write the script to get match suggestions
               </span>
             ) : null
@@ -391,7 +391,7 @@ export default async function ScriptDetailPage({
           ) : (
             <div className="grid items-start gap-3 [grid-template-columns:repeat(auto-fill,minmax(290px,1fr))]">
                 {waiting.map(({ a, creator, pool, suggestions }) => (
-                  <div key={a.id} className="rounded-xl border border-neutral-200 p-3">
+                  <div key={a.id} className="rounded-xl bg-surface p-3 ring-1 ring-hairline">
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
                         <Avatar name={creator?.handle ?? "?"} src={creator?.avatar_url} size={24} />
@@ -402,7 +402,7 @@ export default async function ScriptDetailPage({
                         <form action={removeAssignment.bind(null, a.id, script.id)}>
                           <button
                             type="submit"
-                            className="rounded-md px-1.5 text-sm text-neutral-400 hover:bg-neutral-100 hover:text-red-600"
+                            className="rounded-md px-1.5 text-sm text-neutral-400 transition-colors hover:bg-neutral-900/[0.04] hover:text-danger"
                             title="Remove"
                           >
                             ×
@@ -428,10 +428,10 @@ export default async function ScriptDetailPage({
                                     {liftRow && <ResearchVideoTile row={liftRow} />}
                                     <span className="flex items-center justify-between px-1 py-1 text-[11px]">
                                       <span
-                                        className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                        className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ring-1 ring-inset ${
                                           s.score >= 0.6
-                                            ? "bg-emerald-50 text-emerald-700"
-                                            : "bg-neutral-100 text-neutral-500"
+                                            ? "bg-success/[0.1] text-success ring-success/[0.2]"
+                                            : "bg-neutral-500/[0.1] text-neutral-500 ring-neutral-500/[0.14]"
                                         }`}
                                         title="How much of the script's wording shows up in this transcript"
                                       >
@@ -442,7 +442,7 @@ export default async function ScriptDetailPage({
                                         <input type="hidden" name="videoId" value={s.video.id} />
                                         <button
                                           type="submit"
-                                          className="rounded-md border border-neutral-200 px-2 py-0.5 font-medium text-neutral-600 hover:border-neutral-900 hover:text-neutral-900"
+                                          className="rounded-md px-2 py-0.5 font-medium text-neutral-600 ring-1 ring-inset ring-hairline transition-colors hover:text-neutral-900 hover:ring-neutral-900/40"
                                         >
                                           link
                                         </button>

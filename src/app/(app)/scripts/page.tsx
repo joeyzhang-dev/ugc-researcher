@@ -10,13 +10,12 @@ import type {
 import { summarizeScripts } from "@/lib/scripts";
 import { createScript } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
-import { inputClass } from "@/components/ui";
+import { Card, PageHeader, buttonClass, inputClass, labelClass } from "@/components/ui";
 import { NicheCombobox } from "@/components/niche-combobox";
 import { AppSelect } from "@/components/app-select";
 import { ALL_APPS } from "@/lib/workspace";
 import { getWorkspace } from "@/lib/workspace/server";
 import { ScriptsExplorer, type ScriptRow } from "./scripts-explorer";
-import { calButton, calLabel, card, cardTitle } from "./cal";
 
 export const dynamic = "force-dynamic";
 
@@ -132,18 +131,14 @@ export default async function ScriptsPage({
 
   return (
     <>
-      {/* No standing description: it explained the lift ranking once and then
-          cost a block of screen on every visit thereafter. The workspace is
-          still named, since that one changes what you are looking at. */}
-      <h1 className="mb-4 flex items-baseline gap-2 text-[28px] font-semibold tracking-[-0.02em] text-neutral-900">
-        Scripts
-        {app && (
-          <span className="text-sm font-normal text-neutral-400">{app.name}</span>
-        )}
-      </h1>
+      {/* No standing description under the title: the owner asked for none — it
+          explained the lift ranking once, then cost a band of screen on every
+          visit. The workspace still rides the eyebrow, since that is the thing
+          that changes what you are looking at. */}
+      <PageHeader title="Scripts" eyebrow={app?.name} />
 
       {error && (
-        <p className="mb-6 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+        <p className="mb-6 rounded-xl bg-danger/[0.08] px-3.5 py-2.5 text-sm text-danger ring-1 ring-inset ring-danger/[0.2]">
           {error}
         </p>
       )}
@@ -167,7 +162,7 @@ export default async function ScriptsPage({
           // Closed, this is a button beside the stats; open, it takes the full
           // row so the form is not squeezed into a flex column.
           <details className="group ml-auto [&[open]]:w-full">
-            <summary className={`${calButton} w-fit cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
+            <summary className={`${buttonClass} w-fit cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
               <svg
                 width="14"
                 height="14"
@@ -182,9 +177,11 @@ export default async function ScriptsPage({
               </svg>
               Create script
             </summary>
-            <form action={createScript} className={`${card} mt-3 space-y-4 p-6`}>
+            <div className="mt-3">
+              <Card>
+                <form action={createScript} className="space-y-4">
               <label className="block">
-                <span className={calLabel}>Title</span>
+                <span className={labelClass}>Title</span>
                 <input
                   name="title"
                   placeholder="What this script is, for your own reference"
@@ -195,8 +192,8 @@ export default async function ScriptsPage({
 
               {/* Hook and body share one frame: the hook IS the opening line, so
                   writing them apart invites a script that does not start with it. */}
-              <div className="overflow-hidden rounded-lg border border-neutral-200">
-                <div className="border-b border-neutral-200 bg-[#f8f9fa] px-3.5 py-2.5">
+              <div className="overflow-hidden rounded-xl bg-surface ring-1 ring-hairline">
+                <div className="border-b border-hairline bg-surface-sunken px-3.5 py-2.5">
                   <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
                     Hook
                   </span>
@@ -221,11 +218,11 @@ export default async function ScriptsPage({
 
               <div className="flex flex-wrap items-end gap-3">
                 <label className="min-w-44 flex-1">
-                  <span className={calLabel}>Niche</span>
+                  <span className={labelClass}>Niche</span>
                   <NicheCombobox options={knownNiches} />
                 </label>
                 <label className="min-w-44">
-                  <span className={calLabel}>App</span>
+                  <span className={labelClass}>App</span>
                   <AppSelect
                     apps={apps.map((a: ResearchApp) => ({
                       id: a.id,
@@ -236,18 +233,20 @@ export default async function ScriptsPage({
                   />
                 </label>
                 <label className="min-w-32">
-                  <span className={calLabel}>Status</span>
+                  <span className={labelClass}>Status</span>
                   <select name="status" className={inputClass} defaultValue="Active">
                     {["Active", "Draft", "Archived"].map((s) => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>
                 </label>
-                <SubmitButton pendingLabel="Saving…" className={calButton}>
+                <SubmitButton pendingLabel="Saving…">
                   Create script
                 </SubmitButton>
               </div>
-            </form>
+                </form>
+              </Card>
+            </div>
           </details>
         }
       />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { inputClass } from "@/components/ui";
 
 /**
@@ -34,6 +34,9 @@ export function NicheCombobox({
   const [active, setActive] = useState(0);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const baseId = useId();
+  const listboxId = `${baseId}-listbox`;
+  const optionId = (i: number) => `${baseId}-opt-${i}`;
 
   const query = value.trim().toLowerCase();
   const matches = useMemo(
@@ -94,6 +97,8 @@ export function NicheCombobox({
         value={value}
         role="combobox"
         aria-expanded={open}
+        aria-controls={listboxId}
+        aria-activedescendant={open && rows.length > 0 ? optionId(active) : undefined}
         aria-autocomplete="list"
         autoComplete="off"
         placeholder={placeholder}
@@ -141,8 +146,9 @@ export function NicheCombobox({
 
       {open && (
         <ul
+          id={listboxId}
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+4px)] z-40 max-h-56 overflow-y-auto rounded-xl border border-neutral-200 bg-white py-1 shadow-lg"
+          className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 max-h-56 animate-fade-up overflow-y-auto rounded-xl bg-surface py-1 shadow-raised ring-1 ring-hairline inset-shadow-highlight"
         >
           {rows.length === 0 && (
             <li className="px-3 py-2 text-xs text-neutral-400">
@@ -154,6 +160,9 @@ export function NicheCombobox({
               <li key="__create">
                 <button
                   type="button"
+                  id={optionId(i)}
+                  role="option"
+                  aria-selected={active === i}
                   // mousedown, not click: the input's blur would otherwise
                   // close the list before click ever lands.
                   onMouseDown={(e) => {
@@ -161,11 +170,11 @@ export function NicheCombobox({
                     choose(value.trim());
                   }}
                   onMouseEnter={() => setActive(i)}
-                  className={`flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-sm ${
-                    active === i ? "bg-neutral-100" : ""
+                  className={`flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-sm transition-colors ${
+                    active === i ? "bg-neutral-900/[0.04]" : ""
                   }`}
                 >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="shrink-0 text-emerald-600">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="shrink-0 text-success">
                     <path d="M12 5v14M5 12h14" />
                   </svg>
                   <span className="text-neutral-500">Create</span>
@@ -176,18 +185,21 @@ export function NicheCombobox({
               <li key={opt}>
                 <button
                   type="button"
+                  id={optionId(i)}
+                  role="option"
+                  aria-selected={active === i}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     choose(opt);
                   }}
                   onMouseEnter={() => setActive(i)}
-                  className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm ${
-                    active === i ? "bg-neutral-100" : ""
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm transition-colors ${
+                    active === i ? "bg-neutral-900/[0.04]" : ""
                   }`}
                 >
                   <span className="truncate text-neutral-800">{opt}</span>
                   {value.trim().toLowerCase() === opt.toLowerCase() && (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 text-neutral-900">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 text-accent">
                       <path d="m5 13 4 4L19 7" />
                     </svg>
                   )}
@@ -196,14 +208,14 @@ export function NicheCombobox({
             )
           )}
           {value.trim() !== "" && (
-            <li className="border-t border-neutral-100">
+            <li className="mt-1 border-t border-hairline">
               <button
                 type="button"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   choose("");
                 }}
-                className="w-full px-3 py-1.5 text-left text-xs text-neutral-400 hover:text-neutral-700"
+                className="w-full px-3 py-1.5 text-left text-xs text-neutral-400 transition-colors hover:text-neutral-700"
               >
                 Clear
               </button>

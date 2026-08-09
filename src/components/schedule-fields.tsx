@@ -21,7 +21,7 @@ export function ScheduleFields({ settings }: { settings: ScrapeSettings }) {
           name="autoScrape"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
-          className="mt-0.5 h-4 w-4 rounded border-neutral-300"
+          className="mt-0.5 h-4 w-4 rounded border-hairline accent-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
         />
         <span>
           <span className="block text-sm font-medium text-neutral-900">
@@ -34,7 +34,7 @@ export function ScheduleFields({ settings }: { settings: ScrapeSettings }) {
       </label>
 
       <div
-        className={`space-y-3 border-l-2 border-neutral-100 pl-4 transition-opacity ${
+        className={`space-y-3 border-l-2 border-hairline pl-4 transition ${
           enabled ? "opacity-100" : "pointer-events-none opacity-40"
         }`}
       >
@@ -48,7 +48,7 @@ export function ScheduleFields({ settings }: { settings: ScrapeSettings }) {
                 value="interval"
                 checked={mode === "interval"}
                 onChange={() => setMode("interval")}
-                className="h-4 w-4 border-neutral-300"
+                className="h-4 w-4 border-hairline accent-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
               />
               Every N hours
             </label>
@@ -59,7 +59,7 @@ export function ScheduleFields({ settings }: { settings: ScrapeSettings }) {
                 value="time_of_day"
                 checked={mode === "time_of_day"}
                 onChange={() => setMode("time_of_day")}
-                className="h-4 w-4 border-neutral-300"
+                className="h-4 w-4 border-hairline accent-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
               />
               At a time of day
             </label>

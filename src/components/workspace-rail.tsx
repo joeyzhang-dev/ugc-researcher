@@ -1,102 +1,118 @@
 "use client";
 
 import Link from "next/link";
-import { useTransition } from "react";
 import type { ResearchApp } from "@/lib/types";
-import { switchWorkspace } from "@/app/(app)/workspace-actions";
-import { ALL_APPS } from "@/lib/workspace";
-import { WorkspaceMark } from "./workspace-switcher";
+import { signOut } from "@/app/login/actions";
+import { AppNav, RAIL_GLYPH, RAIL_LABEL, RAIL_ROW } from "./app-nav";
+import { WorkspaceSwitch } from "./workspace-switcher";
 
-// 38px mark centred in the 64px collapsed rail -> 13px of padding each side.
-// Keeping the same padding when expanded is what makes the marks stay put
-// while only the labels slide in.
-const ROW = "flex w-full items-center gap-3 rounded-lg px-[13px] py-1";
-const LABEL =
-  "min-w-0 flex-1 truncate whitespace-nowrap text-left text-[13px] opacity-0 transition-opacity duration-150 group-hover/rail:opacity-100 group-focus-within/rail:opacity-100";
+/* One rail, one axis each. This is the single most visible surface in the app,
+   and it used to carry three overlapping navigations (a workspace rail, a
+   duplicate header workspace dropdown, and a header row of page pills). They're
+   now merged into one column:
 
-/** Slack-style vertical rail: one tile per app, always one click from any
- *  workspace. Collapsed to icons, it widens on hover (or keyboard focus) to
- *  show the app names, so the marks never move — only the labels slide in. */
-export function WorkspaceRail({ apps, current }: { apps: ResearchApp[]; current: string }) {
-  const [pending, startTransition] = useTransition();
+     • brand           — home
+     • Workspace zone  — which app/brand you're scoped to (WorkspaceSwitch)
+     • Sections zone   — which page you're on           (AppNav)
+     • account         — who you are + sign out
 
-  const choose = (id: string) => {
-    if (id === current) return;
-    startTransition(() => {
-      void switchWorkspace(id);
-    });
-  };
+   Collapsed to a 64px icon strip, it expands to reveal labels on hover or
+   keyboard focus. It stays `fixed` behind an in-flow spacer so expanding
+   *overlays* the page instead of reflowing it — the deliberate fix that stops
+   the video grid re-laying-out on every hover. */
 
-  const tile = (id: string, name: string, label: string, logoUrl?: string | null) => {
-    const active = current === id;
-    return (
-      <button
-        key={id}
-        type="button"
-        title={label}
-        aria-current={active}
-        onClick={() => choose(id)}
-        className={`${ROW} group/tile relative transition-colors hover:bg-neutral-50`}
-      >
-        {/* Active indicator, flush to the rail edge. */}
-        <span
-          className={`absolute left-0 top-1/2 h-7 w-[3px] -translate-y-1/2 rounded-r-full bg-neutral-900 transition-opacity ${
-            active ? "opacity-100" : "opacity-0"
-          }`}
-        />
-        <span
-          className={`shrink-0 transition-transform group-hover/tile:scale-105 ${
-            active ? "" : "opacity-55 group-hover/tile:opacity-100"
-          }`}
-        >
-          <WorkspaceMark name={name} logoUrl={logoUrl} size={38} muted={!active} />
-        </span>
-        <span className={`${LABEL} ${active ? "font-semibold text-neutral-900" : "text-neutral-600"}`}>
-          {label}
-        </span>
-      </button>
-    );
-  };
+/** A zone heading that only occupies space once the rail is expanded, so the
+ *  collapsed strip stays clean (no floating labels, no reserved gaps). */
+const RAIL_EYEBROW =
+  "flex h-0 items-center overflow-hidden px-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-neutral-400 opacity-0 transition-all duration-150 ease-fluid group-hover/rail:h-6 group-hover/rail:opacity-100 group-focus-within/rail:h-6 group-focus-within/rail:opacity-100";
+
+const RAIL_DIVIDER = "mx-4 my-1.5 h-px shrink-0 bg-black/[0.06]";
+
+export function WorkspaceRail({
+  apps,
+  current,
+  email,
+}: {
+  apps: ResearchApp[];
+  current: string;
+  email: string | null;
+}) {
+  const monogram = (email ?? "").replace(/@.*/, "").slice(0, 2).toUpperCase() || "?";
 
   return (
     <>
-      {/* Fixed rail + in-flow spacer: expanding overlays the page instead of
-          reflowing it, so the video grid doesn't re-lay-out on every hover. */}
+      {/* Spacer keeps the collapsed footprint in flow; the rail itself is fixed
+          and overlays the page as it widens. */}
       <div className="w-16 shrink-0" aria-hidden />
       <aside
-        className={`group/rail fixed left-0 top-0 z-40 flex h-screen w-16 flex-col gap-1 overflow-hidden border-r border-neutral-200 bg-white py-3 transition-[width] duration-200 ease-out hover:w-60 hover:shadow-xl focus-within:w-60 ${
-          pending ? "opacity-70" : ""
-        }`}
+        aria-label="Primary"
+        className="group/rail fixed left-0 top-0 z-40 flex h-screen w-16 flex-col overflow-hidden border-r border-hairline bg-surface py-3 transition-[width] duration-300 ease-fluid hover:w-64 hover:shadow-raised focus-within:w-64"
       >
-        <Link href="/research" title="Trace Research" className={`${ROW} mb-1`}>
-          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg bg-neutral-950 text-sm font-bold text-white">
-            T
+        {/* Brand / home */}
+        <Link
+          href="/research"
+          title="Trace Research"
+          className="group/row relative flex w-full items-center gap-3 rounded-xl px-[14px] py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+        >
+          <span className={RAIL_GLYPH}>
+            <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-sm font-bold text-white shadow-ambient inset-shadow-highlight">
+              T
+            </span>
           </span>
-          <span className={`${LABEL} leading-tight`}>
-            <span className="block font-semibold text-neutral-900">Trace Research</span>
+          <span className={`${RAIL_LABEL} leading-tight`}>
+            <span className="block font-semibold tracking-[-0.01em] text-neutral-900">Trace Research</span>
             <span className="block text-[11px] text-neutral-500">Creator &amp; format study</span>
           </span>
         </Link>
 
-        <span className="mx-[13px] mb-1 block h-px shrink-0 bg-neutral-200" />
+        <div className={RAIL_DIVIDER} />
 
-        <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-          {apps.map((a) => tile(a.id, a.name, a.name, a.logo_url))}
-          {tile(ALL_APPS, ALL_APPS, "All apps")}
+        {/* Scrolling middle: workspace axis over section axis. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div className={RAIL_EYEBROW}>Workspace</div>
+          <WorkspaceSwitch apps={apps} current={current} />
+
+          <div className={RAIL_DIVIDER} />
+
+          <div className={RAIL_EYEBROW}>Sections</div>
+          <AppNav />
         </div>
 
-        <Link
-          href="/creators#apps"
-          title="Add an app"
-          className={`${ROW} mt-1 text-neutral-400 transition-colors hover:text-neutral-700`}
-        >
-          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-lg border border-dashed border-neutral-300">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </span>
-          <span className={LABEL}>Add an app</span>
-        </Link>
+        <div className={RAIL_DIVIDER} />
+
+        {/* Account */}
+        <div className="shrink-0">
+          <div className="relative flex w-full items-center gap-3 rounded-xl px-[14px] py-1">
+            <span className={RAIL_GLYPH}>
+              <span className="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-surface-sunken text-[11px] font-semibold text-neutral-600 ring-1 ring-hairline">
+                {monogram}
+              </span>
+            </span>
+            <span className={`${RAIL_LABEL} leading-tight`}>
+              <span className="block truncate text-[12px] font-medium text-neutral-800">
+                {email ?? "Signed in"}
+              </span>
+              <span className="block text-[11px] text-neutral-400">Trace team</span>
+            </span>
+          </div>
+
+          <form action={signOut}>
+            <button
+              type="submit"
+              title="Sign out"
+              className={`${RAIL_ROW} text-neutral-500 hover:bg-danger/[0.08] hover:text-danger`}
+            >
+              <span className={`${RAIL_GLYPH} text-neutral-400 group-hover/row:text-current`}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3" />
+                  <path d="m16 17 5-5-5-5" />
+                  <path d="M21 12H9" />
+                </svg>
+              </span>
+              <span className={RAIL_LABEL}>Sign out</span>
+            </button>
+          </form>
+        </div>
       </aside>
     </>
   );

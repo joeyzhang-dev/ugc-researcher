@@ -4,63 +4,183 @@ import type { ReactNode } from "react";
 import { formatDate } from "@/lib/format";
 import { PLATFORM_LABELS, type Platform } from "@/lib/types";
 
-/* Minimal badge palette matching the reference: light tint + colored text, no dots. */
-const STATUS_COLORS: Record<string, string> = {
-  Prospect: "bg-neutral-100 text-neutral-600",
-  Contacted: "bg-sky-50 text-sky-700",
-  Negotiating: "bg-amber-50 text-amber-700",
-  Active: "bg-emerald-50 text-emerald-700",
-  Posted: "bg-blue-50 text-blue-700",
-  "Ready to Pay": "bg-amber-50 text-amber-700",
-  Paid: "bg-emerald-50 text-emerald-700",
-  Dropped: "bg-neutral-100 text-neutral-400",
-  Draft: "bg-neutral-100 text-neutral-600",
-  Paused: "bg-amber-50 text-amber-700",
-  Completed: "bg-neutral-100 text-neutral-500",
-  Detected: "bg-sky-50 text-sky-700",
-  Tracking: "bg-blue-50 text-blue-700",
-  "Awaiting review": "bg-amber-50 text-amber-700",
-  Reviewed: "bg-emerald-50 text-emerald-700",
-  Ignored: "bg-neutral-100 text-neutral-400",
-  Disputed: "bg-red-50 text-red-700",
-  Suspicious: "bg-red-100 text-red-800",
-  Pending: "bg-amber-50 text-amber-700",
-  running: "bg-sky-50 text-sky-700",
-  succeeded: "bg-emerald-50 text-emerald-700",
-  partial: "bg-amber-50 text-amber-700",
-  failed: "bg-red-50 text-red-700",
-  // tags
-  "Warm-up": "bg-violet-50 text-violet-700",
-  Trial: "bg-violet-50 text-violet-700",
-  Standard: "bg-neutral-100 text-neutral-600",
-  // discord channel states (category-driven)
-  Creating: "bg-emerald-50 text-emerald-700",
-  "Not creating": "bg-amber-50 text-amber-700",
-  // discord summary workflow states (claude-generated)
-  Onboarding: "bg-sky-50 text-sky-700",
-  "Awaiting videos": "bg-amber-50 text-amber-700",
-  "Needs video review": "bg-violet-50 text-violet-700",
-  "Revision requested": "bg-orange-50 text-orange-700",
-  "Ready to post": "bg-emerald-50 text-emerald-700",
-  "In discussion": "bg-neutral-100 text-neutral-600",
-  Inactive: "bg-neutral-100 text-neutral-400",
-  // assignment states
-  Assigned: "bg-sky-50 text-sky-700",
-  Submitted: "bg-amber-50 text-amber-700",
-  Skipped: "bg-neutral-100 text-neutral-400",
-  Rejected: "bg-red-50 text-red-700",
-  // derived payout states
-  "Ready to pay": "bg-emerald-50 text-emerald-700",
-  Due: "bg-orange-50 text-orange-700",
-  Upcoming: "bg-amber-50 text-amber-700",
-  "Needs review": "bg-violet-50 text-violet-700",
+/* ---------------------------------------------------------------------------
+   Tone system. One recipe per hue (low-alpha tint + legible text + hairline
+   ring), so the ~40 status strings and the KPI cards reference a *named tone*
+   instead of a wall of one-off `bg-x-50 text-x-700` literals. Meaning-carrying
+   tones (success / warning / danger / info / accent / neutral) ride the
+   semantic tokens from globals.css; purely categorical hues (violet / indigo /
+   pink / orange) use Tailwind's numbered scale but stay centralized here.
+   Everything is hairline-ring + tint — never a solid fill.
+
+   Each recipe carries: `badge` (tint+text+ring for pills), `text`/`chip` (for
+   the KPI icon), and `activeRing`/`activeSurface` (for the KPI filter-toggle
+   engaged state). */
+export type Hue =
+  | "neutral"
+  | "accent"
+  | "success"
+  | "warning"
+  | "danger"
+  | "info"
+  | "violet"
+  | "indigo"
+  | "pink"
+  | "orange"
+  | "muted";
+
+interface ToneRecipe {
+  /** Pill: tint background, legible text, inset hairline ring. */
+  badge: string;
+  /** KPI number-card icon color. */
+  text: string;
+  /** KPI icon chip: tint background + hairline ring. */
+  chip: string;
+  /** KPI filter-toggle engaged ring. */
+  activeRing: string;
+  /** KPI filter-toggle engaged surface tint. */
+  activeSurface: string;
+}
+
+const HUES: Record<Hue, ToneRecipe> = {
+  neutral: {
+    badge: "bg-neutral-500/[0.1] text-neutral-600 ring-neutral-500/[0.14]",
+    text: "text-neutral-500",
+    chip: "bg-neutral-500/[0.1] ring-neutral-500/[0.12]",
+    activeRing: "ring-neutral-900/25",
+    activeSurface: "bg-neutral-900/[0.03]",
+  },
+  // Faded neutral for "off" states (Dropped / Ignored / Inactive / Skipped).
+  muted: {
+    badge: "bg-neutral-500/[0.08] text-neutral-400 ring-neutral-500/[0.1]",
+    text: "text-neutral-400",
+    chip: "bg-neutral-500/[0.08] ring-neutral-500/[0.1]",
+    activeRing: "ring-neutral-900/20",
+    activeSurface: "bg-neutral-900/[0.02]",
+  },
+  accent: {
+    badge: "bg-accent/[0.1] text-accent ring-accent/[0.22]",
+    text: "text-accent",
+    chip: "bg-accent/[0.1] ring-accent/[0.16]",
+    activeRing: "ring-accent/40",
+    activeSurface: "bg-accent/[0.05]",
+  },
+  success: {
+    badge: "bg-success/[0.1] text-success ring-success/[0.22]",
+    text: "text-success",
+    chip: "bg-success/[0.1] ring-success/[0.16]",
+    activeRing: "ring-success/40",
+    activeSurface: "bg-success/[0.05]",
+  },
+  warning: {
+    badge: "bg-warning/[0.12] text-warning ring-warning/[0.24]",
+    text: "text-warning",
+    chip: "bg-warning/[0.12] ring-warning/[0.18]",
+    activeRing: "ring-warning/45",
+    activeSurface: "bg-warning/[0.06]",
+  },
+  danger: {
+    badge: "bg-danger/[0.1] text-danger ring-danger/[0.22]",
+    text: "text-danger",
+    chip: "bg-danger/[0.1] ring-danger/[0.16]",
+    activeRing: "ring-danger/40",
+    activeSurface: "bg-danger/[0.05]",
+  },
+  info: {
+    badge: "bg-info/[0.1] text-info ring-info/[0.22]",
+    text: "text-info",
+    chip: "bg-info/[0.1] ring-info/[0.16]",
+    activeRing: "ring-info/40",
+    activeSurface: "bg-info/[0.05]",
+  },
+  violet: {
+    badge: "bg-violet-500/[0.1] text-violet-700 ring-violet-500/[0.2]",
+    text: "text-violet-600",
+    chip: "bg-violet-500/[0.1] ring-violet-500/[0.16]",
+    activeRing: "ring-violet-500/40",
+    activeSurface: "bg-violet-500/[0.05]",
+  },
+  indigo: {
+    badge: "bg-indigo-500/[0.1] text-indigo-700 ring-indigo-500/[0.2]",
+    text: "text-indigo-600",
+    chip: "bg-indigo-500/[0.1] ring-indigo-500/[0.16]",
+    activeRing: "ring-indigo-500/40",
+    activeSurface: "bg-indigo-500/[0.05]",
+  },
+  pink: {
+    badge: "bg-pink-500/[0.1] text-pink-700 ring-pink-500/[0.2]",
+    text: "text-pink-600",
+    chip: "bg-pink-500/[0.1] ring-pink-500/[0.16]",
+    activeRing: "ring-pink-500/40",
+    activeSurface: "bg-pink-500/[0.05]",
+  },
+  orange: {
+    badge: "bg-orange-500/[0.1] text-orange-700 ring-orange-500/[0.2]",
+    text: "text-orange-600",
+    chip: "bg-orange-500/[0.1] ring-orange-500/[0.16]",
+    activeRing: "ring-orange-500/40",
+    activeSurface: "bg-orange-500/[0.05]",
+  },
 };
 
-export function StatusBadge({ status }: { status: string }) {
-  const color = STATUS_COLORS[status] ?? "bg-neutral-100 text-neutral-600";
+/* Every status string in the app → a tone. Adding a status is one line here,
+   not a new color literal. Unknown strings fall back to neutral. */
+const STATUS_TONE: Record<string, Hue> = {
+  Prospect: "neutral",
+  Contacted: "info",
+  Negotiating: "warning",
+  Active: "success",
+  Posted: "accent",
+  "Ready to Pay": "warning",
+  Paid: "success",
+  Dropped: "muted",
+  Draft: "neutral",
+  Paused: "warning",
+  Completed: "muted",
+  Detected: "info",
+  Tracking: "accent",
+  "Awaiting review": "warning",
+  Reviewed: "success",
+  Ignored: "muted",
+  Disputed: "danger",
+  Suspicious: "danger",
+  Pending: "warning",
+  running: "info",
+  succeeded: "success",
+  partial: "warning",
+  failed: "danger",
+  // tags
+  "Warm-up": "violet",
+  Trial: "violet",
+  Standard: "neutral",
+  // discord channel states (category-driven)
+  Creating: "success",
+  "Not creating": "warning",
+  // discord summary workflow states (claude-generated)
+  Onboarding: "info",
+  "Awaiting videos": "warning",
+  "Needs video review": "violet",
+  "Revision requested": "orange",
+  "Ready to post": "success",
+  "In discussion": "neutral",
+  Inactive: "muted",
+  // assignment states
+  Assigned: "info",
+  Submitted: "warning",
+  Skipped: "muted",
+  Rejected: "danger",
+  // derived payout states
+  "Ready to pay": "success",
+  Due: "orange",
+  Upcoming: "warning",
+  "Needs review": "violet",
+};
+
+export function StatusBadge({ status, tone }: { status: string; tone?: Hue }) {
+  const hue = tone ?? STATUS_TONE[status] ?? "neutral";
   return (
     <span
-      className={`inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium ${color}`}
+      className={`inline-flex items-center whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${HUES[hue].badge}`}
     >
       {status}
     </span>
@@ -69,25 +189,54 @@ export function StatusBadge({ status }: { status: string }) {
 
 export function Card({
   title,
+  subtitle,
   children,
   action,
   id,
+  padded = true,
 }: {
   title?: ReactNode;
+  /** Quiet second line under the title (e.g. a count or scope). */
+  subtitle?: ReactNode;
   children: ReactNode;
   action?: ReactNode;
   /** Anchor target, so links like /creators#apps can scroll to a card. */
   id?: string;
+  /** Table cards set this false and manage their own edges (see `tableWrap`). */
+  padded?: boolean;
 }) {
+  const hasHeader = Boolean(title || action || subtitle);
   return (
-    <section id={id} className="scroll-mt-6 rounded-xl border border-neutral-200 bg-white">
-      {(title || action) && (
-        <header className="flex items-center justify-between px-5 pb-1 pt-4">
-          {title && <h2 className="text-sm font-semibold tracking-tight text-neutral-900">{title}</h2>}
-          {action}
-        </header>
-      )}
-      <div className="p-5 pt-3">{children}</div>
+    // Double-bezel: an off-white outer shell (hairline ring + soft ambient
+    // shadow + small padding) wrapping a white inner core with its own hairline
+    // ring and an inset top catch-light. The 6px shell gap + concentric radii
+    // (18px outer → 12px inner) give the machined, nested look.
+    <section
+      id={id}
+      className="group/card scroll-mt-6 rounded-[18px] bg-surface-muted p-1.5 shadow-ambient ring-1 ring-hairline"
+    >
+      <div className="rounded-xl bg-surface inset-shadow-highlight ring-1 ring-hairline">
+        {hasHeader && (
+          <header className="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
+            <div className="min-w-0">
+              {title && (
+                <h2 className="truncate text-sm font-semibold tracking-[-0.01em] text-neutral-900">
+                  {title}
+                </h2>
+              )}
+              {subtitle && (
+                <p className="mt-0.5 truncate text-xs text-neutral-500">{subtitle}</p>
+              )}
+            </div>
+            {action && <div className="shrink-0">{action}</div>}
+          </header>
+        )}
+        {/* Keep horizontal padding at 20px (px-5) whenever padded — `tableWrap`'s
+            -mx-5/px-5 is coupled to it. Change one, change both. */}
+        <div className={padded ? (hasHeader ? "px-5 pb-5 pt-1" : "p-5") : ""}>
+          {children}
+        </div>
+      </div>
     </section>
   );
 }
@@ -96,94 +245,87 @@ export function ViewAllLink({ href, children }: { href: string; children: ReactN
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500 underline-offset-2 transition-colors hover:text-neutral-900 hover:underline"
+      className="group inline-flex items-center gap-1 text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-900"
     >
       {children}
-      <span aria-hidden>→</span>
+      {/* Magnetic nudge on hover — transform only, house-eased. */}
+      <span aria-hidden className="transition-transform duration-200 ease-fluid group-hover:translate-x-0.5">
+        →
+      </span>
     </Link>
   );
 }
 
 export type KpiTone = "neutral" | "emerald" | "amber" | "sky" | "violet" | "red" | "indigo" | "pink";
 
-const KPI_TONES: Record<KpiTone, string> = {
-  neutral: "bg-neutral-100 text-neutral-500",
-  emerald: "bg-emerald-50 text-emerald-600",
-  amber: "bg-amber-50 text-amber-600",
-  sky: "bg-sky-50 text-sky-600",
-  violet: "bg-violet-50 text-violet-600",
-  red: "bg-red-50 text-red-500",
-  indigo: "bg-indigo-50 text-indigo-600",
-  pink: "bg-pink-50 text-pink-500",
-};
-
-/* Active (filter-engaged) ring follows the card's tone. */
-const KPI_ACTIVE_RINGS: Record<KpiTone, string> = {
-  neutral: "border-neutral-400 ring-2 ring-neutral-100",
-  emerald: "border-emerald-300 ring-2 ring-emerald-100",
-  amber: "border-amber-300 ring-2 ring-amber-100",
-  sky: "border-sky-300 ring-2 ring-sky-100",
-  violet: "border-violet-300 ring-2 ring-violet-100",
-  red: "border-red-300 ring-2 ring-red-100",
-  indigo: "border-indigo-300 ring-2 ring-indigo-100",
-  pink: "border-pink-300 ring-2 ring-pink-100",
+/* KpiTone kept for back-compat; each maps onto a semantic hue recipe so KPI
+   cards and status pills share one source of truth. */
+const KPI_TONE_HUE: Record<KpiTone, Hue> = {
+  neutral: "neutral",
+  emerald: "success",
+  amber: "warning",
+  sky: "info",
+  violet: "violet",
+  red: "danger",
+  indigo: "indigo",
+  pink: "pink",
 };
 
 /** Reference-style KPI icons, keyed by name. */
 export const KPI_ICONS: Record<string, ReactNode> = {
   users: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5" />
       <circle cx="17" cy="9" r="2.5" /><path d="M15.5 14.6c2.6.3 4.9 1.9 5.8 4.4" />
     </svg>
   ),
   play: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="4" width="18" height="16" rx="3" /><path d="m10 9 5 3-5 3V9Z" />
     </svg>
   ),
   eye: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z" /><circle cx="12" cy="12" r="2.5" />
     </svg>
   ),
   dollar: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2v20M17 6.5c-.8-1.5-2.6-2.2-5-2.2-2.9 0-4.6 1.3-4.6 3.3 0 4.6 10 2.3 10 7 0 2.2-2 3.5-5.4 3.5-2.6 0-4.5-.9-5.3-2.5" />
     </svg>
   ),
   wallet: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2.5" y="6" width="19" height="12" rx="2.5" /><path d="M2.5 10h19" /><path d="M6.5 14.5H10" />
     </svg>
   ),
   alert: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 8v5M12 16.5v.01M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
     </svg>
   ),
   clock: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" />
     </svg>
   ),
   heart: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 20.5S3 14.7 3 8.9C3 6.2 5.1 4 7.8 4c1.7 0 3.3.9 4.2 2.3C12.9 4.9 14.5 4 16.2 4 18.9 4 21 6.2 21 8.9c0 5.8-9 11.6-9 11.6Z" />
     </svg>
   ),
   badge: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="9" r="5.5" /><path d="m8.5 13.5-1.5 7 5-2.5 5 2.5-1.5-7" />
     </svg>
   ),
   check: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="9" /><path d="m8.5 12.5 2.5 2.5 5-5.5" />
     </svg>
   ),
   trend: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
       <path d="m3 17 6-6 4 4 8-8" /><path d="M15 7h6v6" />
     </svg>
   ),
@@ -212,28 +354,39 @@ export function KpiCard({
   active?: boolean;
 }) {
   const iconNode = typeof icon === "string" ? KPI_ICONS[icon] : icon;
-  const base = `flex items-start gap-3 rounded-xl border bg-white p-4 ${
-    active ? KPI_ACTIVE_RINGS[tone] : "border-neutral-200"
+  const hue = HUES[KPI_TONE_HUE[tone]];
+  // Quiet machined surface at rest; the number carries the card. Engaged state
+  // swaps to a tone-matched 2px ring + faint tinted surface — clearly "on"
+  // without a loud fill. Resting cards keep a hairline ring only.
+  const base = `flex items-start gap-3 rounded-2xl bg-surface p-4 shadow-ambient ring-1 ${
+    active ? `ring-2 ${hue.activeRing} ${hue.activeSurface}` : "ring-hairline"
   }`;
   const inner = (
     <>
       {iconNode && (
         <span
-          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${KPI_TONES[tone]}`}
+          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ring-1 ${hue.chip} ${hue.text}`}
         >
           {iconNode}
         </span>
       )}
-      <span className="min-w-0 block">
+      <span className="block min-w-0">
         <span className="block truncate text-xs font-medium text-neutral-500">{label}</span>
-        <span className="mt-0.5 block text-2xl font-semibold tracking-tight tabular-nums text-neutral-900">{value}</span>
-        {sub && <span className="mt-0.5 block truncate text-xs text-neutral-400">{sub}</span>}
+        <span className="mt-1 block text-[26px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-neutral-900">
+          {value}
+        </span>
+        {sub && <span className="mt-1.5 block truncate text-xs text-neutral-400">{sub}</span>}
       </span>
     </>
   );
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} className={`${base} w-full text-left transition-colors hover:border-neutral-300`}>
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={active}
+        className={`${base} w-full text-left transition hover:shadow-raised active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40`}
+      >
         {inner}
       </button>
     );
@@ -383,17 +536,42 @@ export function PlatformBadges({
 export function MiniBar({ ratio, className }: { ratio: number; className?: string }) {
   const width = `${Math.min(100, Math.max(0, ratio * 100))}%`;
   return (
-    <div className={`h-1 w-full overflow-hidden rounded-full bg-neutral-100 ${className ?? ""}`}>
+    <div className={`h-1 w-full overflow-hidden rounded-full bg-neutral-500/[0.12] ${className ?? ""}`}>
       <div className="h-full rounded-full bg-neutral-900" style={{ width }} />
     </div>
   );
 }
 
-export function PageHeader({ title, action }: { title: string; action?: ReactNode }) {
+export function PageHeader({
+  title,
+  action,
+  subtitle,
+  eyebrow,
+}: {
+  title: string;
+  action?: ReactNode;
+  /** Replaces the `-mt-4 mb-5 … text-neutral-500` blurb every page used to
+   *  repeat by hand — pass the description here instead. */
+  subtitle?: ReactNode;
+  /** Optional micro-label above the title (uppercase, tracked). */
+  eyebrow?: ReactNode;
+}) {
   return (
-    <div className="mb-6 flex items-center justify-between">
-      <h1 className="text-[26px] font-bold tracking-tight">{title}</h1>
-      {action}
+    <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        {eyebrow && (
+          <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-neutral-400">
+            {eyebrow}
+          </div>
+        )}
+        <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em] text-neutral-900">
+          {title}
+        </h1>
+        {subtitle && (
+          <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-neutral-500">{subtitle}</p>
+        )}
+      </div>
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }
@@ -411,7 +589,7 @@ export function DateOrToday({ iso }: { iso: string | null | undefined }) {
   if (d.toDateString() !== now.toDateString()) return <>{formatDate(iso)}</>;
   const h = Math.floor(Math.max(0, now.getTime() - d.getTime()) / 3_600_000);
   return (
-    <span className="whitespace-nowrap font-medium text-blue-600">
+    <span className="whitespace-nowrap font-medium text-accent">
       Today · {h < 1 ? "just now" : `${h}h ago`}
     </span>
   );
@@ -425,17 +603,94 @@ export function LinkButton({ href, children }: { href: string; children: ReactNo
   );
 }
 
+// Uppercase micro-tracked header; hairline row separators; comfortable-but-dense
+// rows; tabular-nums on the whole table so figures line up column-to-column.
 export const th =
-  "px-3 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-neutral-400";
-export const td = "px-3 py-2.5 text-sm text-neutral-700";
+  "px-3 py-2 text-left text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-400";
+export const td = "px-3 py-2.5 align-middle text-sm text-neutral-700";
+// tableWrap bleeds a table to the card's inner-core edges then re-pads for
+// horizontal scroll. The -mx-5/px-5 is COUPLED to Card's px-5 content padding —
+// if Card's padding changes, change this in lockstep or every table breaks.
 export const tableWrap = "-mx-5 overflow-x-auto px-5";
-export const table = "min-w-full divide-y divide-neutral-100";
-export const trHover = "transition-colors hover:bg-neutral-50";
+export const table = "min-w-full divide-y divide-black/[0.05] tabular-nums";
+export const trHover = "transition-colors hover:bg-neutral-900/[0.03]";
 
+// Sunken field: hairline ring + faint inset, accent focus ring (not browser blue).
 export const inputClass =
-  "mt-1 w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm placeholder:text-neutral-300 focus:border-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-100";
+  "mt-1 w-full rounded-xl bg-surface px-3 py-2 text-sm text-neutral-900 shadow-[inset_0_1px_2px_rgb(9_9_11/0.04)] ring-1 ring-hairline transition placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent/45";
 export const labelClass = "block text-sm font-medium text-neutral-700";
+// Pill buttons with haptic press (active:scale) and a designed focus ring.
 export const buttonClass =
-  "inline-flex items-center gap-1.5 rounded-lg bg-neutral-900 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-700 disabled:opacity-50";
+  "inline-flex items-center justify-center gap-1.5 rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-ambient transition hover:bg-neutral-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-50";
 export const secondaryButtonClass =
-  "inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3.5 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50";
+  "inline-flex items-center justify-center gap-1.5 rounded-full bg-surface px-4 py-2 text-sm font-medium text-neutral-700 shadow-ambient ring-1 ring-hairline transition hover:bg-surface-muted hover:text-neutral-900 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-50";
+
+export interface SegmentedItem {
+  value: string;
+  label: ReactNode;
+  /** Renders a <Link> — the app's server-rendered filter-pill pattern. */
+  href?: string;
+  /** Renders a <button> — for client-side toggles. */
+  onClick?: () => void;
+  title?: string;
+}
+
+/**
+ * Pill-group toggle. Several pages hand-roll this (pool switchers, range
+ * pickers); use this instead. Items are links by default (server-friendly, URL
+ * as state) or buttons when given an onClick. The active item lifts to a raised
+ * white core against the sunken track — the same machined language as the cards.
+ */
+export function Segmented({
+  items,
+  value,
+  size = "md",
+  className,
+  "aria-label": ariaLabel,
+}: {
+  items: SegmentedItem[];
+  value: string;
+  size?: "sm" | "md";
+  className?: string;
+  "aria-label"?: string;
+}) {
+  const pad = size === "sm" ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-sm";
+  const itemBase = `rounded-lg font-medium transition ${pad}`;
+  const activeCls = "bg-surface text-neutral-900 shadow-ambient ring-1 ring-hairline";
+  const idleCls = "text-neutral-500 hover:text-neutral-900";
+  return (
+    <span
+      role="group"
+      aria-label={ariaLabel}
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded-xl bg-surface-sunken p-1 ring-1 ring-hairline ${className ?? ""}`}
+    >
+      {items.map((it) => {
+        const on = it.value === value;
+        const cls = `${itemBase} ${on ? activeCls : idleCls}`;
+        return it.href ? (
+          <Link
+            key={it.value}
+            href={it.href}
+            scroll={false}
+            title={it.title}
+            aria-current={on ? "true" : undefined}
+            className={cls}
+          >
+            {it.label}
+          </Link>
+        ) : (
+          <button
+            key={it.value}
+            type="button"
+            onClick={it.onClick}
+            title={it.title}
+            aria-pressed={on}
+            className={`${cls} ${on ? "" : "active:scale-[0.97]"}`}
+          >
+            {it.label}
+          </button>
+        );
+      })}
+    </span>
+  );
+}

@@ -58,7 +58,7 @@ export function AppSelect({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex h-10 w-full items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 text-sm text-neutral-900 transition-colors hover:border-neutral-300"
+        className="flex h-10 w-full items-center gap-2 rounded-xl bg-surface px-3 text-sm text-neutral-900 shadow-[inset_0_1px_2px_rgb(9_9_11/0.04)] ring-1 ring-hairline transition hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/45"
       >
         {selected ? (
           <>
@@ -84,21 +84,23 @@ export function AppSelect({
       {open && (
         <ul
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+4px)] z-40 max-h-60 overflow-y-auto rounded-xl border border-neutral-200 bg-white py-1 shadow-lg"
+          className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 max-h-60 animate-fade-up overflow-y-auto rounded-xl bg-surface py-1 shadow-raised ring-1 ring-hairline inset-shadow-highlight"
         >
           {allowNone && (
             <li>
               <button
                 type="button"
+                role="option"
+                aria-selected={value === ""}
                 onClick={() => {
                   setValue("");
                   setOpen(false);
                 }}
-                className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm text-neutral-500 hover:bg-neutral-50 ${
-                  value === "" ? "bg-neutral-50" : ""
+                className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm text-neutral-500 transition-colors hover:bg-neutral-900/[0.03] ${
+                  value === "" ? "bg-neutral-900/[0.04]" : ""
                 }`}
               >
-                <span className="h-5 w-5 shrink-0 rounded-md border border-dashed border-neutral-300" />
+                <span className="h-5 w-5 shrink-0 rounded-md border border-dashed border-hairline-strong" />
                 {noneLabel}
               </button>
             </li>
@@ -107,18 +109,20 @@ export function AppSelect({
             <li key={a.id}>
               <button
                 type="button"
+                role="option"
+                aria-selected={value === a.id}
                 onClick={() => {
                   setValue(a.id);
                   setOpen(false);
                 }}
-                className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm hover:bg-neutral-50 ${
-                  value === a.id ? "bg-neutral-50" : ""
+                className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-neutral-900/[0.03] ${
+                  value === a.id ? "bg-neutral-900/[0.04]" : ""
                 }`}
               >
                 <WorkspaceMark name={a.name} logoUrl={a.logoUrl} size={20} />
                 <span className="min-w-0 flex-1 truncate">{a.name}</span>
                 {value === a.id && (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0 text-accent">
                     <path d="m5 13 4 4L19 7" />
                   </svg>
                 )}

@@ -8,7 +8,7 @@ import type {
   ResearchDiscordMessage,
   ResearchDiscordUser,
 } from "@/lib/types";
-import { Avatar, Card, EmptyState, StatusBadge } from "@/components/ui";
+import { Avatar, Card, EmptyState, Segmented, StatusBadge } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { NICHE_PALETTE } from "../../scripts/cal";
 import { DiscordLink } from "@/components/discord-link";
@@ -143,92 +143,97 @@ export default async function DiscordChannelPage({
 
   return (
     <>
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link
-            href="/discord"
-            className="text-sm text-neutral-400 transition-colors hover:text-neutral-900"
+      <div className="mb-5">
+        <Link
+          href="/discord"
+          className="group inline-flex items-center gap-1 text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-900"
+        >
+          <span
+            aria-hidden
+            className="transition-transform duration-200 ease-fluid group-hover:-translate-x-0.5"
           >
-            ← Discord
-          </Link>
-          <span className="flex items-center gap-2.5">
-            <Avatar name={creator?.handle ?? channel.channel_name ?? "?"} src={creator?.avatar_url} size={32} />
-            <span>
-              <span className="flex items-center gap-2 text-[20px] font-bold tracking-tight">
-                <DiscordLink
-                  href={channelUrl(channel.guild_id, channel.channel_id)}
-                  title={`Open #${channel.channel_name} in Discord`}
-                  className="hover:underline"
-                >
-                  {channel.channel_name}
-                </DiscordLink>
-                <StatusBadge status={channel.category === NOT_CREATING ? "Not creating" : "Creating"} />
-                {channel.niche && (
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${nicheClass(channel.niche)}`}
-                  >
-                    {channel.niche}
-                  </span>
-                )}
-              </span>
-              <span className="block text-xs text-neutral-400">
-                {creator ? (
-                  <>
-                    <Link href={`/research/${creator.id}`} className="hover:underline">
-                      @{creator.handle}
-                    </Link>
-                    {creator.discord_username ? ` · ${creator.discord_username}` : ""}
-                  </>
-                ) : (
-                  "not linked to a roster creator"
-                )}
-              </span>
-            </span>
+            ←
           </span>
+          Discord
+        </Link>
+        <div className="mt-2.5 flex items-start gap-3.5">
+          <Avatar
+            name={creator?.handle ?? channel.channel_name ?? "?"}
+            src={creator?.avatar_url}
+            size={44}
+          />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <DiscordLink
+                href={channelUrl(channel.guild_id, channel.channel_id)}
+                title={`Open #${channel.channel_name} in Discord`}
+                className="truncate font-mono text-[20px] font-semibold tracking-tight text-neutral-900 hover:underline"
+              >
+                {channel.channel_name}
+              </DiscordLink>
+              <StatusBadge status={channel.category === NOT_CREATING ? "Not creating" : "Creating"} />
+              {channel.niche && (
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${nicheClass(channel.niche)}`}
+                >
+                  {channel.niche}
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-sm">
+              {creator ? (
+                <>
+                  <Link
+                    href={`/research/${creator.id}`}
+                    className="font-mono text-neutral-600 underline-offset-2 hover:text-neutral-900 hover:underline"
+                  >
+                    @{creator.handle}
+                  </Link>
+                  {creator.discord_username ? (
+                    <span className="font-mono text-neutral-400"> · {creator.discord_username}</span>
+                  ) : null}
+                </>
+              ) : (
+                <span className="text-neutral-400">not linked to a roster creator</span>
+              )}
+            </p>
+          </div>
         </div>
       </div>
 
       {summary && (
-        <div className="mb-5 flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4">
-          {summary.status && <StatusBadge status={summary.status} />}
-          <p className="text-sm leading-snug text-neutral-600">{summary.summary}</p>
+        <div className="mb-5 rounded-2xl bg-surface p-4 shadow-ambient ring-1 ring-hairline">
+          <div className="flex items-center gap-2">
+            {summary.status && <StatusBadge status={summary.status} />}
+            <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-neutral-400">
+              where things stand
+            </span>
+          </div>
+          <p className="mt-2 text-sm leading-relaxed text-neutral-600">{summary.summary}</p>
         </div>
       )}
 
       <Card
         title={`Feed${messages.length === FEED_LIMIT ? ` — last ${FEED_LIMIT}` : ""}`}
+        subtitle={`${total} message${total === 1 ? "" : "s"} across all roles`}
         action={
-          <span className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
-            <Link
-              href={hrefWith(null)}
-              className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
-                !role ? "bg-white font-semibold text-neutral-900 shadow-sm" : "text-neutral-500 hover:text-neutral-900"
-              }`}
-            >
-              All · {total}
-            </Link>
-            {roleCounts.map(([r, n]) =>
-              n > 0 ? (
-                <Link
-                  key={r}
-                  href={hrefWith(r)}
-                  className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
-                    role === r
-                      ? "bg-white font-semibold text-neutral-900 shadow-sm"
-                      : "text-neutral-500 hover:text-neutral-900"
-                  }`}
-                >
-                  {r} · {n}
-                </Link>
-              ) : null
-            )}
-          </span>
+          <Segmented
+            size="sm"
+            value={role ?? "all"}
+            aria-label="Filter feed by author role"
+            items={[
+              { value: "all", label: `All · ${total}`, href: hrefWith(null) },
+              ...roleCounts
+                .filter(([, n]) => n > 0)
+                .map(([r, n]) => ({ value: r, label: `${r} · ${n}`, href: hrefWith(r) })),
+            ]}
+          />
         }
       >
         {messages.length === 0 ? (
           <EmptyState message="No messages here yet." />
         ) : (
-          <ul className="divide-y divide-neutral-100">
+          <ul className="divide-y divide-black/[0.05]">
             {messages.map((m) => {
               const name =
                 (m.author_discord_user_id && names.get(m.author_discord_user_id)) ||
@@ -237,42 +242,44 @@ export default async function DiscordChannelPage({
               const jump = messageUrl(channel.guild_id, channel.channel_id, m.message_id);
               const text = cleanSnippet(m.content, names, channelNames);
               return (
-                <li key={m.id} className="flex gap-3 py-3">
-                  <Avatar name={name} size={26} />
+                <li key={m.id} className="flex gap-3.5 py-4">
+                  <Avatar name={name} size={30} />
                   <div className="min-w-0 flex-1">
-                    <p className="flex flex-wrap items-center gap-2 text-xs">
-                      <span className="font-semibold text-neutral-900">{name}</span>
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <span className="text-sm font-semibold text-neutral-900">{name}</span>
                       <span
-                        className={`rounded px-1.5 py-px font-medium ${
+                        className={`rounded-md px-1.5 py-px text-[11px] font-medium ${
                           ROLE_CHIP[m.author_role] ?? ROLE_CHIP.unknown
                         }`}
                       >
                         {m.author_role}
                       </span>
-                      <span className="text-neutral-400">{formatDateTime(m.posted_at)}</span>
-                    </p>
+                      <span className="font-mono text-[11px] text-neutral-400">
+                        {formatDateTime(m.posted_at)}
+                      </span>
+                    </div>
                     {text && (
                       <DiscordLink
                         href={jump}
                         title="Open this message in Discord"
-                        className="mt-1 block whitespace-pre-wrap break-words text-sm text-neutral-700 hover:text-neutral-900"
+                        className="mt-1 block break-words whitespace-pre-wrap text-sm leading-relaxed text-neutral-700 transition-colors hover:text-neutral-900"
                       >
                         {text}
                       </DiscordLink>
                     )}
                     {m.attachments.length > 0 && (
-                      <p className="mt-1 flex flex-wrap gap-2">
+                      <div className="mt-2 flex flex-wrap gap-1.5">
                         {m.attachments.map((a, i) => (
                           <DiscordLink
                             key={a.id ?? i}
                             href={jump}
                             title="Open this media in Discord"
-                            className="rounded-md bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 hover:bg-neutral-200"
+                            className="inline-flex items-center gap-1 rounded-lg bg-surface-sunken px-2 py-1 text-xs text-neutral-600 ring-1 ring-inset ring-hairline transition hover:bg-surface-muted hover:text-neutral-900"
                           >
                             📎 {a.filename ?? "attachment"}
                           </DiscordLink>
                         ))}
-                      </p>
+                      </div>
                     )}
                   </div>
                 </li>

@@ -7,7 +7,7 @@ import type {
   ResearchDiscordUser,
 } from "@/lib/types";
 import {
-  Avatar, Card, EmptyState, KpiCard, PageHeader, StatusBadge,
+  Avatar, Card, EmptyState, KpiCard, PageHeader, Segmented, StatusBadge,
 } from "@/components/ui";
 import { formatCompact } from "@/lib/format";
 import { NICHE_PALETTE } from "../scripts/cal";
@@ -124,7 +124,6 @@ export default async function DiscordPage({
     string,
     { count: number; recent: ResearchDiscordMessage[]; last: string | null }
   >();
-  const roleCounts: Record<string, number> = {};
   let attachmentCount = 0;
   for (const m of messages) {
     const s =
@@ -133,7 +132,6 @@ export default async function DiscordPage({
     s.count += 1;
     if (s.recent.length < SNAPSHOT_MESSAGES) s.recent.push(m);
     if (!s.last) s.last = m.posted_at;
-    roleCounts[m.author_role] = (roleCounts[m.author_role] ?? 0) + 1;
     attachmentCount += m.attachments?.length ?? 0;
   }
 
@@ -161,6 +159,20 @@ export default async function DiscordPage({
 
   const creating = channels.filter((c) => c.category !== NOT_CREATING).length;
   const linked = channels.filter((c) => c.research_creator_id).length;
+  const pausedCount = channels.length - creating;
+  const unlinked = channels.length - linked;
+  // Activity split across the creating channels: a creator who posted in the
+  // last week reads as active, everyone else (quiet or never) as stalled.
+  const nowMs = Date.now();
+  const WEEK_MS = 7 * 86_400_000;
+  let active = 0;
+  let stalled = 0;
+  for (const ch of channels) {
+    if (ch.category === NOT_CREATING) continue;
+    const last = statsByChannel.get(ch.channel_id)?.last ?? null;
+    if (last && nowMs - new Date(last).getTime() < WEEK_MS) active += 1;
+    else stalled += 1;
+  }
   // Roster creators not yet claimed by a channel — the link dropdown's options.
   const linkedCreatorIds = new Set(
     channels.map((c) => c.research_creator_id).filter(Boolean)
@@ -178,130 +190,86 @@ export default async function DiscordPage({
 
   return (
     <>
-      <PageHeader title="Discord" />
-      <p className="-mt-4 mb-5 max-w-3xl text-sm text-neutral-500">
-        Every coaching channel on the Folk UGC server: an AI summary of where each creator&apos;s
-        workflow stands and the last few messages. The local worker pulls every minute, re-summarizes
-        what changed every 15, and syncs launchpoint scripts into Scripts automatically.
-      </p>
+      <PageHeader
+        title="Discord"
+        subtitle="Every coaching channel on the Folk UGC server: the AI read on where each creator's workflow stands, plus their latest messages. The local worker pulls every minute, re-summarizes every 15, and syncs Launchpoint scripts into Scripts automatically."
+      />
 
       {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-700">
+        <div className="mb-4 rounded-xl bg-danger/[0.1] px-3.5 py-2.5 text-sm text-danger ring-1 ring-inset ring-danger/[0.22]">
           {error}
-        </p>
+        </div>
       )}
 
-      <div className="mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="stagger-children mb-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
-          label="Creators"
+          label="Channels"
           value={String(channels.length)}
-          sub={`${creating} creating · ${channels.length - creating} not creating`}
+          sub={`${creating} creating · ${pausedCount} not creating`}
           icon="users"
           tone="neutral"
         />
         <KpiCard
-          label="Messages"
-          value={formatCompact(messages.length)}
-          sub={`${linked}/${channels.length} channels linked to roster`}
-          icon="trend"
-          tone="sky"
+          label="Active"
+          value={String(active)}
+          sub="creator messaged in the last 7 days"
+          icon="check"
+          tone="emerald"
         />
         <KpiCard
-          label="Drafts / media"
-          value={formatCompact(attachmentCount)}
-          sub="attachments shared in channels"
-          icon="play"
-          tone="violet"
+          label="Stalled"
+          value={String(stalled)}
+          sub="creating, but quiet 7+ days"
+          icon="clock"
+          tone={stalled ? "amber" : "neutral"}
         />
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
-          <span className="block text-xs font-medium text-neutral-500">Message roles</span>
-          {(() => {
-            // Stacked role bar + legend, same palette as the old dashboard
-            // (creator blue, coach amber, launchpoint green, unknown gray).
-            const total = Math.max(1, messages.length);
-            const segs = [
-              ["creator", "bg-blue-500"],
-              ["coach", "bg-amber-500"],
-              ["launchpoint", "bg-green-500"],
-              ["unknown", "bg-[#cbd2e0]"],
-            ] as const;
-            return (
-              <>
-                <span className="mt-2 mb-1.5 flex h-3 overflow-hidden rounded-full bg-neutral-100">
-                  {segs.map(([role, color]) => (
-                    <span
-                      key={role}
-                      className={`block h-full ${color}`}
-                      style={{ width: `${(((roleCounts[role] ?? 0) / total) * 100).toFixed(1)}%` }}
-                      title={`${role}: ${roleCounts[role] ?? 0}`}
-                    />
-                  ))}
-                </span>
-                <span className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] text-neutral-500">
-                  {segs.map(([role, color]) => (
-                    <span key={role} className="flex items-center gap-1">
-                      <span className={`inline-block h-2 w-2 rounded-sm ${color}`} />
-                      {role}{" "}
-                      <b className="font-semibold text-neutral-900">
-                        {formatCompact(roleCounts[role] ?? 0)}
-                      </b>
-                    </span>
-                  ))}
-                </span>
-              </>
-            );
-          })()}
-        </div>
+        <KpiCard
+          label="Unlinked"
+          value={String(unlinked)}
+          sub="no roster creator linked yet"
+          icon="alert"
+          tone={unlinked ? "amber" : "neutral"}
+        />
       </div>
 
       <Card
-        title={`${rows.length} creator${rows.length === 1 ? "" : "s"}`}
+        title="Channels"
+        subtitle={`${rows.length} of ${channels.length} shown · ${linked} linked · ${formatCompact(messages.length)} messages`}
         action={
-          <span className="flex items-center gap-2">
-            <span className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-0.5">
-              {(
-                [
-                  ["all", "All"],
-                  ["creating", "Creating"],
-                  ["paused", "Not creating"],
-                ] as const
-              ).map(([key, label]) => (
-                <Link
-                  key={key}
-                  href={hrefWith(key)}
-                  className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
-                    status === key
-                      ? "bg-white font-semibold text-neutral-900 shadow-sm"
-                      : "text-neutral-500 hover:text-neutral-900"
-                  }`}
-                >
-                  {label}
-                </Link>
-              ))}
-            </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Segmented
+              size="sm"
+              value={status}
+              aria-label="Filter channels by state"
+              items={[
+                { value: "all", label: "All", href: hrefWith("all") },
+                { value: "creating", label: "Creating", href: hrefWith("creating") },
+                { value: "paused", label: "Not creating", href: hrefWith("paused") },
+              ]}
+            />
             <form method="GET" action="/discord">
               {status !== "all" && <input type="hidden" name="status" value={status} />}
               <input
                 name="q"
                 defaultValue={q ?? ""}
-                placeholder="Filter by creator, niche, or channel…"
-                className="w-56 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs placeholder:text-neutral-300 focus:border-neutral-400 focus:outline-none"
+                placeholder="Filter by creator or niche…"
+                className="w-52 rounded-lg bg-surface px-3 py-1.5 text-xs text-neutral-900 shadow-[inset_0_1px_2px_rgb(9_9_11/0.04)] ring-1 ring-hairline transition placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent/45"
               />
             </form>
-          </span>
+          </div>
         }
       >
         {rows.length === 0 ? (
           <EmptyState message="No channels match — the worker's discover step fills this page." />
         ) : (
-          <div className="hidden gap-4 border-b border-neutral-100 pb-2 text-[11px] font-medium uppercase tracking-wider text-neutral-400 lg:grid lg:grid-cols-[200px_minmax(0,5fr)_minmax(0,6fr)_70px]">
-            <span>Creator</span>
+          <div className="hidden gap-4 border-b border-hairline pb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-400 lg:grid lg:grid-cols-[200px_minmax(0,5fr)_minmax(0,6fr)_70px]">
+            <span>Creator &amp; state</span>
             <span>Summary</span>
             <span>Recent</span>
             <span />
           </div>
         )}
-        <ul className="divide-y divide-neutral-100">
+        <ul className="divide-y divide-black/[0.05]">
           {rows.map(({ ch, creator, stats, summary, paused, name }) => (
             <li
               key={ch.channel_id}
@@ -328,40 +296,44 @@ export default async function DiscordPage({
                       href={creator.profile_url ?? `https://www.instagram.com/${creator.handle}/`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block truncate text-[11px] text-neutral-400 underline-offset-2 hover:text-neutral-900 hover:underline"
+                      className="block truncate font-mono text-[11px] text-neutral-400 underline-offset-2 hover:text-neutral-900 hover:underline"
                       title="Open their Instagram"
                     >
                       @{creator.handle}
                     </a>
                   )}
-                  <p className="mt-1 flex flex-wrap items-center gap-1">
-                    {ch.niche ? (
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    {!creator && <StatusBadge status="Unlinked" tone="warning" />}
+                    {paused ? (
+                      <StatusBadge status="Not creating" />
+                    ) : (
+                      creator && !ch.niche && <StatusBadge status="Creating" />
+                    )}
+                    {ch.niche && (
                       <span
                         className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${nicheClass(ch.niche)}`}
                       >
                         {ch.niche}
                       </span>
-                    ) : (
-                      <StatusBadge status={paused ? "Not creating" : "Creating"} />
                     )}
-                  </p>
+                  </div>
                   {!creator && (
-                    <form action={linkChannelToCreator} className="mt-1.5 flex items-center gap-1">
+                    <form action={linkChannelToCreator} className="mt-2 flex items-center gap-1.5">
                       <input type="hidden" name="channelId" value={ch.channel_id} />
                       <input
                         name="creator"
                         list="roster-creator-handles"
                         required
                         placeholder="link @instagram…"
-                        className="w-36 rounded-md border border-neutral-200 bg-white px-1.5 py-0.5 text-xs text-neutral-700 placeholder:text-neutral-300 focus:border-neutral-400 focus:outline-none"
+                        className="w-36 rounded-lg bg-surface px-2 py-1 font-mono text-xs text-neutral-700 shadow-[inset_0_1px_2px_rgb(9_9_11/0.04)] ring-1 ring-hairline transition placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent/45"
                         title="Type the creator's Instagram handle or profile URL — a new one is added to the roster and queued for scraping"
                       />
                       <button
                         type="submit"
-                        className="text-xs text-neutral-400 hover:text-neutral-900"
+                        className="rounded-lg bg-neutral-900 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-neutral-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
                         title="Link this channel to the creator"
                       >
-                        ✓
+                        Link
                       </button>
                     </form>
                   )}
@@ -375,13 +347,13 @@ export default async function DiscordPage({
                     <p className="mt-1 text-sm leading-snug text-neutral-600">{summary.summary}</p>
                   </>
                 ) : (
-                  <p className="text-sm text-neutral-300">summary pending…</p>
+                  <p className="text-sm text-neutral-400">summary pending…</p>
                 )}
               </div>
 
               <div className="min-w-0">
                 {stats.recent.length === 0 ? (
-                  <p className="text-xs text-neutral-300">no messages yet</p>
+                  <p className="text-xs text-neutral-400">no messages yet</p>
                 ) : (
                   <ul className="space-y-1">
                     {stats.recent.map((m, i) => {
@@ -393,7 +365,7 @@ export default async function DiscordPage({
                       return (
                         <li key={i} className="flex items-start gap-1.5 text-xs">
                           <span
-                            className={`max-w-24 shrink-0 truncate rounded px-1.5 py-px font-semibold ${
+                            className={`max-w-24 shrink-0 truncate rounded-md px-1.5 py-px font-semibold ${
                               ROLE_CHIP[m.author_role] ?? ROLE_CHIP.unknown
                             }`}
                             title={m.author_role}
@@ -417,13 +389,19 @@ export default async function DiscordPage({
                 )}
               </div>
 
-              <div className="text-right text-xs whitespace-nowrap text-neutral-400">
-                <p>{relativeTime(stats.last)}</p>
+              <div className="whitespace-nowrap text-right text-xs text-neutral-400">
+                <p className="font-mono">{relativeTime(stats.last)}</p>
                 <Link
                   href={`/discord/${ch.channel_id}`}
-                  className="mt-1 inline-block text-neutral-400 underline-offset-2 hover:text-neutral-900 hover:underline"
+                  className="group mt-1 inline-flex items-center gap-0.5 font-medium text-neutral-500 transition-colors hover:text-neutral-900"
                 >
-                  feed →
+                  feed
+                  <span
+                    aria-hidden
+                    className="transition-transform duration-200 ease-fluid group-hover:translate-x-0.5"
+                  >
+                    →
+                  </span>
                 </Link>
               </div>
             </li>

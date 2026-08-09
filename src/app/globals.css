@@ -1,10 +1,147 @@
-@import "tailwindcss";
+/* Scope automatic content detection to src/. Tailwind v4 otherwise scans the
+   whole repo (CLAUDE.md, docs, the Python worker…) and misreads stray bracket
+   tokens like `[lp:<md5(body)[:10]>]` as arbitrary-property classes, emitting
+   invalid CSS that drops the entire stylesheet at build time. All templates
+   live under src/, so this both fixes that and speeds up scanning. */
+@import "tailwindcss" source("..");
 
-body {
-  @apply bg-[#fafafa] text-neutral-900 antialiased;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+/* ============================================================================
+   Design tokens — "Soft Structuralism, refined".
+   Near-white machined canvas, hairline rings (never solid gray), ultra-soft
+   layered ambient shadows, confident Geist grotesk type. Every surface in the
+   app builds on these tokens; reach for them instead of scattering *-50/*-200
+   literals so the visual language lives in exactly one place.
+   ========================================================================= */
+@theme {
+  /* Type — Geist, wired to the CSS vars the font loader sets on <html>.
+     layout.tsx must add GeistSans.variable + GeistMono.variable for these. */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", "SFMono-Regular",
+    Menlo, Monaco, monospace;
+
+  /* Neutral surface ramp — a light machined stack: page → bezel → core → well.
+     Explicit hex so elevation reads the same everywhere. */
+  --color-canvas: #fafafa; /* app background (matches the app shell) */
+  --color-surface: #ffffff; /* raised card core */
+  --color-surface-muted: #fbfbfc; /* outer bezel / quiet raised surface */
+  --color-surface-sunken: #f4f4f5; /* sunken wells, table headers, inputs */
+
+  /* Hairlines — low-alpha rings that replace 1px gray borders. */
+  --color-hairline: rgb(9 9 11 / 0.07);
+  --color-hairline-strong: rgb(9 9 11 / 0.12);
+
+  /* Accent + semantic tones. Kept at text-ready lightness (~52%) so the token
+     itself is legible as text/icon; derive tints and rings with alpha
+     (bg-success/[0.1], ring-danger/[0.22]) rather than one-off *-50/*-700. */
+  --color-accent: oklch(52% 0.2 264);
+  --color-accent-fg: #ffffff; /* text/icon on a filled accent surface */
+  --color-success: oklch(52% 0.13 162);
+  --color-warning: oklch(52% 0.12 74);
+  --color-danger: oklch(53% 0.21 27);
+  --color-info: oklch(53% 0.16 245);
+
+  /* Shadows — highly diffused, multi-layer, very low alpha. Never shadow-md or
+     a single harsh rgba. Ambient = resting card, raised = hover/engaged. */
+  --shadow-ambient: 0 1px 1px rgb(9 9 11 / 0.03), 0 2px 4px rgb(9 9 11 / 0.03),
+    0 6px 12px rgb(9 9 11 / 0.035), 0 14px 28px rgb(9 9 11 / 0.035);
+  --shadow-raised: 0 1px 1px rgb(9 9 11 / 0.03), 0 3px 6px rgb(9 9 11 / 0.04),
+    0 10px 20px rgb(9 9 11 / 0.05), 0 24px 48px rgb(9 9 11 / 0.06);
+  /* Inset top catch-light for machined inner cores; composes with shadow-*. */
+  --inset-shadow-highlight: inset 0 1px 0 0 rgb(255 255 255 / 0.9);
+
+  /* House easing — one confident decelerating curve for every transition. */
+  --ease-fluid: cubic-bezier(0.32, 0.72, 0, 1);
+  /* Promote it to the default so even bare `transition`/`transition-colors`
+     inherited from anywhere in the app feel designed, not linear. */
+  --default-transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+  --default-transition-duration: 180ms;
+
+  /* Entry motion — translateY + opacity only. Never blur a large surface on
+     entry; it thrashes the GPU on 30-row tables. */
+  --animate-fade-up: fade-up 0.5s var(--ease-fluid) both;
 }
 
-::selection {
-  @apply bg-neutral-200 text-neutral-900;
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-canvas text-neutral-900 antialiased;
+    /* Geist stylistic sets: straighter a/g and calmer punctuation for scanning. */
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Tinted selection instead of flat gray — small thing, reads considered. */
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-accent) 20%, transparent);
+    color: var(--color-neutral-900);
+  }
+}
+
+@layer utilities {
+  /* Staggered entry: wrap a list/grid, its direct children fade-up in sequence.
+     Capped at 10 — the point is the first screenful; long tables past that
+     share the final delay (and we never animate the whole table at once). */
+  .stagger-children > * {
+    animation: fade-up 0.5s var(--ease-fluid) both;
+  }
+  .stagger-children > *:nth-child(1) {
+    animation-delay: 0ms;
+  }
+  .stagger-children > *:nth-child(2) {
+    animation-delay: 40ms;
+  }
+  .stagger-children > *:nth-child(3) {
+    animation-delay: 80ms;
+  }
+  .stagger-children > *:nth-child(4) {
+    animation-delay: 120ms;
+  }
+  .stagger-children > *:nth-child(5) {
+    animation-delay: 160ms;
+  }
+  .stagger-children > *:nth-child(6) {
+    animation-delay: 200ms;
+  }
+  .stagger-children > *:nth-child(7) {
+    animation-delay: 240ms;
+  }
+  .stagger-children > *:nth-child(8) {
+    animation-delay: 280ms;
+  }
+  .stagger-children > *:nth-child(9) {
+    animation-delay: 320ms;
+  }
+  .stagger-children > *:nth-child(n + 10) {
+    animation-delay: 360ms;
+  }
+}
+
+/* Accessibility — reduced motion kills transforms/animations outright. This is
+   non-negotiable: no fade-up, no scale, effectively-instant transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .stagger-children > *,
+  .animate-fade-up {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }

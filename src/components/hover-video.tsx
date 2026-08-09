@@ -8,6 +8,13 @@ const PlayGlyph = () => (
   </svg>
 );
 
+const Spinner = () => (
+  <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" className="opacity-30" />
+    <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+  </svg>
+);
+
 /** Grid-card media. Renders a lazily-decoded poster frame and only mounts the
  *  <video> element once the card is actually hovered — a page of 200 cards
  *  otherwise costs 200 live video elements, which is what made the grid crawl.
@@ -23,6 +30,7 @@ const PlayGlyph = () => (
 export function HoverVideo({ src, poster }: { src: string | null; poster: string | null }) {
   const [hovered, setHovered] = useState(false);
   const [posterFailed, setPosterFailed] = useState(false);
+  const [ready, setReady] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Callback ref: the element only exists from the moment hover mounts it, so
@@ -30,6 +38,9 @@ export function HoverVideo({ src, poster }: { src: string | null; poster: string
   const startPlayback = (v: HTMLVideoElement | null) => {
     videoRef.current = v;
     if (!v) return;
+    // Guard the cross-fade against a cached video that already has a frame
+    // before React's onLoadedData can attach — otherwise it stays invisible.
+    if (v.readyState >= 2) setReady(true);
     v.muted = false;
     void v.play().catch(() => {
       v.muted = true;
@@ -39,37 +50,58 @@ export function HoverVideo({ src, poster }: { src: string | null; poster: string
 
   return (
     <span
-      className="absolute inset-0 block"
+      className="absolute inset-0 block overflow-hidden"
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseLeave={() => {
+        setHovered(false);
+        setReady(false);
+      }}
     >
-      {poster && !posterFailed ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={poster}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-          onError={() => setPosterFailed(true)}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      ) : (
-        <span className="absolute inset-0 flex items-center justify-center bg-neutral-100 text-neutral-300">
-          <PlayGlyph />
-        </span>
-      )}
+      <span
+        className={`absolute inset-0 transition-transform duration-700 ${
+          hovered ? "scale-[1.04]" : "scale-100"
+        }`}
+      >
+        {poster && !posterFailed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={poster}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={() => setPosterFailed(true)}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <span className="absolute inset-0 flex items-center justify-center bg-surface-sunken text-neutral-300">
+            <PlayGlyph />
+          </span>
+        )}
 
-      {src && hovered && (
-        <video
-          ref={startPlayback}
-          src={src}
-          loop
-          playsInline
-          autoPlay
-          preload="auto"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
+        {src && hovered && (
+          <video
+            ref={startPlayback}
+            src={src}
+            loop
+            playsInline
+            autoPlay
+            preload="auto"
+            onLoadedData={() => setReady(true)}
+            onCanPlay={() => setReady(true)}
+            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${
+              ready ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        )}
+      </span>
+
+      {/* Buffering hint while the first frame decodes; the poster shows through
+          underneath, then cross-fades to the video once it can paint. */}
+      {src && hovered && !ready && (
+        <span className="pointer-events-none absolute bottom-1.5 right-1.5 text-white/85 drop-shadow-[0_1px_2px_rgb(9_9_11/0.5)]">
+          <Spinner />
+        </span>
       )}
     </span>
   );
@@ -82,7 +114,7 @@ export function Thumb({ src, className }: { src: string | null; className: strin
 
   if (!src || failed) {
     return (
-      <span className={`flex items-center justify-center bg-neutral-100 text-neutral-300 ${className}`}>
+      <span className={`flex items-center justify-center bg-surface-sunken text-neutral-300 ${className}`}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="m10 9 5 3-5 3V9Z" />
         </svg>

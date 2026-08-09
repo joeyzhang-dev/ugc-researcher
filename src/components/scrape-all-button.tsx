@@ -12,6 +12,15 @@ import type { ResearchCreatorKind } from "@/lib/types";
 
 type Phase = "idle" | "queuing" | "running" | "stopping";
 
+function Spinner({ className = "" }: { className?: string }) {
+  return (
+    <svg className={`animate-spin ${className}`} width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" className="opacity-25" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /**
  * "Scrape all" button plus the loop that works through the queue.
  *
@@ -119,54 +128,112 @@ export function ScrapeAllButton({
   };
 
   const busy = phase !== "idle";
+  // Display-only progress. `remaining` is the live queue depth the server
+  // reports each drain; processed + remaining tracks the initial batch size.
+  const processed = done + failed;
+  const total = processed + remaining;
+  const pct = total > 0 ? Math.round((processed / total) * 100) : 0;
 
   return (
-    <span className="flex flex-wrap items-center gap-2">
+    <span className="flex flex-wrap items-center gap-2.5">
       {busy ? (
         <button
           type="button"
           onClick={stop}
           disabled={phase === "stopping"}
-          className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-full bg-danger/[0.1] px-3 py-1.5 text-xs font-medium text-danger ring-1 ring-inset ring-danger/[0.22] transition hover:bg-danger/[0.16] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:pointer-events-none disabled:opacity-60"
         >
-          {phase === "stopping" ? "Stopping…" : "Stop"}
+          {phase === "stopping" ? (
+            <>
+              <Spinner />
+              Stopping…
+            </>
+          ) : (
+            <>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <rect x="6" y="6" width="12" height="12" rx="2" />
+              </svg>
+              Stop
+            </>
+          )}
         </button>
       ) : (
         <button
           type="button"
           onClick={start}
-          className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-neutral-700"
+          className="inline-flex items-center gap-1.5 rounded-full bg-neutral-900 px-3.5 py-1.5 text-xs font-medium text-white shadow-ambient transition hover:bg-neutral-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
         >
           {label}
-          {remaining > 0 ? ` (${remaining} queued)` : ""}
+          {remaining > 0 && (
+            <span className="rounded-full bg-white/15 px-1.5 py-px font-mono text-[10px] tabular-nums">
+              {remaining}
+            </span>
+          )}
         </button>
       )}
 
       {busy && (
-        <span className="text-xs text-neutral-500">
-          {phase === "queuing"
-            ? "Queuing…"
-            : current
-              ? `Scraping @${current} · ${remaining} left`
-              : `${remaining} left`}
+        <span className="inline-flex items-center gap-2">
+          <Spinner className="text-neutral-400" />
+          <span className="text-xs text-neutral-500">
+            {phase === "queuing" ? (
+              "Queuing…"
+            ) : current ? (
+              <>
+                Scraping <span className="font-mono text-neutral-700">@{current}</span>
+              </>
+            ) : (
+              "Working…"
+            )}
+          </span>
+          {phase !== "queuing" && total > 0 && (
+            <span className="inline-flex items-center gap-2">
+              <span
+                role="progressbar"
+                aria-valuenow={pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                className="block h-1.5 w-24 overflow-hidden rounded-full bg-surface-sunken ring-1 ring-hairline"
+              >
+                <span
+                  className="block h-full rounded-full bg-neutral-900 transition-[width] duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              </span>
+              <span className="font-mono text-[11px] tabular-nums text-neutral-400">
+                {processed}/{total}
+              </span>
+            </span>
+          )}
         </span>
       )}
 
       {!busy && (done > 0 || failed > 0) && (
-        <span className="text-xs text-neutral-500">
-          Done: {done} scraped{failed > 0 ? `, ${failed} failed` : ""}
+        <span className="inline-flex items-center gap-1.5 text-xs">
+          <span className="inline-flex items-center gap-1 rounded-full bg-success/[0.1] px-2 py-0.5 font-medium text-success ring-1 ring-inset ring-success/[0.22]">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden>
+              <path d="m5 13 4 4L19 7" />
+            </svg>
+            {done} scraped
+          </span>
+          {failed > 0 && (
+            <span className="rounded-full bg-danger/[0.1] px-2 py-0.5 font-medium text-danger ring-1 ring-inset ring-danger/[0.22]">
+              {failed} failed
+            </span>
+          )}
         </span>
       )}
 
       {error && (
-        <span className="max-w-md truncate text-xs text-red-600" title={error}>
+        <span
+          className="max-w-md truncate rounded-full bg-danger/[0.1] px-2 py-0.5 text-xs text-danger ring-1 ring-inset ring-danger/[0.22]"
+          title={error}
+        >
           {error}
         </span>
       )}
 
-      {busy && (
-        <span className="text-[11px] text-neutral-400">Keep this tab open</span>
-      )}
+      {busy && <span className="text-[11px] text-neutral-400">Keep this tab open</span>}
     </span>
   );
 }

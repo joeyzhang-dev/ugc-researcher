@@ -1,5 +1,5 @@
-import Link from "next/link";
 import type { ResearchVideo } from "@/lib/types";
+import { Segmented } from "@/components/ui";
 import { CustomRange } from "@/components/custom-range";
 
 // Recency is the point of the research pool — these presets slice every view by
@@ -55,35 +55,19 @@ export function RangePicker({
   hrefForDays: (d: DayPreset | null) => string;
   className?: string;
 }) {
-  const base = "rounded-md px-2.5 py-1 text-xs transition-colors";
-  const active = "bg-neutral-900 font-medium text-white";
-  const idle = "text-neutral-500 hover:text-neutral-900";
+  const isCustom = days != null && !(DAY_PRESETS as readonly number[]).includes(days);
+  const items = [
+    { value: "all", label: "All", href: hrefForDays(null) },
+    ...DAY_PRESETS.map((d) => ({ value: String(d), label: `${d}d`, href: hrefForDays(d) })),
+  ];
+  // When Custom holds the window, no preset is active — pass a value no segment
+  // owns so the whole preset track reads idle and Custom carries the highlight.
+  const value = isCustom ? "custom" : days == null ? "all" : String(days);
+
   return (
-    <span
-      className={`inline-flex shrink-0 rounded-lg border border-neutral-200 bg-white p-0.5 ${className}`}
-    >
-      <Link
-        href={hrefForDays(null)}
-        scroll={false}
-        className={`${base} ${days == null ? active : idle}`}
-      >
-        All
-      </Link>
-      {DAY_PRESETS.map((d) => (
-        <Link
-          key={d}
-          href={hrefForDays(d)}
-          scroll={false}
-          className={`${base} ${days === d ? active : idle}`}
-        >
-          {d}d
-        </Link>
-      ))}
-      <CustomRange
-        current={days}
-        options={CUSTOM_DAY_OPTIONS}
-        isCustom={days != null && !(DAY_PRESETS as readonly number[]).includes(days)}
-      />
+    <span className={`inline-flex shrink-0 items-center gap-1.5 ${className}`}>
+      <Segmented items={items} value={value} size="sm" aria-label="Recency window" />
+      <CustomRange current={days} options={CUSTOM_DAY_OPTIONS} isCustom={isCustom} />
     </span>
   );
 }

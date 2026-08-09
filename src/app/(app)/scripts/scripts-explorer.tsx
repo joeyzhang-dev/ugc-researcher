@@ -3,20 +3,74 @@
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ResearchScoreChip } from "@/components/research-panel";
+import { Segmented, StatusBadge, table, tableWrap, td, th, trHover } from "@/components/ui";
 import { formatCompact, formatDateUTC } from "@/lib/format";
-import {
-  NICHE_PALETTE,
-  card,
-  cardTitle,
-  pillActive,
-  pillBase,
-  pillIdle,
-  rowPill,
-  td,
-  th,
-  weekKeyUTC,
-  weekLabel,
-} from "./cal";
+import { weekKeyUTC, weekLabel } from "./cal";
+
+/* Categorical niche colors, restyled from cal.ts's flat pastels into the app's
+   hairline-ring + tint language. The server deals a stable index per niche
+   (nicheColorIndex); this maps that index onto four ready-made class strings —
+   `tag` (static label on a surface), `overlay` (the same label frosted over a
+   thumbnail), and `idle`/`on` for the multi-select filter pill. Full literal
+   strings so Tailwind's scanner catches every one. */
+const NICHE_PALETTE = [
+  {
+    tag: "bg-violet-500/[0.1] text-violet-700 ring-1 ring-inset ring-violet-500/[0.2]",
+    overlay: "bg-white/85 text-violet-700 ring-1 ring-inset ring-violet-500/25 shadow-sm backdrop-blur-sm",
+    idle: "bg-violet-500/[0.08] text-violet-700 ring-1 ring-inset ring-violet-500/[0.2] hover:bg-violet-500/[0.16]",
+    on: "bg-violet-600 text-white shadow-ambient ring-1 ring-inset ring-white/15",
+  },
+  {
+    tag: "bg-sky-500/[0.1] text-sky-700 ring-1 ring-inset ring-sky-500/[0.2]",
+    overlay: "bg-white/85 text-sky-700 ring-1 ring-inset ring-sky-500/25 shadow-sm backdrop-blur-sm",
+    idle: "bg-sky-500/[0.08] text-sky-700 ring-1 ring-inset ring-sky-500/[0.2] hover:bg-sky-500/[0.16]",
+    on: "bg-sky-600 text-white shadow-ambient ring-1 ring-inset ring-white/15",
+  },
+  {
+    tag: "bg-pink-500/[0.1] text-pink-700 ring-1 ring-inset ring-pink-500/[0.2]",
+    overlay: "bg-white/85 text-pink-700 ring-1 ring-inset ring-pink-500/25 shadow-sm backdrop-blur-sm",
+    idle: "bg-pink-500/[0.08] text-pink-700 ring-1 ring-inset ring-pink-500/[0.2] hover:bg-pink-500/[0.16]",
+    on: "bg-pink-600 text-white shadow-ambient ring-1 ring-inset ring-white/15",
+  },
+  {
+    tag: "bg-emerald-500/[0.1] text-emerald-700 ring-1 ring-inset ring-emerald-500/[0.2]",
+    overlay: "bg-white/85 text-emerald-700 ring-1 ring-inset ring-emerald-500/25 shadow-sm backdrop-blur-sm",
+    idle: "bg-emerald-500/[0.08] text-emerald-700 ring-1 ring-inset ring-emerald-500/[0.2] hover:bg-emerald-500/[0.16]",
+    on: "bg-emerald-600 text-white shadow-ambient ring-1 ring-inset ring-white/15",
+  },
+  {
+    tag: "bg-amber-500/[0.12] text-amber-700 ring-1 ring-inset ring-amber-500/[0.22]",
+    overlay: "bg-white/85 text-amber-700 ring-1 ring-inset ring-amber-500/30 shadow-sm backdrop-blur-sm",
+    idle: "bg-amber-500/[0.1] text-amber-700 ring-1 ring-inset ring-amber-500/[0.22] hover:bg-amber-500/[0.18]",
+    on: "bg-amber-500 text-white shadow-ambient ring-1 ring-inset ring-white/15",
+  },
+  {
+    tag: "bg-orange-500/[0.1] text-orange-700 ring-1 ring-inset ring-orange-500/[0.2]",
+    overlay: "bg-white/85 text-orange-700 ring-1 ring-inset ring-orange-500/25 shadow-sm backdrop-blur-sm",
+    idle: "bg-orange-500/[0.08] text-orange-700 ring-1 ring-inset ring-orange-500/[0.2] hover:bg-orange-500/[0.16]",
+    on: "bg-orange-600 text-white shadow-ambient ring-1 ring-inset ring-white/15",
+  },
+  {
+    tag: "bg-teal-500/[0.1] text-teal-700 ring-1 ring-inset ring-teal-500/[0.2]",
+    overlay: "bg-white/85 text-teal-700 ring-1 ring-inset ring-teal-500/25 shadow-sm backdrop-blur-sm",
+    idle: "bg-teal-500/[0.08] text-teal-700 ring-1 ring-inset ring-teal-500/[0.2] hover:bg-teal-500/[0.16]",
+    on: "bg-teal-600 text-white shadow-ambient ring-1 ring-inset ring-white/15",
+  },
+  {
+    tag: "bg-indigo-500/[0.1] text-indigo-700 ring-1 ring-inset ring-indigo-500/[0.2]",
+    overlay: "bg-white/85 text-indigo-700 ring-1 ring-inset ring-indigo-500/25 shadow-sm backdrop-blur-sm",
+    idle: "bg-indigo-500/[0.08] text-indigo-700 ring-1 ring-inset ring-indigo-500/[0.2] hover:bg-indigo-500/[0.16]",
+    on: "bg-indigo-600 text-white shadow-ambient ring-1 ring-inset ring-white/15",
+  },
+] as const;
+
+/* Multi-select filter pills. Every pill is always rendered and merely dimmed
+   (never removed) when a cross-filter would empty it, so toggling one never
+   reflows the row — the deliberate no-layout-shift fix. */
+const FILTER_PILL = "rounded-full px-3 py-1 text-[13px] font-medium transition";
+const WEEK_ON = "bg-neutral-900 text-white shadow-ambient ring-1 ring-inset ring-white/10";
+const WEEK_IDLE =
+  "bg-neutral-500/[0.06] text-neutral-600 ring-1 ring-inset ring-hairline hover:bg-neutral-500/[0.1] hover:text-neutral-900";
 
 /** Slim, serializable projection of ScriptPerf — the full thing drags every
  *  post's video (transcripts included) over the wire for no reason. */
@@ -79,9 +133,9 @@ function fmtLift(n: number | null): string {
  *  stretched across the page with its own icon disc. */
 function Kpi({ label, value }: { label: string; value: string }) {
   return (
-    <span className="flex min-w-0 flex-col justify-center gap-0.5 px-4 py-2">
+    <span className="flex min-w-0 flex-col justify-center gap-0.5 px-4 py-2.5">
       <span className="truncate text-[11px] font-medium text-neutral-500">{label}</span>
-      <span className="text-xl font-semibold tabular-nums text-neutral-900">{value}</span>
+      <span className="text-lg font-semibold tabular-nums text-neutral-900">{value}</span>
     </span>
   );
 }
@@ -255,11 +309,11 @@ export function ScriptsExplorer({
   const hasFilterRow = allNiches.length > 0 || allWeeks.length > 1;
 
   return (
-    <>
+    <div className="stagger-children">
       {/* Composer shares the row with the stats — closed it is just a button,
           and it only claims a line of its own once opened. */}
       <div className="mb-4 flex flex-wrap items-start gap-3">
-        <div className={`inline-flex max-w-full flex-wrap items-stretch divide-x divide-neutral-200 overflow-hidden ${card}`}>
+        <div className="inline-flex max-w-full flex-wrap items-stretch divide-x divide-hairline overflow-hidden rounded-2xl bg-surface shadow-ambient ring-1 ring-hairline inset-shadow-highlight">
           <Kpi label="Scripts" value={String(totalScripts)} />
           <Kpi label="Posts measured" value={String(totalPosts)} />
           <Kpi label="Awaiting a post" value={String(totalPending)} />
@@ -267,53 +321,44 @@ export function ScriptsExplorer({
         {formSlot}
       </div>
 
-      <section className={`mt-8 ${card}`}>
-        <header className="flex flex-wrap items-center justify-between gap-3 px-6 pt-5">
-          <h2 className={cardTitle}>
+      <section className="mt-5 rounded-[18px] bg-surface-muted p-1.5 shadow-ambient ring-1 ring-hairline">
+        <div className="rounded-xl bg-surface inset-shadow-highlight ring-1 ring-hairline">
+        <header className="flex flex-wrap items-center justify-between gap-3 px-5 pb-3 pt-4">
+          <h2 className="text-sm font-semibold tracking-[-0.01em] text-neutral-900">
             All scripts
-            <span className="ml-2 font-normal tabular-nums text-neutral-400">
+            <span className="ml-1.5 font-normal tabular-nums text-neutral-400">
               {filtered.length}
             </span>
           </h2>
-          {/* cal.com's signature pill-in-pill segmented control. */}
-          <span className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-0.5 rounded-full bg-neutral-100 p-1">
-              {VIEWS.map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setView(value)}
-                  className={`rounded-full px-3.5 py-1 text-[13px] font-medium transition-colors ${
-                    view === value
-                      ? "bg-white text-neutral-900 shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
-                      : "text-neutral-500 hover:text-neutral-900"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </span>
-            <span className="inline-flex items-center gap-0.5 rounded-full bg-neutral-100 p-1">
-            {STATUS_TABS.map(([value, label]) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => apply(value, niches, sents)}
-                className={`rounded-full px-3.5 py-1 text-[13px] font-medium transition-colors ${
-                  status === value
-                    ? "bg-white text-neutral-900 shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
-                    : "text-neutral-500 hover:text-neutral-900"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-            </span>
-          </span>
+          {/* View is a local layout preference; status a single-select filter —
+              both genuine single-value pickers, so both ride the shared
+              Segmented. The week/niche pills below stay multi-select. */}
+          <div className="flex items-center gap-2">
+            <Segmented
+              size="sm"
+              aria-label="View mode"
+              value={view}
+              items={VIEWS.map(([value, label]) => ({
+                value,
+                label,
+                onClick: () => setView(value),
+              }))}
+            />
+            <Segmented
+              size="sm"
+              aria-label="Status filter"
+              value={status}
+              items={STATUS_TABS.map(([value, label]) => ({
+                value,
+                label,
+                onClick: () => apply(value, niches, sents),
+              }))}
+            />
+          </div>
         </header>
 
         {hasFilterRow && (
-          <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-neutral-100 px-6 py-3.5">
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-hairline px-5 py-3">
             {allNiches.map((n) => {
               const c = colorOf(n);
               const on = niches.includes(n);
@@ -327,8 +372,8 @@ export function ScriptsExplorer({
                   disabled={dead}
                   title={dead ? "No scripts in this niche for the selected dates" : undefined}
                   onClick={() => apply(status, toggled(niches, n), sents)}
-                  className={`${pillBase} border ${on ? c.active : c.pill} ${
-                    dead ? "cursor-default opacity-35" : ""
+                  className={`${FILTER_PILL} ${on ? c.on : c.idle} ${
+                    dead ? "cursor-default opacity-40" : ""
                   }`}
                 >
                   {n}
@@ -336,7 +381,7 @@ export function ScriptsExplorer({
               );
             })}
             {allNiches.length > 0 && allWeeks.length > 1 && (
-              <span className="mx-1.5 h-4 w-px bg-neutral-200" />
+              <span className="mx-1.5 h-4 w-px bg-hairline-strong" />
             )}
             {allWeeks.length > 1 &&
               allWeeks.map(({ key, label }) => {
@@ -349,8 +394,8 @@ export function ScriptsExplorer({
                     disabled={dead}
                     title={dead ? "No scripts sent this week in the selected niches" : undefined}
                     onClick={() => apply(status, niches, toggled(sents, key))}
-                    className={`tabular-nums ${on ? pillActive : pillIdle} ${
-                      dead ? "cursor-default opacity-35" : ""
+                    className={`${FILTER_PILL} tabular-nums ${on ? WEEK_ON : WEEK_IDLE} ${
+                      dead ? "cursor-default opacity-40" : ""
                     }`}
                   >
                     {label}
@@ -361,7 +406,7 @@ export function ScriptsExplorer({
               <button
                 type="button"
                 onClick={() => apply(status, [], [])}
-                className="ml-1.5 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[13px] font-medium text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
+                className="ml-1.5 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[13px] font-medium text-neutral-400 transition hover:bg-neutral-500/[0.08] hover:text-neutral-900"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
                   <path d="M6 6l12 12M18 6L6 18" />
@@ -372,7 +417,7 @@ export function ScriptsExplorer({
           </div>
         )}
 
-        <div className={`px-6 pb-5 ${hasFilterRow ? "" : "pt-3"}`}>
+        <div className={`px-5 pb-5 ${hasFilterRow ? "pt-3" : "pt-1"}`}>
           {filtered.length === 0 ? (
             <p className="py-10 text-center text-sm text-neutral-400">
               {!hasAnyScripts
@@ -383,14 +428,14 @@ export function ScriptsExplorer({
             /* Gallery: the hook plus the face of its best post. Scanning 102
                scripts as rows of numbers tells you nothing about what they
                are; the thumbnail and the opening line do. */
-            <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(230px,1fr))]">
+            <div className="grid gap-3 stagger-children [grid-template-columns:repeat(auto-fill,minmax(230px,1fr))]">
               {filtered.map((r) => (
                 <Link
                   key={r.id}
                   href={`/scripts/${r.id}`}
-                  className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white transition hover:border-neutral-300 hover:shadow-sm"
+                  className="group flex flex-col overflow-hidden rounded-2xl bg-surface shadow-ambient ring-1 ring-hairline transition hover:shadow-raised active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
                 >
-                  <span className="relative block aspect-[4/3] w-full overflow-hidden bg-neutral-100">
+                  <span className="relative block aspect-[4/3] w-full overflow-hidden bg-surface-sunken">
                     {r.best?.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -411,7 +456,7 @@ export function ScriptsExplorer({
                     </span>
                     {r.niche && (
                       <span
-                        className={`absolute left-2 top-2 max-w-[70%] truncate rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(r.niche).row}`}
+                        className={`absolute left-2 top-2 max-w-[70%] truncate rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(r.niche).overlay}`}
                       >
                         {r.niche}
                       </span>
@@ -429,7 +474,7 @@ export function ScriptsExplorer({
                       <span className="shrink-0">
                         {r.posts}/{r.creators}
                         {r.pending > 0 && (
-                          <span className="ml-1 text-amber-600">+{r.pending}</span>
+                          <span className="ml-1 text-warning">+{r.pending}</span>
                         )}
                       </span>
                     </span>
@@ -442,8 +487,8 @@ export function ScriptsExplorer({
               ))}
             </div>
           ) : (
-            <div className="-mx-6 overflow-x-auto px-6">
-              <table className="min-w-full divide-y divide-neutral-200">
+            <div className={tableWrap}>
+              <table className={table}>
                 <thead>
                   <tr>
                     <th className={th}>Sent</th>
@@ -455,12 +500,12 @@ export function ScriptsExplorer({
                     <th className={th}>Ran by</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-100">
+                <tbody className="divide-y divide-black/[0.05]">
                   {grouped.map((week) => {
                     const weekOpen = !collapsedWeeks.has(week.key);
                     return (
                       <Fragment key={week.key}>
-                        <tr className="bg-[#f8f9fa]">
+                        <tr className="bg-neutral-900/[0.03]">
                           <td colSpan={7} className="px-3 py-2">
                             <button
                               type="button"
@@ -502,14 +547,14 @@ export function ScriptsExplorer({
                                 )}
                                 {(groupOpen || week.niches.length === 1) &&
                                   group.rows.map((r) => (
-                            <tr key={r.id} className="transition-colors hover:bg-[#f8f9fa]">
+                            <tr key={r.id} className={trHover}>
                               <td className={`${td} whitespace-nowrap tabular-nums text-neutral-500`}>
                                 {formatDateUTC(r.createdAt)}
                               </td>
                               <td className={td}>
                                 {r.niche ? (
                                   <span
-                                    className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(r.niche).row}`}
+                                    className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(r.niche).tag}`}
                                   >
                                     {r.niche}
                                   </span>
@@ -523,9 +568,7 @@ export function ScriptsExplorer({
                                     <span className="truncate font-medium text-neutral-900 group-hover:underline">
                                       {r.label}
                                     </span>
-                                    {r.status !== "Active" && (
-                                      <span className={`${rowPill} text-neutral-500`}>{r.status}</span>
-                                    )}
+                                    {r.status !== "Active" && <StatusBadge status={r.status} />}
                                   </span>
                                 </Link>
                               </td>
@@ -540,7 +583,7 @@ export function ScriptsExplorer({
                                   /{r.creators} creator{r.creators === 1 ? "" : "s"}
                                 </span>
                                 {r.pending > 0 && (
-                                  <span className={`ml-1.5 ${rowPill} text-neutral-500`}>
+                                  <span className="ml-1.5 shrink-0 rounded-full bg-warning/[0.12] px-2 py-0.5 text-[11px] font-medium text-warning ring-1 ring-inset ring-warning/[0.24]">
                                     {r.pending} waiting
                                   </span>
                                 )}
@@ -559,7 +602,8 @@ export function ScriptsExplorer({
           )}
           {footnote}
         </div>
+        </div>
       </section>
-    </>
+    </div>
   );
 }

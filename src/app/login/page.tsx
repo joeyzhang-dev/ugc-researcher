@@ -9,55 +9,85 @@ export default async function LoginPage({
   const { error } = await searchParams;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-neutral-50 p-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 flex flex-col items-center">
-          <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-neutral-950 text-lg font-bold text-white">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas p-6">
+      {/* Ambient machined backdrop: a soft accent bloom over a masked hairline
+          grid. Static (no blur, no entry animation) so it stays cheap. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div
+          className="absolute left-1/2 top-[-12%] h-[560px] w-[880px] -translate-x-1/2 rounded-full"
+          style={{
+            background:
+              "radial-gradient(closest-side, color-mix(in oklab, var(--color-accent) 13%, transparent), transparent)",
+          }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage:
+              "linear-gradient(var(--color-hairline) 1px, transparent 1px), linear-gradient(90deg, var(--color-hairline) 1px, transparent 1px)",
+            backgroundSize: "46px 46px",
+            maskImage: "radial-gradient(closest-side at 50% 38%, black, transparent 76%)",
+            WebkitMaskImage: "radial-gradient(closest-side at 50% 38%, black, transparent 76%)",
+          }}
+        />
+      </div>
+
+      <div className="relative w-full max-w-[400px] animate-fade-up">
+        {/* Brand moment — the one screen that earns generous space + larger type. */}
+        <div className="mb-8 flex flex-col items-center text-center">
+          <span className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-950 text-xl font-bold text-white shadow-ambient ring-1 ring-hairline inset-shadow-highlight">
             T
           </span>
-          <h1 className="text-xl font-semibold tracking-tight">Trace Research</h1>
-          <p className="mt-1 text-sm text-neutral-400">
+          <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-neutral-900">
+            Trace Research
+          </h1>
+          <p className="mt-2 text-sm text-neutral-500">
             Creator &amp; format study — sign in to continue
           </p>
         </div>
 
-        <div className="rounded-xl border border-neutral-200 bg-white p-6">
-          {error && (
-            <p className="mb-4 rounded-lg border border-red-100 bg-red-50 p-2.5 text-sm text-red-700">
-              {error}
-            </p>
-          )}
+        {/* Double-bezel sign-in card. */}
+        <div className="rounded-[20px] bg-surface-muted p-1.5 shadow-ambient ring-1 ring-hairline">
+          <div className="rounded-2xl bg-surface p-7 ring-1 ring-hairline inset-shadow-highlight">
+            {error && (
+              <p className="mb-4 rounded-xl bg-danger/[0.08] p-3 text-sm text-danger ring-1 ring-danger/[0.22]">
+                {error}
+              </p>
+            )}
 
-          <form action={signIn} className="space-y-4">
-            <div>
-              <label htmlFor="email" className={labelClass}>Email</label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                required
-                autoComplete="email"
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className={labelClass}>Password</label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                autoComplete="current-password"
-                className={inputClass}
-              />
-            </div>
-            <button type="submit" className={`${buttonClass} w-full justify-center`}>
-              Sign in
-            </button>
-          </form>
+            <form action={signIn} className="space-y-4">
+              <div>
+                <label htmlFor="email" className={labelClass}>Email</label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="you@trace.co"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label htmlFor="password" className={labelClass}>Password</label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  className={inputClass}
+                />
+              </div>
+              <button type="submit" className={`${buttonClass} mt-1 w-full justify-center`}>
+                Sign in
+              </button>
+            </form>
+          </div>
         </div>
 
-        <p className="mt-4 text-center text-xs text-neutral-400">
+        <p className="mt-5 text-center text-xs text-neutral-400">
           Accounts are created by an admin in the Supabase dashboard.
         </p>
       </div>

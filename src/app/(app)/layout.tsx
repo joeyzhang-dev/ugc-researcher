@@ -1,9 +1,7 @@
 import { redirect } from "next/navigation";
 import { getProfile, isStaff } from "@/lib/auth";
 import { signOut } from "@/app/login/actions";
-import { AppNav } from "@/components/app-nav";
 import { WorkspaceRail } from "@/components/workspace-rail";
-import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 import { getWorkspace } from "@/lib/workspace/server";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -14,17 +12,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // to /login, which would loop with the middleware.
   if (!isStaff(profile)) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#fafafa] p-6">
-        <div className="max-w-sm rounded-xl border border-neutral-200 bg-white p-6 text-center">
-          <h1 className="text-lg font-semibold">No staff access</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            This account isn&apos;t a Trace team member.
-          </p>
-          <form action={signOut} className="mt-4">
-            <button className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700">
-              Sign out
-            </button>
-          </form>
+      <div className="flex min-h-screen items-center justify-center bg-canvas p-6">
+        <div className="w-full max-w-sm rounded-[18px] bg-surface-muted p-1.5 shadow-ambient ring-1 ring-hairline">
+          <div className="rounded-xl bg-surface p-6 text-center inset-shadow-highlight ring-1 ring-hairline">
+            <span className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-danger/[0.1] text-danger ring-1 ring-danger/[0.22]">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="5" y="11" width="14" height="9" rx="2" />
+                <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+              </svg>
+            </span>
+            <h1 className="text-lg font-semibold tracking-[-0.01em] text-neutral-900">No staff access</h1>
+            <p className="mt-1 text-sm text-neutral-500">
+              This account isn&apos;t a Trace team member.
+            </p>
+            <form action={signOut} className="mt-5">
+              <button className="inline-flex w-full items-center justify-center rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-ambient transition hover:bg-neutral-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas">
+                Sign out
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     );
@@ -33,30 +39,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { apps, current } = await getWorkspace();
 
   return (
-    <div className="flex min-h-screen bg-[#fafafa]">
-      <WorkspaceRail apps={apps} current={current} />
+    <div className="flex min-h-screen bg-canvas">
+      <WorkspaceRail apps={apps} current={current} email={profile.email} />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-3">
-          <WorkspaceSwitcher apps={apps} current={current} />
-          <AppNav />
-          <span className="flex items-center gap-3">
-            <span className="text-[11px] text-neutral-400">{profile.email}</span>
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="text-[11px] font-medium text-neutral-500 transition-colors hover:text-neutral-900"
-              >
-                Sign out
-              </button>
-            </form>
-          </span>
-        </header>
-
-        <main className="px-8 py-7">
-          <div className="mx-auto w-full max-w-[1720px]">{children}</div>
-        </main>
-      </div>
+      <main className="min-w-0 flex-1 px-8 py-7">
+        <div className="mx-auto w-full max-w-[1720px]">{children}</div>
+      </main>
     </div>
   );
 }

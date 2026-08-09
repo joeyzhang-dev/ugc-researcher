@@ -11,7 +11,7 @@ import {
 } from "../actions";
 import { SubmitButton } from "@/components/submit-button";
 import {
-  Avatar, Card, EmptyState, KpiCard, PageHeader, PlatformIcon, StatusBadge,
+  Avatar, Card, EmptyState, KpiCard, PageHeader, PlatformIcon, Segmented, StatusBadge,
   secondaryButtonClass, table, tableWrap, td, th, trHover,
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
@@ -19,6 +19,8 @@ import { parseDays, withinWindow, RangePicker } from "@/components/range-picker"
 import { Thumb } from "@/components/hover-video";
 import { ResearchVideoTile } from "@/components/research-video-tile";
 import {
+  FormatTag,
+  ResearchScoreChip,
   ResearchSelectTrigger,
   ResearchVideoPanel,
   type PanelSegment,
@@ -28,30 +30,13 @@ export const dynamic = "force-dynamic";
 // Re-scrape runs a full profile pull inline.
 export const maxDuration = 300;
 
-function scoreStyle(score: number): string {
-  if (score >= 8) return "bg-amber-100 text-amber-800";
-  if (score >= 6.5) return "bg-emerald-50 text-emerald-700";
-  if (score >= 4) return "bg-neutral-100 text-neutral-600";
-  return "bg-red-50 text-red-600";
-}
-
-function ScoreChip({ score }: { score: number | null }) {
-  if (score == null) return <span className="text-xs text-neutral-400">—</span>;
-  return (
-    <span
-      className={`inline-flex min-w-9 items-center justify-center rounded-md px-1.5 py-0.5 text-xs font-bold tabular-nums ${scoreStyle(score)}`}
-    >
-      {score.toFixed(1)}
-    </span>
-  );
-}
-
-const TRANSCRIPT_STYLES: Record<string, string> = {
-  pending: "bg-amber-50 text-amber-700",
-  fetching: "bg-sky-50 text-sky-700",
-  transcribed: "bg-emerald-50 text-emerald-700",
-  failed: "bg-red-50 text-red-700",
-  skipped: "bg-neutral-100 text-neutral-400",
+// transcript_status → semantic tone for the shared StatusBadge pill.
+const TRANSCRIPT_TONE: Record<string, "warning" | "info" | "success" | "danger" | "muted"> = {
+  pending: "warning",
+  fetching: "info",
+  transcribed: "success",
+  failed: "danger",
+  skipped: "muted",
 };
 
 function fmtLift(n: number | null): string {
@@ -212,17 +197,12 @@ export default async function ResearchCreatorPage({
               </a>
             )}
             {creator.last_scraped_at && ` · last scraped ${formatDate(creator.last_scraped_at)}`}
-            {days != null && (
-              <span className="ml-1 font-medium text-neutral-700">
-                · showing videos posted in the last {days} days
-              </span>
-            )}
           </span>
         </span>
       </div>
 
       {creator.status === "failed" && creator.error_message && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-700">
+        <p className="mb-4 rounded-xl bg-danger/[0.08] p-2.5 text-sm text-danger ring-1 ring-inset ring-danger/[0.22]">
           Last scrape failed: {creator.error_message}
         </p>
       )}
@@ -296,30 +276,24 @@ export default async function ResearchCreatorPage({
                     <th className={th}>Best video</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-100">
+                <tbody className="divide-y divide-black/[0.05]">
                   {formatRollup.map((f) => {
                     const active = formatFilter === f.name;
                     return (
-                      <tr key={f.name} className={active ? "bg-amber-50/60" : trHover}>
+                      <tr key={f.name} className={active ? "bg-violet-500/[0.05]" : trHover}>
                         <td className={`${td} font-medium`}>
                           <Link
                             href={hrefWith({ format: active ? null : f.name })}
-                            className={`inline-flex items-center gap-1.5 underline-offset-2 hover:underline ${
-                              f.name === UNCATEGORIZED ? "text-neutral-400" : "text-neutral-900"
-                            }`}
+                            className="inline-flex max-w-full items-center gap-1.5 transition hover:opacity-80"
                             title={active ? "Clear filter" : `Show only ${f.name} videos`}
                           >
-                            {f.name}
-                            {active && (
-                              <span className="rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800">
-                                filtering ✕
-                              </span>
-                            )}
+                            <FormatTag name={f.name} active={active} muted={f.name === UNCATEGORIZED} />
+                            {active && <span className="text-[10px] font-semibold text-violet-600">✕</span>}
                           </Link>
                         </td>
                         <td className={`${td} tabular-nums`}>{f.count}</td>
                         <td className={td}>
-                          <ScoreChip score={f.medianScore} />
+                          <ResearchScoreChip score={f.medianScore} />
                         </td>
                         <td className={`${td} tabular-nums`}>{fmtLift(f.medianLift)}</td>
                         <td className={`${td} tabular-nums`}>{formatCompact(f.medianViews)}</td>
@@ -344,9 +318,9 @@ export default async function ResearchCreatorPage({
             </div>
           )}
           {aiQueued > 0 ? (
-            <p className="mt-3 text-xs font-medium text-amber-600">
+            <p className="mt-3 text-xs font-medium text-warning">
               {aiQueued} video{aiQueued === 1 ? "" : "s"} queued for AI categorization — run{" "}
-              <code className="rounded bg-amber-50 px-1">npm run categorize:formats</code> to
+              <code className="rounded bg-warning/[0.1] px-1 font-mono">npm run categorize:formats</code> to
               classify them with Copilot (Opus 4.8), then refresh.
             </p>
           ) : (
@@ -371,26 +345,21 @@ export default async function ResearchCreatorPage({
                 Clear filter ({visibleVideos.length} of {summary.videos.length}) ✕
               </Link>
             )}
-            <span className="inline-flex shrink-0 rounded-lg border border-neutral-200 bg-white p-0.5 text-xs">
-              <Link
-                href={hrefWith({ view: null })}
-                scroll={false}
-                className={`rounded-md px-2.5 py-1 transition-colors ${!isGrid ? "bg-neutral-900 font-medium text-white" : "text-neutral-500 hover:text-neutral-900"}`}
-              >
-                Table
-              </Link>
-              <Link
-                href={hrefWith({ view: "grid" })}
-                scroll={false}
-                className={`rounded-md px-2.5 py-1 transition-colors ${isGrid ? "bg-neutral-900 font-medium text-white" : "text-neutral-500 hover:text-neutral-900"}`}
-              >
-                Grid
-              </Link>
+            <span className="inline-flex shrink-0 items-center">
+              <Segmented
+                size="sm"
+                aria-label="View mode"
+                value={isGrid ? "grid" : "table"}
+                items={[
+                  { value: "table", label: "Table", href: hrefWith({ view: null }) },
+                  { value: "grid", label: "Grid", href: hrefWith({ view: "grid" }) },
+                ]}
+              />
             </span>
           </span>
         }
       >
-        <p className="-mt-1 mb-3 text-xs text-neutral-500">
+        <p className="mb-3 text-xs leading-relaxed text-neutral-500">
           Score = 0–10 rating of a video&apos;s lift vs the creator&apos;s own baseline (median
           views of the ~10 prior posts; account-wide median for the earliest). 5.0 = performed at
           baseline, +2 per doubling: 7.0 = 2×, 8.0 ≈ 2.8×, 10 ≥ 5.7×.
@@ -431,13 +400,13 @@ export default async function ResearchCreatorPage({
                   <th className={th}>Format</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-100">
+              <tbody className="divide-y divide-black/[0.05]">
                 {visibleVideos.map((row: VideoLift) => {
                   const v = row.video;
                   return (
                     <tr key={v.id} className={trHover}>
                       <td className={td}>
-                        <ScoreChip score={row.score} />
+                        <ResearchScoreChip score={row.score} />
                       </td>
                       <td className={`${td} max-w-80`}>
                         <span className="flex items-center gap-1.5">
@@ -494,13 +463,11 @@ export default async function ResearchCreatorPage({
                         </span>
                       </td>
                       <td className={td}>
-                        <span
-                          className={`inline-block whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium ${
-                            TRANSCRIPT_STYLES[v.transcript_status] ?? "bg-neutral-100 text-neutral-600"
-                          }`}
-                          title={v.error_message ?? v.transcript_method ?? undefined}
-                        >
-                          {v.transcript_status}
+                        <span title={v.error_message ?? v.transcript_method ?? undefined}>
+                          <StatusBadge
+                            status={v.transcript_status}
+                            tone={TRANSCRIPT_TONE[v.transcript_status]}
+                          />
                         </span>
                       </td>
                       <td className={td}>
@@ -510,14 +477,17 @@ export default async function ResearchCreatorPage({
                               format:
                                 formatFilter === v.format_category ? null : v.format_category,
                             })}
-                            className="inline-block whitespace-nowrap rounded-md bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-100"
+                            className="inline-flex max-w-full transition hover:opacity-80"
                             title={
                               formatFilter === v.format_category
                                 ? "Clear filter"
                                 : `Show only ${v.format_category} videos`
                             }
                           >
-                            {v.format_category}
+                            <FormatTag
+                              name={v.format_category}
+                              active={formatFilter === v.format_category}
+                            />
                           </Link>
                         ) : (
                           <span className="text-xs text-neutral-400">—</span>

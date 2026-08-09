@@ -104,15 +104,19 @@ export default async function ResearchPage({
 
   return (
     <>
-      <PageHeader title="Research" />
-      <p className="-mt-4 mb-5 max-w-3xl text-sm text-neutral-500">
-        Study outside creators: scrape their recent reels, find which videos <em>lift</em> above
-        the account&apos;s own baseline, transcribe them (local worker), and derive the formats
-        worth copying.
-      </p>
+      <PageHeader
+        title="Research"
+        subtitle={
+          <>
+            Study outside creators: scrape their recent reels, find which videos <em>lift</em>{" "}
+            above the account&apos;s own baseline, transcribe them (local worker), and derive the
+            formats worth copying.
+          </>
+        }
+      />
 
       {error && (
-        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-700">
+        <p className="mb-4 rounded-xl bg-danger/[0.08] p-2.5 text-sm text-danger ring-1 ring-inset ring-danger/[0.22]">
           {error}
         </p>
       )}
@@ -140,9 +144,6 @@ export default async function ResearchPage({
           action={
             <span className="flex items-center gap-2 text-xs text-neutral-500">
               <ScrapeAllButton kinds={["research"]} queued={queuedCount} />
-              <span className="hidden sm:inline">
-                {days == null ? "All time" : `Posted in last ${days} days`}
-              </span>
               <RangePicker
                 days={days}
                 hrefForDays={(d) => hrefWith({ days: d ? String(d) : null })}
@@ -181,7 +182,7 @@ export default async function ResearchPage({
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-100">
+                <tbody className="divide-y divide-black/[0.05]">
                   {rows.map(({ c, summary, transcribed }) => {
                     return (
                       <tr key={c.id} className={trHover}>

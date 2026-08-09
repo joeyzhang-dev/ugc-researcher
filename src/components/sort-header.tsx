@@ -60,19 +60,46 @@ export function SortHeader<K extends string>({
 }) {
   const nextDir: SortDir = active ? (dir === "asc" ? "desc" : "asc") : firstDir;
   return (
-    <th className={`${th} ${className}`}>
+    <th
+      className={`${th} ${className}`}
+      aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
+    >
       <Link
         href={hrefFor(sortKey, nextDir)}
         scroll={false}
         title={`Sort by ${label.toLowerCase()}`}
-        className={`inline-flex items-center gap-1 transition-colors hover:text-neutral-900 ${
-          active ? "text-neutral-900" : ""
+        className={`group inline-flex items-center gap-1 transition-colors ${
+          active ? "font-semibold text-neutral-900" : "hover:text-neutral-700"
         }`}
       >
         {label}
-        <span className={active ? "text-neutral-900" : "text-neutral-300"}>
-          {active ? (dir === "asc" ? "↑" : "↓") : "↕"}
-        </span>
+        {active ? (
+          <svg
+            aria-hidden
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            className="shrink-0"
+          >
+            <path d={dir === "asc" ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
+          </svg>
+        ) : (
+          <svg
+            aria-hidden
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            className="shrink-0 text-neutral-300 opacity-0 transition-opacity group-hover:opacity-100"
+          >
+            <path d="m8 9 4-4 4 4M8 15l4 4 4-4" />
+          </svg>
+        )}
       </Link>
     </th>
   );

@@ -1,7 +1,8 @@
 import type { VideoLift } from "@/lib/research";
 import { formatCompact, formatDate } from "@/lib/format";
 import { HoverVideo } from "./hover-video";
-import { ResearchScoreChip, ResearchSelectTrigger } from "./research-panel";
+import { ResearchSelectTrigger } from "./research-panel";
+import { FormatTag, scoreBand, type ScoreBand } from "./research-score";
 
 const EyeIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -19,6 +20,17 @@ const CommentIcon = () => (
     <path d="M21 12a8 8 0 0 1-8 8H4l2.5-2.5A8 8 0 1 1 21 12Z" />
   </svg>
 );
+
+// On-media score badge. Only the elite tier gets a loud solid-gold fill so the
+// real breakouts pop off a wall of tiles; every other band stays a calm
+// near-white chip with the number in its band colour. One hot colour — the page
+// never turns into a rainbow.
+const SCORE_MEDALLION: Record<ScoreBand, string> = {
+  elite: "bg-warning text-white ring-white/25",
+  strong: "bg-surface/95 text-success ring-black/[0.06] backdrop-blur",
+  base: "bg-surface/95 text-neutral-700 ring-black/[0.06] backdrop-blur",
+  weak: "bg-surface/90 text-danger ring-black/[0.06] backdrop-blur",
+};
 
 /**
  * One video in a research grid. Clicking selects it into the side panel.
@@ -39,18 +51,25 @@ export function ResearchVideoTile({
   showLift?: boolean;
 }) {
   const v = row.video;
+  const band = row.score != null ? scoreBand(row.score) : null;
   return (
     <ResearchSelectTrigger
       row={row}
-      className="group relative flex h-full w-full flex-col overflow-hidden bg-white text-left"
+      className="group relative flex h-full w-full flex-col overflow-hidden bg-surface text-left transition duration-200 hover:z-10"
       selectedClassName="z-10 ring-2 ring-inset ring-neutral-900"
     >
-      <div className="relative aspect-[3/4] w-full bg-neutral-100">
+      <div className="relative aspect-[3/4] w-full bg-surface-sunken">
         <HoverVideo src={v.video_url} poster={v.thumbnail_url} />
-        {/* Scrim + info fade out while the hover preview plays. */}
-        <span className="pointer-events-none absolute inset-0 bg-black/35 transition-opacity duration-200 group-hover:opacity-0" />
+        {/* Bottom-anchored gradient carries the caption/stats; only the lower
+            half darkens (the corner chips bring their own surface). Fades out to
+            reveal the hover preview. */}
+        <span className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent transition-opacity duration-200 group-hover:opacity-0" />
+        {/* Hover frame — a crisp inset ring reads as "lifted" on the gapless,
+            un-rounded grid without re-introducing gaps or a scale that would
+            overlap neighbours. */}
+        <span className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/0 transition duration-200 group-hover:ring-white/25" />
         <span className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1 p-3 text-white transition-opacity duration-200 group-hover:opacity-0">
-          <span className="flex items-center justify-between text-base font-semibold tabular-nums drop-shadow">
+          <span className="flex items-center justify-between text-sm font-semibold tabular-nums drop-shadow">
             <span className="inline-flex items-center gap-1">
               <EyeIcon />
               {formatCompact(v.view_count)}
@@ -64,32 +83,34 @@ export function ResearchVideoTile({
               {formatCompact(v.comment_count)}
             </span>
           </span>
-          {creatorHandle && (
-            <span className="truncate text-[11px] font-semibold text-white drop-shadow">
-              @{creatorHandle}
-            </span>
-          )}
-          <span className="text-[11px] font-semibold text-sky-200 drop-shadow">
-            {formatDate(v.posted_at)}
+          <span className="flex items-center justify-between gap-2 font-mono text-[11px] font-medium text-white/75 drop-shadow">
+            {creatorHandle ? <span className="truncate">@{creatorHandle}</span> : <span />}
+            <span className="shrink-0">{formatDate(v.posted_at)}</span>
           </span>
-          <span className="line-clamp-2 text-xs leading-snug text-white/95 drop-shadow">
+          <span className="line-clamp-2 text-xs leading-snug text-white/90 drop-shadow">
             {v.caption?.split("\n")[0] || v.shortcode || "—"}
           </span>
         </span>
+        {/* Score is the hero — a bold medallion pinned outside the fading
+            overlay so it stays legible over the still, the hover preview and the
+            selected state alike. Raw lift rides alongside only where the 0–10
+            score saturates a leaderboard of breakouts (see `showLift`). */}
         <span className="absolute right-2 top-2 flex items-center gap-1">
           {showLift && row.lift != null && (
-            <span className="rounded-md bg-neutral-900/85 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white shadow-sm">
+            <span className="rounded-lg bg-neutral-950/80 px-1.5 py-1 font-mono text-[10px] font-bold tabular-nums text-white shadow-sm ring-1 ring-inset ring-white/10 backdrop-blur">
               {row.lift >= 10 ? Math.round(row.lift) : row.lift.toFixed(1)}×
             </span>
           )}
-          <span className="shadow-sm">
-            <ResearchScoreChip score={row.score} />
-          </span>
+          {band && (
+            <span
+              className={`inline-flex min-w-[2.1rem] items-center justify-center rounded-lg px-1.5 py-1 font-mono text-[15px] font-bold leading-none tabular-nums shadow-sm ring-1 ring-inset ${SCORE_MEDALLION[band]}`}
+            >
+              {row.score!.toFixed(1)}
+            </span>
+          )}
         </span>
         {v.format_category && (
-          <span className="absolute left-2 top-2 max-w-[70%] truncate rounded-md bg-white/95 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 shadow-sm">
-            {v.format_category}
-          </span>
+          <FormatTag name={v.format_category} onMedia className="absolute left-2 top-2 max-w-[70%]" />
         )}
       </div>
     </ResearchSelectTrigger>

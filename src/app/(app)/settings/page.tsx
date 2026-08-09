@@ -52,13 +52,12 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" />
-      <p className="-mt-4 mb-5 max-w-3xl text-sm text-neutral-500">
-        How creator profiles get re-scraped. A scrape re-pulls recent reels and their metrics for
-        every creator, which is what keeps lift scores current.
-      </p>
+      <PageHeader
+        title="Settings"
+        subtitle="How creator profiles get re-scraped. A scrape re-pulls recent reels and their metrics for every creator, which is what keeps lift scores current."
+      />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="stagger-children mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard label="Creators tracked" value={String(creators.length)} icon="users" />
         <KpiCard
           label="Queued to scrape"
@@ -82,55 +81,65 @@ export default async function SettingsPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <Card title="Scrape schedule">
+        <Card
+          title="Scrape configuration"
+          subtitle="Saved settings — applied on the next scheduled run."
+        >
           {!isAdmin ? (
             <EmptyState message="Only admins can change scrape settings." />
           ) : (
-            <form action={saveScrapeSettings} className="space-y-4">
+            <form action={saveScrapeSettings} className="space-y-5">
               <ScheduleFields settings={settings} />
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label>
-                  <span className={labelClass}>Reels per creator</span>
-                  <input
-                    type="number"
-                    name="resultsLimit"
-                    defaultValue={settings.results_limit}
-                    min={RESULTS_MIN}
-                    max={RESULTS_MAX}
-                    className={inputClass}
-                  />
-                  <span className="mt-1 block text-xs text-neutral-400">
-                    How many recent reels each scrape pulls ({RESULTS_MIN}–{RESULTS_MAX}).
-                  </span>
-                </label>
-                <label>
-                  <span className={labelClass}>Pause between creators</span>
-                  <input
-                    type="number"
-                    name="staggerSeconds"
-                    defaultValue={settings.stagger_seconds}
-                    min={STAGGER_MIN}
-                    max={STAGGER_MAX}
-                    className={inputClass}
-                  />
-                  <span className="mt-1 block text-xs text-neutral-400">
-                    Seconds to wait between creators. Scrape Creators bills per request
-                    and Instagram rate-limits, so a full pass back-to-back is worth
-                    spacing out.
-                  </span>
-                </label>
+              <div className="space-y-3 border-t border-hairline pt-5">
+                <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-neutral-400">
+                  Volume &amp; pacing
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label>
+                    <span className={labelClass}>Reels per creator</span>
+                    <input
+                      type="number"
+                      name="resultsLimit"
+                      defaultValue={settings.results_limit}
+                      min={RESULTS_MIN}
+                      max={RESULTS_MAX}
+                      className={inputClass}
+                    />
+                    <span className="mt-1 block text-xs text-neutral-400">
+                      How many recent reels each scrape pulls ({RESULTS_MIN}–{RESULTS_MAX}).
+                    </span>
+                  </label>
+                  <label>
+                    <span className={labelClass}>Pause between creators</span>
+                    <input
+                      type="number"
+                      name="staggerSeconds"
+                      defaultValue={settings.stagger_seconds}
+                      min={STAGGER_MIN}
+                      max={STAGGER_MAX}
+                      className={inputClass}
+                    />
+                    <span className="mt-1 block text-xs text-neutral-400">
+                      Seconds to wait between creators. Scrape Creators bills per request
+                      and Instagram rate-limits, so a full pass back-to-back is worth
+                      spacing out.
+                    </span>
+                  </label>
+                </div>
               </div>
 
-              <fieldset>
-                <legend className={labelClass}>Include</legend>
-                <div className="mt-1 flex flex-wrap gap-4">
+              <fieldset className="space-y-2 border-t border-hairline pt-5">
+                <legend className="text-[11px] font-medium uppercase tracking-[0.1em] text-neutral-400">
+                  Include
+                </legend>
+                <div className="flex flex-wrap gap-4">
                   <label className="flex items-center gap-2 text-sm text-neutral-700">
                     <input
                       type="checkbox"
                       name="scrapeResearch"
                       defaultChecked={settings.scrape_research}
-                      className="h-4 w-4 rounded border-neutral-300"
+                      className="h-4 w-4 rounded border-hairline accent-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
                     />
                     Research creators ({research.length})
                   </label>
@@ -139,27 +148,35 @@ export default async function SettingsPage() {
                       type="checkbox"
                       name="scrapeRoster"
                       defaultChecked={settings.scrape_roster}
-                      className="h-4 w-4 rounded border-neutral-300"
+                      className="h-4 w-4 rounded border-hairline accent-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
                     />
                     Our creators ({roster.length})
                   </label>
                 </div>
               </fieldset>
 
-              <SubmitButton pendingLabel="Saving…">Save settings</SubmitButton>
+              <div className="border-t border-hairline pt-5">
+                <SubmitButton pendingLabel="Saving…">Save settings</SubmitButton>
+                <p className="mt-2 text-xs text-neutral-400">
+                  Applies on the next run — this doesn&apos;t start a scrape.
+                </p>
+              </div>
             </form>
           )}
         </Card>
 
         <div className="space-y-4">
-          <Card title="Run now">
+          <Card
+            title="Run a scrape now"
+            subtitle="Runs immediately · doesn't change saved settings."
+          >
             <div className="space-y-3">
               <p className="text-sm text-neutral-500">
                 Scrapes every creator in scope, one at a time, with the pause above between each.
                 A full pass takes roughly a minute per creator.
               </p>
               {isAdmin ? (
-                <>
+                <div className="flex flex-col gap-2">
                   <ScrapeAllButton
                     kinds={["research", "roster"]}
                     queued={queued.length}
@@ -174,14 +191,14 @@ export default async function SettingsPage() {
                         : "Scrape our creators only"
                     }
                   />
-                </>
+                </div>
               ) : (
                 <EmptyState message="Only admins can start a scrape." />
               )}
             </div>
           </Card>
 
-          <Card title="Status">
+          <Card title="Schedule status">
             <dl className="space-y-2 text-sm">
               <Row label="Automatic scraping">
                 <StatusBadge
@@ -205,7 +222,7 @@ export default async function SettingsPage() {
             </dl>
 
             {settings.auto_scrape_enabled && (
-              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+              <p className="mt-3 rounded-xl bg-warning/[0.1] p-3 text-xs leading-relaxed text-warning ring-1 ring-inset ring-warning/[0.22]">
                 This app only runs on your machine, so nothing fires the schedule on its own yet.
                 The settings are saved and the schedule is live — point a cron or launchd job at{" "}
                 <code className="font-mono">POST /api/jobs/research</code> with{" "}
@@ -218,10 +235,7 @@ export default async function SettingsPage() {
       </div>
 
       <div className="mt-5">
-        <Card
-          title="Oldest scrapes"
-          action={<span className="text-xs text-neutral-400">Next in line for a run</span>}
-        >
+        <Card title="Oldest scrapes" subtitle="Next in line for a run">
           {staleFirst.length === 0 ? (
             <EmptyState message="No creators yet." />
           ) : (
@@ -236,10 +250,10 @@ export default async function SettingsPage() {
                     <th className={th}>Queued</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-100">
+                <tbody className="divide-y divide-black/[0.05]">
                   {staleFirst.map((c) => (
                     <tr key={c.id} className={trHover}>
-                      <td className={`${td} font-medium`}>@{c.handle}</td>
+                      <td className={`${td} font-mono font-medium`}>@{c.handle}</td>
                       <td className={td}>
                         <span className="text-neutral-500">
                           {c.kind === "research" ? "Research" : "Ours"}
@@ -248,7 +262,7 @@ export default async function SettingsPage() {
                       <td className={td}>
                         <StatusBadge status={c.status} />
                         {c.status === "failed" && c.error_message && (
-                          <span className="ml-2 text-xs text-red-600">{c.error_message}</span>
+                          <span className="ml-2 text-xs text-danger">{c.error_message}</span>
                         )}
                       </td>
                       <td className={td}>
@@ -258,7 +272,7 @@ export default async function SettingsPage() {
                         {c.scrape_queued_at ? (
                           <StatusBadge status="Pending" />
                         ) : (
-                          <span className="text-neutral-300">—</span>
+                          <span className="text-neutral-400">—</span>
                         )}
                       </td>
                     </tr>

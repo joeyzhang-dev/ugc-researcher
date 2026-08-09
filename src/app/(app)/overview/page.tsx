@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { ResearchAppCreator, ResearchCreator, ResearchVideo } from "@/lib/types";
 import { computeLifts, median, type VideoLift } from "@/lib/research";
 import {
-  Avatar, Card, EmptyState, KpiCard, PageHeader, PlatformIcon,
+  Avatar, Card, EmptyState, KpiCard, MiniBar, PageHeader, PlatformIcon, Segmented,
   table, tableWrap, td, th, trHover,
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
@@ -241,50 +241,46 @@ export default async function ResearchOverviewPage({
     <>
       <PageHeader
         title="Overview"
+        subtitle={
+          <>
+            {isRoster ? "Our roster's" : "Every research creator's"} best work, ranked by{" "}
+            <em>lift</em> — how far each video beat its own creator&apos;s baseline, so big and
+            small accounts are directly comparable.
+            {isRoster && (
+              <>
+                {" "}
+                Scoped to{" "}
+                <span className="font-medium text-neutral-700">
+                  {workspace.app?.name ?? "all apps"}
+                </span>
+                .
+              </>
+            )}
+          </>
+        }
         action={
-          <span className="flex items-center gap-2">
-            <span className="inline-flex shrink-0 rounded-lg border border-neutral-200 bg-white p-0.5">
-              {POOLS.map(([key, label]) => (
-                <Link
-                  key={key}
-                  // Creator filters belong to one pool — carrying them across
-                  // would silently match nothing.
-                  href={hrefWith({
-                    pool: key === "research" ? null : key,
-                    creator: null,
-                    format: null,
-                  })}
-                  className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
-                    poolKind === key
-                      ? "bg-neutral-900 font-medium text-white"
-                      : "text-neutral-500 hover:text-neutral-900"
-                  }`}
-                >
-                  {label}
-                </Link>
-              ))}
-            </span>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Segmented
+              aria-label="Creator pool"
+              value={poolKind}
+              items={POOLS.map(([key, label]) => ({
+                value: key,
+                label,
+                // Creator/format filters belong to one pool — carrying them
+                // across would silently match nothing.
+                href: hrefWith({
+                  pool: key === "research" ? null : key,
+                  creator: null,
+                  format: null,
+                }),
+              }))}
+            />
             <RangePicker days={days} hrefForDays={(d) => hrefWith({ days: d ? String(d) : null })} />
-          </span>
+          </div>
         }
       />
-      <p className="-mt-4 mb-5 max-w-3xl text-sm text-neutral-500">
-        {isRoster ? "Our roster's" : "Every research creator's"} best work in one place, ranked by{" "}
-        <em>lift</em> — how far a video beat the account&apos;s own baseline. Because lift is
-        measured per creator, a big account and a small one are directly comparable here.
-        {isRoster && (
-          <>
-            {" "}
-            Scoped to{" "}
-            <span className="font-medium text-neutral-700">
-              {workspace.app?.name ?? "all apps"}
-            </span>{" "}
-            — switch workspaces in the sidebar.
-          </>
-        )}
-      </p>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="mb-6 grid grid-cols-2 gap-3 stagger-children lg:grid-cols-5">
         <KpiCard
           label={isRoster ? "Roster creators" : "Creators studied"}
           value={String(creatorRows.length)}
@@ -313,55 +309,41 @@ export default async function ResearchOverviewPage({
       </div>
 
       <div className="flex items-start gap-4">
-        <div className="min-w-0 flex-1 space-y-5">
+        <div className="min-w-0 flex-1 space-y-5 stagger-children">
           <Card
             title={`${rank === "views" ? "Biggest reach" : "Highest lifts"}${activeFilter ? ` — ${activeFilter}` : ""}`}
+            subtitle={`${visible.length} of ${filtered.length} shown · ${windowLabel}`}
             action={
-              <span className="flex items-center gap-2 text-xs">
+              <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
                 {activeFilter && (
                   <Link
                     href={hrefWith({ format: null, creator: null })}
-                    className="rounded-md border border-neutral-200 px-2 py-1 text-neutral-500 transition-colors hover:text-neutral-900"
+                    className="rounded-lg px-2 py-1 text-neutral-500 ring-1 ring-hairline transition hover:text-neutral-900"
                   >
                     Clear filter ✕
                   </Link>
                 )}
-                <span className="text-neutral-400">
-                  {visible.length} of {filtered.length}
-                </span>
-                <span className="inline-flex shrink-0 rounded-lg border border-neutral-200 bg-white p-0.5">
-                  {RANK_MODES.map(([key, label]) => (
-                    <Link
-                      key={key}
-                      href={hrefWith({ rank: key === "lift" ? null : key })}
-                      scroll={false}
-                      className={`rounded-md px-2.5 py-1 transition-colors ${
-                        rank === key
-                          ? "bg-neutral-900 font-medium text-white"
-                          : "text-neutral-500 hover:text-neutral-900"
-                      }`}
-                    >
-                      {label}
-                    </Link>
-                  ))}
-                </span>
-                <span className="inline-flex shrink-0 rounded-lg border border-neutral-200 bg-white p-0.5">
-                  {TOP_PRESETS.map((n) => (
-                    <Link
-                      key={n}
-                      href={hrefWith({ top: n === DEFAULT_TOP ? null : String(n) })}
-                      scroll={false}
-                      className={`rounded-md px-2.5 py-1 transition-colors ${
-                        top === n
-                          ? "bg-neutral-900 font-medium text-white"
-                          : "text-neutral-500 hover:text-neutral-900"
-                      }`}
-                    >
-                      {n}
-                    </Link>
-                  ))}
-                </span>
-              </span>
+                <Segmented
+                  size="sm"
+                  aria-label="Rank videos by"
+                  value={rank}
+                  items={RANK_MODES.map(([key, label]) => ({
+                    value: key,
+                    label,
+                    href: hrefWith({ rank: key === "lift" ? null : key }),
+                  }))}
+                />
+                <Segmented
+                  size="sm"
+                  aria-label="Number of videos shown"
+                  value={String(top)}
+                  items={TOP_PRESETS.map((n) => ({
+                    value: String(n),
+                    label: String(n),
+                    href: hrefWith({ top: n === DEFAULT_TOP ? null : String(n) }),
+                  }))}
+                />
+              </div>
             }
           >
             {visible.length === 0 ? (
@@ -390,130 +372,156 @@ export default async function ResearchOverviewPage({
             )}
           </Card>
 
-          <Card title="Formats by median score">
-            {formatRollup.length === 0 ? (
-              <EmptyState message="No formats detected yet — transcribe and categorize some videos." />
-            ) : (
-              <div className={tableWrap}>
-                <table className={table}>
-                  <thead>
-                    <tr>
-                      <th className={th}>Format</th>
-                      <th className={th}>Videos</th>
-                      <th className={th}>Rated 8.0+</th>
-                      <th className={th}>Median score</th>
-                      <th className={th}>Median lift</th>
-                      <th className={th}>Median views</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-100">
-                    {formatRollup.map((f) => {
-                      const active = formatFilter === f.name;
-                      return (
-                        <tr key={f.name} className={trHover}>
-                          <td className={`${td} font-medium`}>
-                            <Link
-                              href={hrefWith({ format: active ? null : f.name })}
-                              className={`underline-offset-2 hover:underline ${
-                                f.name === UNCATEGORIZED ? "text-neutral-400" : "text-neutral-900"
-                              }`}
-                              title={active ? "Clear filter" : `Show only ${f.name}`}
-                            >
-                              {f.name}
-                            </Link>
-                          </td>
-                          <td className={`${td} tabular-nums`}>{f.count}</td>
-                          <td className={`${td} tabular-nums`}>{f.topRated}</td>
-                          <td className={td}>
-                            <ResearchScoreChip score={f.medianScore} />
-                          </td>
-                          <td className={`${td} tabular-nums`}>{fmtLift(f.medianLift)}</td>
-                          <td className={`${td} tabular-nums`}>{formatCompact(f.medianViews)}</td>
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
+            <div className="xl:col-span-2">
+              <Card title="Top formats" subtitle="Which buckets clear their baseline most">
+                {formatRollup.length === 0 ? (
+                  <EmptyState message="No formats detected yet — transcribe and categorize some videos." />
+                ) : (
+                  <div className={tableWrap}>
+                    <table className={table}>
+                      <thead>
+                        <tr>
+                          <th className={`${th} w-8`}>#</th>
+                          <th className={th}>Format</th>
+                          <th className={th}>Videos</th>
+                          <th className={th}>8.0+</th>
+                          <th className={th}>Median score</th>
+                          <th className={th}>Median lift</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
+                      </thead>
+                      <tbody className="divide-y divide-black/[0.05]">
+                        {formatRollup.map((f, i) => {
+                          const active = formatFilter === f.name;
+                          return (
+                            <tr key={f.name} className={trHover}>
+                              <td className={td}>
+                                <span className="font-mono text-xs tabular-nums text-neutral-400">
+                                  {i + 1}
+                                </span>
+                              </td>
+                              <td className={`${td} font-medium`}>
+                                <Link
+                                  href={hrefWith({ format: active ? null : f.name })}
+                                  className={`underline-offset-2 hover:underline ${
+                                    f.name === UNCATEGORIZED ? "text-neutral-400" : "text-neutral-900"
+                                  }`}
+                                  title={active ? "Clear filter" : `Show only ${f.name}`}
+                                >
+                                  {f.name}
+                                </Link>
+                              </td>
+                              <td className={`${td} tabular-nums`}>{f.count}</td>
+                              <td className={`${td} tabular-nums`}>{f.topRated}</td>
+                              <td className={td}>
+                                <span className="flex items-center gap-2">
+                                  <ResearchScoreChip score={f.medianScore} />
+                                  <span className="w-14 shrink-0">
+                                    <MiniBar ratio={(f.medianScore ?? 0) / 10} />
+                                  </span>
+                                </span>
+                              </td>
+                              <td className={`${td} tabular-nums`}>{fmtLift(f.medianLift)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            </div>
 
-          <Card title="Creators by median score">
-            {creatorRows.length === 0 ? (
-              <EmptyState message="No creators with videos in this range." />
-            ) : (
-              <div className={tableWrap}>
-                <table className={table}>
-                  <thead>
-                    <tr>
-                      <th className={th}>Creator</th>
-                      <th className={th}>Videos</th>
-                      <th className={th}>Rated 8.0+</th>
-                      <th className={th}>Median score</th>
-                      <th className={th}>Best video</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-100">
-                    {creatorRows.map((r) => {
-                      const active = creatorFilter === r.creator.id;
-                      return (
-                        <tr key={r.creator.id} className={trHover}>
-                          <td className={td}>
-                            <span className="flex items-center gap-2">
-                              <Link
-                                href={hrefWith({ creator: active ? null : r.creator.id })}
-                                className="flex items-center gap-2.5 font-medium text-neutral-900 hover:underline"
-                                title={active ? "Clear filter" : `Show only @${r.creator.handle}`}
-                              >
-                                <Avatar name={r.creator.handle} src={r.creator.avatar_url} size={26} />
-                                <span className="flex items-center gap-1.5">
-                                  <PlatformIcon platform={r.creator.platform} size={13} />@
-                                  {r.creator.handle}
-                                </span>
-                              </Link>
-                              <Link
-                                href={
-                                  days
-                                    ? `/research/${r.creator.id}?days=${days}`
-                                    : `/research/${r.creator.id}`
-                                }
-                                className="shrink-0 text-xs text-neutral-400 hover:text-neutral-700"
-                                title="Open creator page"
-                              >
-                                ↗
-                              </Link>
-                            </span>
-                          </td>
-                          <td className={`${td} tabular-nums`}>{r.videoCount}</td>
-                          <td className={`${td} tabular-nums`}>{r.topRated}</td>
-                          <td className={td}>
-                            <ResearchScoreChip score={r.medianScore} />
-                          </td>
-                          <td className={`${td} max-w-72`}>
-                            {r.best ? (
-                              <span className="flex items-center gap-2">
-                                <ResearchScoreChip score={r.best.score} />
-                                <span className="min-w-0 truncate text-sm text-neutral-600">
-                                  {r.best.video.caption?.split("\n")[0] ||
-                                    r.best.video.shortcode ||
-                                    "—"}
-                                </span>
-                                <span className="shrink-0 text-xs text-neutral-400">
-                                  {formatDate(r.best.video.posted_at)}
-                                </span>
-                              </span>
-                            ) : (
-                              <span className="text-sm text-neutral-400">—</span>
-                            )}
-                          </td>
+            <div className="xl:col-span-3">
+              <Card title="Top creators" subtitle="Best median lift score across their videos">
+                {creatorRows.length === 0 ? (
+                  <EmptyState message="No creators with videos in this range." />
+                ) : (
+                  <div className={tableWrap}>
+                    <table className={table}>
+                      <thead>
+                        <tr>
+                          <th className={`${th} w-8`}>#</th>
+                          <th className={th}>Creator</th>
+                          <th className={th}>Videos</th>
+                          <th className={th}>8.0+</th>
+                          <th className={th}>Median score</th>
+                          <th className={th}>Best video</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
+                      </thead>
+                      <tbody className="divide-y divide-black/[0.05]">
+                        {creatorRows.map((r, i) => {
+                          const active = creatorFilter === r.creator.id;
+                          return (
+                            <tr key={r.creator.id} className={trHover}>
+                              <td className={td}>
+                                <span className="font-mono text-xs tabular-nums text-neutral-400">
+                                  {i + 1}
+                                </span>
+                              </td>
+                              <td className={td}>
+                                <span className="flex items-center gap-2">
+                                  <Link
+                                    href={hrefWith({ creator: active ? null : r.creator.id })}
+                                    className="flex items-center gap-2.5 font-medium text-neutral-900 hover:underline"
+                                    title={active ? "Clear filter" : `Show only @${r.creator.handle}`}
+                                  >
+                                    <Avatar name={r.creator.handle} src={r.creator.avatar_url} size={26} />
+                                    <span className="flex items-center gap-1.5">
+                                      <PlatformIcon platform={r.creator.platform} size={13} />@
+                                      {r.creator.handle}
+                                    </span>
+                                  </Link>
+                                  <Link
+                                    href={
+                                      days
+                                        ? `/research/${r.creator.id}?days=${days}`
+                                        : `/research/${r.creator.id}`
+                                    }
+                                    className="shrink-0 text-xs text-neutral-400 hover:text-neutral-700"
+                                    title="Open creator page"
+                                  >
+                                    ↗
+                                  </Link>
+                                </span>
+                              </td>
+                              <td className={`${td} tabular-nums`}>{r.videoCount}</td>
+                              <td className={`${td} tabular-nums`}>{r.topRated}</td>
+                              <td className={td}>
+                                <span className="flex items-center gap-2">
+                                  <ResearchScoreChip score={r.medianScore} />
+                                  <span className="w-14 shrink-0">
+                                    <MiniBar ratio={(r.medianScore ?? 0) / 10} />
+                                  </span>
+                                </span>
+                              </td>
+                              <td className={`${td} max-w-72`}>
+                                {r.best ? (
+                                  <span className="flex items-center gap-2">
+                                    <ResearchScoreChip score={r.best.score} />
+                                    <span className="min-w-0 truncate text-sm text-neutral-600">
+                                      {r.best.video.caption?.split("\n")[0] ||
+                                        r.best.video.shortcode ||
+                                        "—"}
+                                    </span>
+                                    <span className="shrink-0 text-xs text-neutral-400">
+                                      {formatDate(r.best.video.posted_at)}
+                                    </span>
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-neutral-400">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            </div>
+          </div>
         </div>
 
         <ResearchVideoPanel segmentsByVideo={segmentsByVideo} />
