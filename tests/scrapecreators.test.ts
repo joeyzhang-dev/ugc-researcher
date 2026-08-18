@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchProfile,
   fetchProfileVideos,
@@ -338,5 +338,98 @@ describe("in-body error envelopes", () => {
         expect((await fetchProfile("instagram", "real")).username).toBe("real");
       }
     );
+  });
+});
+
+/**
+ * Scrape Creators occasionally 500s when its own upstream connection to the
+ * platform fails (seen live: a TLS HandshakeFailure inside their proxy,
+ * credits_charged: 0). Those are transient — the same request seconds later
+ * succeeds — so they get retried with backoff. Billed, deterministic HTTP
+ * errors (402 out of credits, 404 no such profile) still fail immediately.
+ */
+describe("transient failure retries", () => {
+  const ok = { data: { user: { username: "flaky" } } };
+  const serverError = {
+    success: false,
+    credits_charged: 0,
+    error: "internal_server_error",
+    errorStatus: 500,
+    message: "Failed to connect to the server.",
+  };
+
+  const original = globalThis.fetch;
+  let calls = 0;
+
+  const respondWith = (responses: { status: number; body: unknown }[]) => {
+    calls = 0;
+    globalThis.fetch = (async () => {
+      const r = responses[Math.min(calls, responses.length - 1)];
+      calls++;
+      return new Response(JSON.stringify(r.body), {
+        status: r.status,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+  };
+
+  beforeEach(() => {
+    process.env.SCRAPECREATORS_API_KEY ??= "test-key";
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = original;
+    vi.useRealTimers();
+  });
+
+  /** Drive the call while flushing backoff timers between attempts. */
+  const settle = async <T>(promise: Promise<T>): Promise<T> => {
+    const guarded = promise.catch((e) => {
+      throw e;
+    });
+    await vi.runAllTimersAsync();
+    return guarded;
+  };
+
+  it("retries an HTTP 500 and succeeds on a later attempt", async () => {
+    respondWith([{ status: 500, body: serverError }, { status: 200, body: ok }]);
+    const profile = await settle(fetchProfile("instagram", "flaky"));
+    expect(profile.username).toBe("flaky");
+    expect(calls).toBe(2);
+  });
+
+  it("gives up after exhausting retries on a persistent 500", async () => {
+    respondWith([{ status: 500, body: serverError }]);
+    const promise = fetchProfile("instagram", "flaky");
+    const assertion = expect(promise).rejects.toThrow(/failed \(500\)/);
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(calls).toBe(3);
+  });
+
+  it("retries an in-body internal_server_error envelope that came back as HTTP 200", async () => {
+    respondWith([{ status: 200, body: serverError }, { status: 200, body: ok }]);
+    const profile = await settle(fetchProfile("instagram", "flaky"));
+    expect(profile.username).toBe("flaky");
+    expect(calls).toBe(2);
+  });
+
+  it("does not retry a 404 — a missing profile stays missing", async () => {
+    respondWith([{ status: 404, body: { error: "not_found" } }]);
+    const promise = fetchProfile("instagram", "gone");
+    const assertion = expect(promise).rejects.toThrow(/failed \(404\)/);
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(calls).toBe(1);
+  });
+
+  it("does not retry a 402 — out of credits doesn't get better by asking again", async () => {
+    respondWith([{ status: 402, body: { error: "payment_required" } }]);
+    const promise = fetchProfile("instagram", "broke");
+    const assertion = expect(promise).rejects.toThrow(/failed \(402\)/);
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(calls).toBe(1);
   });
 });

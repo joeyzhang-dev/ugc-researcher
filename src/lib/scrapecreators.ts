@@ -23,6 +23,18 @@ import type { Platform } from "@/lib/types";
 const SC_BASE = "https://api.scrapecreators.com";
 const REQUEST_TIMEOUT_MS = 60_000;
 
+/** Transient failures (5xx, dropped sockets) get this many tries in total,
+ *  with linearly growing pauses between them. */
+const MAX_ATTEMPTS = 3;
+const RETRY_BACKOFF_MS = 1_000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** A failure worth retrying: the API itself broke (e.g. its upstream TLS
+ *  handshake to the platform failed), not our request. Seen live as HTTP 500
+ *  with `credits_charged: 0` — the same call seconds later succeeds. */
+class TransientScrapeError extends Error {}
+
 /** Pages are small (10–12 items), so a deep pull needs several. Cap the loop so
  *  a lying `more_available` can't spin forever burning credits. */
 const MAX_PAGES = 12;
@@ -33,11 +45,13 @@ export function getScrapeCreatorsKey(): string {
   return key;
 }
 
-/** GET a Scrape Creators endpoint. Network-level fetch failures (DNS blip,
- *  reset keep-alive socket) get one retry; the final error carries the undici
- *  cause code instead of a bare "fetch failed". HTTP errors are not retried —
- *  402 (out of credits) and 404 (no such profile) don't get better by asking
- *  again. */
+/** GET a Scrape Creators endpoint. Transient failures — network-level fetch
+ *  errors (DNS blip, reset keep-alive socket) and server-side 5xx, whether as
+ *  an HTTP status or buried in a 200 body — are retried with backoff up to
+ *  MAX_ATTEMPTS; a network error's final message carries the undici cause code
+ *  instead of a bare "fetch failed". Deterministic HTTP errors are not
+ *  retried — 402 (out of credits) and 404 (no such profile) don't get better
+ *  by asking again. */
 async function scGet<T>(
   path: string,
   params: Record<string, string | number | undefined>
@@ -58,16 +72,18 @@ async function scGet<T>(
 
       if (!res.ok) {
         const body = await res.text().catch(() => "");
-        throw new Error(
-          `Scrape Creators ${path} failed (${res.status}): ${body.slice(0, 500)}`
-        );
+        const message = `Scrape Creators ${path} failed (${res.status}): ${body.slice(0, 500)}`;
+        throw res.status >= 500 ? new TransientScrapeError(message) : new Error(message);
       }
       const payload = (await res.json()) as T;
       assertNotAnErrorEnvelope(path, payload);
       return payload;
     } catch (e) {
       const isNetworkError = e instanceof TypeError;
-      if (isNetworkError && attempt === 0) continue;
+      if ((isNetworkError || e instanceof TransientScrapeError) && attempt < MAX_ATTEMPTS - 1) {
+        await sleep(RETRY_BACKOFF_MS * (attempt + 1));
+        continue;
+      }
       if (isNetworkError) {
         const cause = (e as { cause?: { code?: string; message?: string } }).cause;
         const detail = cause?.code ?? cause?.message ?? "network error";
@@ -103,7 +119,10 @@ function assertNotAnErrorEnvelope(path: string, payload: unknown): void {
 
   const detail = str(body["message"]) ?? error ?? "account unavailable";
   const reason = deactivated ? "account_deactivated" : (error ?? `status ${status}`);
-  throw new Error(`Scrape Creators ${path}: ${detail} (${reason})`);
+  const message = `Scrape Creators ${path}: ${detail} (${reason})`;
+  // A server-side failure inside a 200 body is as retryable as an HTTP 5xx.
+  const transient = !deactivated && (error === "internal_server_error" || (status ?? 0) >= 500);
+  throw transient ? new TransientScrapeError(message) : new Error(message);
 }
 
 // ===========================================================================
