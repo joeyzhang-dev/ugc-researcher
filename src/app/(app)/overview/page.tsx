@@ -1,102 +1,62 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import type { ResearchAppCreator, ResearchCreator, ResearchVideo } from "@/lib/types";
-import { computeLifts, median, type VideoLift } from "@/lib/research";
 import {
-  Avatar, Card, EmptyState, KpiCard, MiniBar, PageHeader, PlatformIcon, Segmented,
-  table, tableWrap, td, th, trHover,
+  consistencyLabel,
+  dailySeries,
+  formatCallouts,
+  runningTotal,
+  staleCreators,
+  type Consistency,
+} from "@/lib/overview-stats";
+import {
+  Avatar, Card, EmptyState, KpiCard, PageHeader, Segmented, ViewAllLink,
 } from "@/components/ui";
-import { formatCompact, formatDate } from "@/lib/format";
+import { OverviewChart } from "@/components/overview-chart";
+import { formatCompact } from "@/lib/format";
 import { parseDays, withinWindow, RangePicker } from "@/components/range-picker";
-import { ResearchScoreChip, ResearchVideoPanel, type PanelSegment } from "@/components/research-panel";
-import { ResearchVideoTile } from "@/components/research-video-tile";
 import { ALL_APPS } from "@/lib/workspace";
 import { getWorkspace } from "@/lib/workspace/server";
 
 export const dynamic = "force-dynamic";
 
-/** Label used for the filter value of videos with no detected format. */
-const UNCATEGORIZED = "(uncategorized)";
-
-const TOP_PRESETS = [24, 48, 96] as const;
-const DEFAULT_TOP = 24;
-
-const RANK_MODES = [
-  ["lift", "Lift"],
-  ["views", "Views"],
+const MODES = [
+  ["daily", "Daily"],
+  ["total", "Running total"],
 ] as const;
-type RankMode = (typeof RANK_MODES)[number][0];
+type Mode = (typeof MODES)[number][0];
 
-/** Which side of the tool to summarise: outside creators we study, or ours. */
-const POOLS = [
-  ["research", "Research"],
-  ["roster", "Our creators"],
-] as const;
-type Pool = (typeof POOLS)[number][0];
+const parseMode = (raw: string | undefined): Mode =>
+  MODES.some(([k]) => k === raw) ? (raw as Mode) : "daily";
 
-function fmtLift(n: number | null): string {
-  return n == null ? "—" : `${n.toFixed(2)}×`;
-}
-
-function parseTop(raw: string | undefined): number {
-  const n = Number(raw);
-  return (TOP_PRESETS as readonly number[]).includes(n) ? n : DEFAULT_TOP;
-}
-
-function parseRank(raw: string | undefined): RankMode {
-  return RANK_MODES.some(([k]) => k === raw) ? (raw as RankMode) : "lift";
-}
-
-function parsePool(raw: string | undefined): Pool {
-  return POOLS.some(([k]) => k === raw) ? (raw as Pool) : "research";
-}
+const CONSISTENCY_TONE: Record<Consistency, string> = {
+  Consistent: "text-success",
+  Sporadic: "text-warning",
+  Quiet: "text-neutral-400",
+};
 
 /**
- * Cross-creator overview: the highest-lifting videos in a whole pool of
- * creators, plus which formats and creators produce them.
+ * The roster's campaign dashboard (rebuilt 2026-08-17 after the lift overview
+ * merged into /research): headline totals, a posting/performance time series,
+ * the top content, and the two lists that drive action — who needs a nudge and
+ * who's carrying the campaign. Scoped to the rail's workspace like /creators.
  *
- * Lift is always measured against a creator's OWN baseline, which is exactly
- * what makes a pool-wide ranking meaningful — a 3× from a 20k-view account and
- * a 3× from a 2M-view account both mean "this beat what the account normally
- * does", so they're directly comparable here.
- *
- * The pool is either the outside creators under study or our own roster. The
- * roster additionally honours the workspace picked in the header/rail, matching
- * /creators; the research pool is global, since creators we study aren't owned
- * by one product.
+ * Counters are scrape-time snapshots, so the series is attributed to upload
+ * day — "what the videos posted that day have done", not a daily delta.
  */
-export default async function ResearchOverviewPage({
+export default async function OverviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    days?: string; format?: string; creator?: string; top?: string; rank?: string; pool?: string;
-  }>;
+  searchParams: Promise<{ days?: string; mode?: string }>;
 }) {
-  const {
-    days: daysParam,
-    format: formatFilter,
-    creator: creatorFilter,
-    top: topParam,
-    rank: rankParam,
-    pool: poolParam,
-  } = await searchParams;
+  const { days: daysParam, mode: modeParam } = await searchParams;
   const days = parseDays(daysParam);
-  const top = parseTop(topParam);
-  const rank = parseRank(rankParam);
-  const poolKind = parsePool(poolParam);
-  const isRoster = poolKind === "roster";
+  const mode = parseMode(modeParam);
 
-  const hrefWith = (overrides: {
-    days?: string | null; format?: string | null; creator?: string | null;
-    top?: string | null; rank?: string | null; pool?: string | null;
-  }) => {
+  const hrefWith = (overrides: { days?: string | null; mode?: string | null }) => {
     const sp = new URLSearchParams();
     if (days) sp.set("days", String(days));
-    if (formatFilter) sp.set("format", formatFilter);
-    if (creatorFilter) sp.set("creator", creatorFilter);
-    if (topParam) sp.set("top", topParam);
-    if (rankParam) sp.set("rank", rankParam);
-    if (poolParam) sp.set("pool", poolParam);
+    if (modeParam) sp.set("mode", modeParam);
     for (const [k, v] of Object.entries(overrides)) {
       if (v == null) sp.delete(k);
       else sp.set(k, v);
@@ -111,16 +71,13 @@ export default async function ResearchOverviewPage({
 
   const [{ data: creatorsData }, { data: videosData }, { data: membershipsData }] =
     await Promise.all([
-      supabase.from("research_creators").select("*").eq("kind", poolKind),
+      supabase.from("research_creators").select("*").eq("kind", "roster"),
       supabase
         .from("research_videos")
         .select(
-          "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category"
+          "id, research_creator_id, url, shortcode, caption, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, format_category"
         ),
-      // Only the roster is scoped by app; skip the join entirely otherwise.
-      isRoster
-        ? supabase.from("research_app_creators").select("*")
-        : Promise.resolve({ data: [] as ResearchAppCreator[] }),
+      supabase.from("research_app_creators").select("*"),
     ]);
 
   const memberships = (membershipsData ?? []) as ResearchAppCreator[];
@@ -128,114 +85,72 @@ export default async function ResearchOverviewPage({
     memberships.filter((m) => !appFilter || m.app_id === appFilter).map((m) => m.research_creator_id)
   );
   const creators = ((creatorsData ?? []) as ResearchCreator[]).filter(
-    // A roster creator with no membership row belongs to no app, so it can only
-    // appear in the unscoped "All apps" view.
-    (c) => !isRoster || (appFilter ? inWorkspace.has(c.id) : true)
+    (c) => (appFilter ? inWorkspace.has(c.id) : true)
   );
   const creatorById = new Map(creators.map((c) => [c.id, c]));
-  const allVideos = (videosData ?? []) as ResearchVideo[];
 
-  const byCreator = new Map<string, ResearchVideo[]>();
-  for (const v of allVideos) {
-    // Both pools share the videos table — keep only this pool's creators.
-    if (!creatorById.has(v.research_creator_id)) continue;
-    (byCreator.get(v.research_creator_id) ??
-      byCreator.set(v.research_creator_id, []).get(v.research_creator_id)!).push(v);
-  }
-
-  // Lift must be computed per creator (the baseline is the creator's own median)
-  // and only then pooled — computing it across the merged list would compare
-  // every video against a meaningless cross-account median.
-  const perCreator = creators.map((c) => {
-    const rows = computeLifts(withinWindow(byCreator.get(c.id) ?? [], days));
-    const scores = rows.map((r) => r.score).filter((n): n is number => n != null);
-    return {
-      creator: c,
-      rows,
-      videoCount: rows.length,
-      medianScore: median(scores),
-      topRated: scores.filter((s) => s >= 8).length,
-      best: rows.find((r) => r.lift != null) ?? null, // computeLifts sorts by lift desc
-    };
-  });
-
-  const pool = perCreator.flatMap(({ creator, rows }) =>
-    rows.map((row) => ({ row, creator }))
+  const videos = ((videosData ?? []) as ResearchVideo[]).filter((v) =>
+    creatorById.has(v.research_creator_id)
   );
-
-  const formatOf = (row: VideoLift) => row.video.format_category ?? UNCATEGORIZED;
-
-  // Format rollup is computed over the unfiltered pool so the leaderboard keeps
-  // its full context while the grid below is filtered.
-  const byFormat = new Map<string, VideoLift[]>();
-  for (const { row } of pool) {
-    const key = formatOf(row);
-    (byFormat.get(key) ?? byFormat.set(key, []).get(key)!).push(row);
+  const videosByCreator = new Map<string, ResearchVideo[]>();
+  for (const v of videos) {
+    (videosByCreator.get(v.research_creator_id) ??
+      videosByCreator.set(v.research_creator_id, []).get(v.research_creator_id)!).push(v);
   }
-  const formatRollup = [...byFormat.entries()]
-    .map(([name, rows]) => {
-      const scores = rows.map((r) => r.score).filter((n): n is number => n != null);
+
+  const windowed = withinWindow(videos, days);
+  const totals = windowed.reduce(
+    (t, v) => {
+      t.views += v.view_count ?? 0;
+      t.likes += v.like_count ?? 0;
+      t.comments += v.comment_count ?? 0;
+      t.shares += v.share_count ?? 0;
+      return t;
+    },
+    { views: 0, likes: 0, comments: 0, shares: 0 }
+  );
+  const engagement = totals.likes + totals.comments + totals.shares;
+  const engagementRate = totals.views > 0 ? (engagement / totals.views) * 100 : null;
+
+  const series = dailySeries(windowed, days);
+  const charted = mode === "total" ? runningTotal(series) : series;
+
+  const topContent = [...windowed]
+    .filter((v) => v.view_count != null)
+    .sort((a, b) => b.view_count! - a.view_count!)
+    .slice(0, 5);
+
+  const attention = staleCreators(creators, videosByCreator).slice(0, 6);
+  const staleTotal = staleCreators(creators, videosByCreator).length;
+
+  const creatorTotals = creators
+    .map((c) => {
+      const vids = videosByCreator.get(c.id) ?? [];
       return {
-        name,
-        count: rows.length,
-        medianScore: median(scores),
-        medianLift: median(rows.map((r) => r.lift).filter((n): n is number => n != null)),
-        medianViews: median(
-          rows.map((r) => r.video.view_count).filter((n): n is number => n != null)
-        ),
-        topRated: scores.filter((s) => s >= 8).length,
+        creator: c,
+        views: withinWindow(vids, days).reduce((s, v) => s + (v.view_count ?? 0), 0),
+        consistency: consistencyLabel(vids),
       };
     })
-    .sort((a, b) => {
-      if ((a.name === UNCATEGORIZED) !== (b.name === UNCATEGORIZED)) {
-        return a.name === UNCATEGORIZED ? 1 : -1;
-      }
-      return (b.medianScore ?? -1) - (a.medianScore ?? -1);
-    });
+    .filter((r) => r.views > 0)
+    .sort((a, b) => b.views - a.views);
+  const top5Share =
+    totals.views > 0
+      ? Math.round(
+          (creatorTotals.slice(0, 5).reduce((s, r) => s + r.views, 0) / totals.views) * 100
+        )
+      : null;
 
-  const filtered = pool
-    .filter(({ row }) => !formatFilter || formatOf(row) === formatFilter)
-    .filter(({ creator }) => !creatorFilter || creator.id === creatorFilter)
-    .filter(({ row }) => row.lift != null)
-    .sort((a, b) =>
-      rank === "views"
-        ? (b.row.video.view_count ?? 0) - (a.row.video.view_count ?? 0)
-        : (b.row.lift ?? -1) - (a.row.lift ?? -1)
-    );
-
-  const visible = filtered.slice(0, top);
-
-  // Only the visible tiles need transcripts — the side panel reads them lazily
-  // from this map, so fetching the whole pool's segments would be wasted work.
-  const visibleIds = visible.map(({ row }) => row.video.id);
-  const { data: segmentsData } = visibleIds.length
-    ? await supabase
-        .from("research_video_segments")
-        .select("research_video_id, position, start_time, text")
-        .in("research_video_id", visibleIds)
-        .order("position", { ascending: true })
-    : { data: [] };
-  const segmentsByVideo: Record<string, PanelSegment[]> = {};
-  for (const s of (segmentsData ?? []) as (PanelSegment & { research_video_id: string })[]) {
-    (segmentsByVideo[s.research_video_id] ??= []).push({
-      position: s.position,
-      start_time: s.start_time,
-      text: s.text,
-    });
-  }
-
-  const allScores = pool.map(({ row }) => row.score).filter((n): n is number => n != null);
-  const allLifts = pool.map(({ row }) => row.lift).filter((n): n is number => n != null);
-  const totalViews = pool.reduce((sum, { row }) => sum + (row.video.view_count ?? 0), 0);
-  const eightPlus = allScores.filter((s) => s >= 8).length;
-
-  const creatorRows = [...perCreator]
-    .filter((r) => r.videoCount > 0)
-    .sort((a, b) => (b.medianScore ?? -1) - (a.medianScore ?? -1));
+  const callouts = formatCallouts(windowed);
+  const stopRatio =
+    callouts.working && callouts.stop && callouts.stop.medianViews > 0
+      ? callouts.working.medianViews / callouts.stop.medianViews
+      : null;
 
   const windowLabel = days == null ? "all time" : `last ${days} days`;
-  const activeFilter =
-    formatFilter || (creatorFilter ? `@${creatorById.get(creatorFilter)?.handle ?? ""}` : null);
+  const researchHref = days
+    ? `/research?pool=roster&rank=views&days=${days}`
+    : "/research?pool=roster&rank=views";
 
   return (
     <>
@@ -243,288 +158,248 @@ export default async function ResearchOverviewPage({
         title="Overview"
         subtitle={
           <>
-            {isRoster ? "Our roster's" : "Every research creator's"} best work, ranked by{" "}
-            <em>lift</em> — how far each video beat its own creator&apos;s baseline, so big and
-            small accounts are directly comparable.
-            {isRoster && (
-              <>
-                {" "}
-                Scoped to{" "}
-                <span className="font-medium text-neutral-700">
-                  {workspace.app?.name ?? "all apps"}
-                </span>
-                .
-              </>
-            )}
+            How the roster is performing — scoped to{" "}
+            <span className="font-medium text-neutral-700">
+              {workspace.app?.name ?? "all apps"}
+            </span>
+            . Metrics are attributed to each video&apos;s upload day.
           </>
         }
         action={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Segmented
-              aria-label="Creator pool"
-              value={poolKind}
-              items={POOLS.map(([key, label]) => ({
-                value: key,
-                label,
-                // Creator/format filters belong to one pool — carrying them
-                // across would silently match nothing.
-                href: hrefWith({
-                  pool: key === "research" ? null : key,
-                  creator: null,
-                  format: null,
-                }),
-              }))}
-            />
-            <RangePicker days={days} hrefForDays={(d) => hrefWith({ days: d ? String(d) : null })} />
-          </div>
+          <RangePicker days={days} hrefForDays={(d) => hrefWith({ days: d ? String(d) : null })} />
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 stagger-children lg:grid-cols-5">
+      <div className="mb-6 grid grid-cols-2 gap-3 stagger-children lg:grid-cols-3 xl:grid-cols-6">
+        <KpiCard label="Views" value={formatCompact(totals.views)} icon="eye" tone="sky" />
         <KpiCard
-          label={isRoster ? "Roster creators" : "Creators studied"}
-          value={String(creatorRows.length)}
-          icon="users"
-        />
-        <KpiCard label="Videos analysed" value={formatCompact(pool.length)} icon="play" />
-        <KpiCard
-          label="Rated 8.0+"
-          value={String(eightPlus)}
-          sub={
-            allScores.length
-              ? `${Math.round((eightPlus / allScores.length) * 100)}% of scored`
-              : undefined
-          }
-          icon="badge"
-          tone="amber"
-        />
-        <KpiCard
-          label="Median lift"
-          value={fmtLift(median(allLifts))}
-          sub={`across ${windowLabel}`}
+          label="Engagement"
+          value={formatCompact(engagement)}
+          sub={engagementRate != null ? `${engagementRate.toFixed(1)}% of views` : undefined}
           icon="trend"
           tone="emerald"
         />
-        <KpiCard label="Total views" value={formatCompact(totalViews)} icon="eye" tone="sky" />
+        <KpiCard label="Likes" value={formatCompact(totals.likes)} icon="heart" tone="pink" />
+        <KpiCard label="Comments" value={formatCompact(totals.comments)} icon="users" />
+        <KpiCard label="Shares" value={formatCompact(totals.shares)} icon="play" tone="violet" />
+        <KpiCard label="Posts" value={formatCompact(windowed.length)} icon="badge" tone="amber" />
       </div>
 
-      <div className="flex items-start gap-4">
-        <div className="min-w-0 flex-1 space-y-5 stagger-children">
-          <Card
-            title={`${rank === "views" ? "Biggest reach" : "Highest lifts"}${activeFilter ? ` — ${activeFilter}` : ""}`}
-            subtitle={`${visible.length} of ${filtered.length} shown · ${windowLabel}`}
-            action={
-              <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
-                {activeFilter && (
-                  <Link
-                    href={hrefWith({ format: null, creator: null })}
-                    className="rounded-lg px-2 py-1 text-neutral-500 ring-1 ring-hairline transition hover:text-neutral-900"
-                  >
-                    Clear filter ✕
-                  </Link>
-                )}
+      <div className="space-y-5 stagger-children">
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <div className="xl:col-span-2">
+            <Card
+              title="Performance"
+              subtitle={`All metrics by upload day · ${windowLabel}`}
+              action={
                 <Segmented
                   size="sm"
-                  aria-label="Rank videos by"
-                  value={rank}
-                  items={RANK_MODES.map(([key, label]) => ({
+                  aria-label="Chart mode"
+                  value={mode}
+                  items={MODES.map(([key, label]) => ({
                     value: key,
                     label,
-                    href: hrefWith({ rank: key === "lift" ? null : key }),
+                    href: hrefWith({ mode: key === "daily" ? null : key }),
                   }))}
                 />
-                <Segmented
-                  size="sm"
-                  aria-label="Number of videos shown"
-                  value={String(top)}
-                  items={TOP_PRESETS.map((n) => ({
-                    value: String(n),
-                    label: String(n),
-                    href: hrefWith({ top: n === DEFAULT_TOP ? null : String(n) }),
-                  }))}
-                />
-              </div>
-            }
+              }
+            >
+              {windowed.length === 0 ? (
+                <EmptyState message="No roster videos in this range yet." />
+              ) : (
+                <OverviewChart points={charted} />
+              )}
+            </Card>
+          </div>
+
+          <Card
+            title="Top content"
+            subtitle={`By views · ${windowLabel}`}
+            action={<ViewAllLink href={researchHref}>View all</ViewAllLink>}
           >
-            {visible.length === 0 ? (
-              <EmptyState
-                message={
-                  pool.length > 0
-                    ? "No videos match this filter in the selected range."
-                    : isRoster
-                      ? appFilter
-                        ? `No roster videos for ${workspace.app?.name ?? "this app"} yet — add a creator on the Our creators tab, or switch workspace.`
-                        : "No roster videos scraped yet — add a creator on the Our creators tab."
-                      : "No research videos scraped yet — add a creator on the Research tab."
-                }
-              />
+            {topContent.length === 0 ? (
+              <EmptyState message="Nothing to rank yet." />
             ) : (
-              <div className="grid [grid-template-columns:repeat(auto-fill,minmax(190px,1fr))]">
-                {visible.map(({ row, creator }) => (
-                  <ResearchVideoTile
-                    key={row.video.id}
-                    row={row}
-                    creatorHandle={creator.handle}
-                    showLift
-                  />
-                ))}
+              <ol className="divide-y divide-black/[0.05]">
+                {topContent.map((v, i) => {
+                  const c = creatorById.get(v.research_creator_id);
+                  const title =
+                    v.format_category || v.caption?.split("\n")[0] || v.shortcode || "Untitled";
+                  return (
+                    <li key={v.id}>
+                      <a
+                        href={v.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="group flex items-center gap-3 py-2.5 first:pt-0 last:pb-0"
+                      >
+                        <span className="w-4 shrink-0 font-mono text-xs tabular-nums text-neutral-400">
+                          {i + 1}
+                        </span>
+                        {v.thumbnail_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={v.thumbnail_url}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            referrerPolicy="no-referrer"
+                            className="h-[52px] w-10 shrink-0 rounded-lg object-cover ring-1 ring-hairline"
+                          />
+                        ) : (
+                          <span className="h-[52px] w-10 shrink-0 rounded-lg bg-surface-sunken ring-1 ring-hairline" />
+                        )}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-neutral-900 group-hover:underline">
+                            {title}
+                          </span>
+                          <span className="mt-0.5 block truncate font-mono text-[11px] text-neutral-400">
+                            @{c?.handle ?? "?"}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-sm font-semibold tabular-nums text-neutral-900">
+                          {formatCompact(v.view_count)}
+                        </span>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <Card title="Summary" subtitle="Computed from format buckets">
+            {!callouts.working ? (
+              <EmptyState message="Not enough categorized videos yet — transcribe and categorize some first." />
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-success">
+                    What&apos;s working · format
+                  </div>
+                  <div className="mt-1 flex items-baseline justify-between gap-3">
+                    <span className="text-sm font-medium text-neutral-900">
+                      {callouts.working.name}
+                    </span>
+                    <span className="shrink-0 text-sm tabular-nums text-neutral-500">
+                      {formatCompact(Math.round(callouts.working.medianViews))} median
+                    </span>
+                  </div>
+                </div>
+                {callouts.stop && (
+                  <div>
+                    <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-warning">
+                      What to stop · format
+                    </div>
+                    <div className="mt-1 flex items-baseline justify-between gap-3">
+                      <span className="text-sm font-medium text-neutral-900">
+                        {callouts.stop.name}
+                      </span>
+                      <span className="shrink-0 text-sm tabular-nums text-neutral-500">
+                        {Math.round(callouts.stop.shareOfPosts * 100)}% of posts
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {stopRatio != null && stopRatio > 1 && (
+                  <p className="border-t border-black/[0.05] pt-3 text-sm leading-relaxed text-neutral-500">
+                    <span className="font-medium text-neutral-700">Action:</span> lean into{" "}
+                    {callouts.working.name} — its median runs {stopRatio.toFixed(1)}× above{" "}
+                    {callouts.stop!.name}, which still takes{" "}
+                    {Math.round(callouts.stop!.shareOfPosts * 100)}% of output.
+                  </p>
+                )}
               </div>
             )}
           </Card>
 
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
-            <div className="xl:col-span-2">
-              <Card title="Top formats" subtitle="Which buckets clear their baseline most">
-                {formatRollup.length === 0 ? (
-                  <EmptyState message="No formats detected yet — transcribe and categorize some videos." />
-                ) : (
-                  <div className={tableWrap}>
-                    <table className={table}>
-                      <thead>
-                        <tr>
-                          <th className={`${th} w-8`}>#</th>
-                          <th className={th}>Format</th>
-                          <th className={th}>Videos</th>
-                          <th className={th}>8.0+</th>
-                          <th className={th}>Median score</th>
-                          <th className={th}>Median lift</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-black/[0.05]">
-                        {formatRollup.map((f, i) => {
-                          const active = formatFilter === f.name;
-                          return (
-                            <tr key={f.name} className={trHover}>
-                              <td className={td}>
-                                <span className="font-mono text-xs tabular-nums text-neutral-400">
-                                  {i + 1}
-                                </span>
-                              </td>
-                              <td className={`${td} font-medium`}>
-                                <Link
-                                  href={hrefWith({ format: active ? null : f.name })}
-                                  className={`underline-offset-2 hover:underline ${
-                                    f.name === UNCATEGORIZED ? "text-neutral-400" : "text-neutral-900"
-                                  }`}
-                                  title={active ? "Clear filter" : `Show only ${f.name}`}
-                                >
-                                  {f.name}
-                                </Link>
-                              </td>
-                              <td className={`${td} tabular-nums`}>{f.count}</td>
-                              <td className={`${td} tabular-nums`}>{f.topRated}</td>
-                              <td className={td}>
-                                <span className="flex items-center gap-2">
-                                  <ResearchScoreChip score={f.medianScore} />
-                                  <span className="w-14 shrink-0">
-                                    <MiniBar ratio={(f.medianScore ?? 0) / 10} />
-                                  </span>
-                                </span>
-                              </td>
-                              <td className={`${td} tabular-nums`}>{fmtLift(f.medianLift)}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </Card>
-            </div>
+          <Card
+            title="Needs attention"
+            subtitle="Quiet for 4+ days"
+            action={
+              staleTotal > 0 ? (
+                <span className="rounded-full bg-warning/[0.12] px-2 py-0.5 text-[11px] font-medium text-warning ring-1 ring-inset ring-warning/[0.24]">
+                  {staleTotal} to nudge
+                </span>
+              ) : undefined
+            }
+          >
+            {attention.length === 0 ? (
+              <EmptyState message="Everyone has posted recently. 🎉" />
+            ) : (
+              <>
+                <ul className="divide-y divide-black/[0.05]">
+                  {attention.map(({ creator: c, daysSince, totalViews }) => (
+                    <li key={c.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                      <Avatar name={c.handle} src={c.avatar_url} size={32} />
+                      <span className="min-w-0 flex-1">
+                        <Link
+                          href={`/research/${c.id}`}
+                          className="block truncate text-sm font-medium text-neutral-900 hover:underline"
+                        >
+                          {c.display_name || `@${c.handle}`}
+                        </Link>
+                        <span
+                          className={`mt-0.5 block text-xs ${
+                            daysSince == null ? "text-danger" : "text-warning"
+                          }`}
+                        >
+                          {daysSince == null ? "No posts yet" : `Last posted ${daysSince} days ago`}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-sm tabular-nums text-neutral-500">
+                        {formatCompact(totalViews)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 border-t border-black/[0.05] pt-3">
+                  <ViewAllLink href="/creators">Reach out on Our creators</ViewAllLink>
+                </div>
+              </>
+            )}
+          </Card>
 
-            <div className="xl:col-span-3">
-              <Card title="Top creators" subtitle="Best median lift score across their videos">
-                {creatorRows.length === 0 ? (
-                  <EmptyState message="No creators with videos in this range." />
-                ) : (
-                  <div className={tableWrap}>
-                    <table className={table}>
-                      <thead>
-                        <tr>
-                          <th className={`${th} w-8`}>#</th>
-                          <th className={th}>Creator</th>
-                          <th className={th}>Videos</th>
-                          <th className={th}>8.0+</th>
-                          <th className={th}>Median score</th>
-                          <th className={th}>Best video</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-black/[0.05]">
-                        {creatorRows.map((r, i) => {
-                          const active = creatorFilter === r.creator.id;
-                          return (
-                            <tr key={r.creator.id} className={trHover}>
-                              <td className={td}>
-                                <span className="font-mono text-xs tabular-nums text-neutral-400">
-                                  {i + 1}
-                                </span>
-                              </td>
-                              <td className={td}>
-                                <span className="flex items-center gap-2">
-                                  <Link
-                                    href={hrefWith({ creator: active ? null : r.creator.id })}
-                                    className="flex items-center gap-2.5 font-medium text-neutral-900 hover:underline"
-                                    title={active ? "Clear filter" : `Show only @${r.creator.handle}`}
-                                  >
-                                    <Avatar name={r.creator.handle} src={r.creator.avatar_url} size={26} />
-                                    <span className="flex items-center gap-1.5">
-                                      <PlatformIcon platform={r.creator.platform} size={13} />@
-                                      {r.creator.handle}
-                                    </span>
-                                  </Link>
-                                  <Link
-                                    href={
-                                      days
-                                        ? `/research/${r.creator.id}?days=${days}`
-                                        : `/research/${r.creator.id}`
-                                    }
-                                    className="shrink-0 text-xs text-neutral-400 hover:text-neutral-700"
-                                    title="Open creator page"
-                                  >
-                                    ↗
-                                  </Link>
-                                </span>
-                              </td>
-                              <td className={`${td} tabular-nums`}>{r.videoCount}</td>
-                              <td className={`${td} tabular-nums`}>{r.topRated}</td>
-                              <td className={td}>
-                                <span className="flex items-center gap-2">
-                                  <ResearchScoreChip score={r.medianScore} />
-                                  <span className="w-14 shrink-0">
-                                    <MiniBar ratio={(r.medianScore ?? 0) / 10} />
-                                  </span>
-                                </span>
-                              </td>
-                              <td className={`${td} max-w-72`}>
-                                {r.best ? (
-                                  <span className="flex items-center gap-2">
-                                    <ResearchScoreChip score={r.best.score} />
-                                    <span className="min-w-0 truncate text-sm text-neutral-600">
-                                      {r.best.video.caption?.split("\n")[0] ||
-                                        r.best.video.shortcode ||
-                                        "—"}
-                                    </span>
-                                    <span className="shrink-0 text-xs text-neutral-400">
-                                      {formatDate(r.best.video.posted_at)}
-                                    </span>
-                                  </span>
-                                ) : (
-                                  <span className="text-sm text-neutral-400">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+          <Card title="Top creators" subtitle={`By views · ${windowLabel}`}>
+            {creatorTotals.length === 0 ? (
+              <EmptyState message="No creator views in this range." />
+            ) : (
+              <>
+                <ol className="divide-y divide-black/[0.05]">
+                  {creatorTotals.slice(0, 6).map(({ creator: c, views, consistency }, i) => (
+                    <li key={c.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                      <span className="w-4 shrink-0 font-mono text-xs tabular-nums text-neutral-400">
+                        {i + 1}
+                      </span>
+                      <Avatar name={c.handle} src={c.avatar_url} size={32} />
+                      <span className="min-w-0 flex-1">
+                        <Link
+                          href={`/research/${c.id}`}
+                          className="block truncate text-sm font-medium text-neutral-900 hover:underline"
+                        >
+                          {c.display_name || `@${c.handle}`}
+                        </Link>
+                        <span className={`mt-0.5 block text-xs ${CONSISTENCY_TONE[consistency]}`}>
+                          {consistency}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-neutral-900">
+                        {formatCompact(views)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+                {top5Share != null && (
+                  <p className="mt-3 border-t border-black/[0.05] pt-3 text-xs text-neutral-400">
+                    Top 5 drove {top5Share}% of views.
+                  </p>
                 )}
-              </Card>
-            </div>
-          </div>
+              </>
+            )}
+          </Card>
         </div>
-
-        <ResearchVideoPanel segmentsByVideo={segmentsByVideo} />
       </div>
     </>
   );
