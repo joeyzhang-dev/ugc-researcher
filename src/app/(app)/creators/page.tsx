@@ -7,9 +7,10 @@ import type {
   ResearchCampaign,
   ResearchCampaignCreator,
   ResearchCreator,
+  ResearchCreatorStatus,
   ResearchVideo,
 } from "@/lib/types";
-import { summarizeCreator } from "@/lib/research";
+import { rosterRowStats, type DayCell } from "@/lib/roster-stats";
 import { ALL_APPS } from "@/lib/workspace";
 import { getWorkspace } from "@/lib/workspace/server";
 import {
@@ -22,18 +23,20 @@ import {
 } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
 import {
-  Avatar, AvatarStack, Card, EmptyState, PageHeader, PlatformIcon, StatusBadge,
-  inputClass, labelClass, secondaryButtonClass, table, tableWrap, td, th, trHover,
+  Avatar, AvatarStack, Card, DiscordIcon, EmptyState, PageHeader, PlatformIcon, StatusBadge,
+  inputClass, labelClass, secondaryButtonClass, tableWrap,
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
-import { parseDays, withinWindow, RangePicker } from "@/components/range-picker";
+import { parseDays, RangePicker } from "@/components/range-picker";
 import { compareValues, parseSort, SortHeader, type SortDir } from "@/components/sort-header";
 import { ScrapeAllButton } from "@/components/scrape-all-button";
 
-const SORT_KEYS = [
-  "creator", "app", "niche", "status", "followers", "videos", "views", "top", "scraped",
-] as const;
+const SORT_KEYS = ["creator", "last7", "avg", "views", "eng"] as const;
 type SortKey = (typeof SORT_KEYS)[number];
+
+/** Shared column recipe for the roster grid — header and rows must agree. */
+const GRID =
+  "grid grid-cols-[minmax(230px,1.5fr)_250px_minmax(110px,0.8fr)_minmax(110px,0.8fr)_minmax(110px,0.8fr)] items-center gap-x-3";
 
 /** Sentinel app id for roster creators that belong to no app yet. Not a real
  *  app row — it only exists to give them a band to render in. */
@@ -55,8 +58,8 @@ export default async function OurCreatorsPage({
   const { error, days: daysParam, sort: sortParam, dir: dirParam } = await searchParams;
   const days = parseDays(daysParam);
   const sort = parseSort<SortKey>(sortParam, dirParam, SORT_KEYS, {
-    key: "creator",
-    dir: "asc",
+    key: "views",
+    dir: "desc",
   });
   const supabase = await createClient();
   // The roster is scoped by the workspace picked in the header/rail rather than
@@ -159,7 +162,8 @@ export default async function OurCreatorsPage({
     .map((m) => {
       const c = creatorById.get(m.research_creator_id)!;
       const app = apps.find((a) => a.id === m.app_id);
-      const summary = summarizeCreator(withinWindow(videosByCreator.get(c.id) ?? [], days));
+      const creatorVideos = videosByCreator.get(c.id) ?? [];
+      const stats = rosterRowStats(creatorVideos, days);
       const joined = (campaignsByCreator.get(c.id) ?? []).filter(
         (cm) => campaignById.get(cm.campaign_id)?.app_id === m.app_id
       );
@@ -167,20 +171,15 @@ export default async function OurCreatorsPage({
       const available = campaigns.filter(
         (cp) => cp.app_id === m.app_id && !joinedIds.has(cp.id)
       );
-      return { m, c, app, summary, joined, available };
+      return { m, c, app, stats, videoCount: creatorVideos.length, joined, available };
     })
     .sort((a, b) => {
       const value = (r: (typeof rows)[number]): string | number | null => {
         switch (sort.key) {
-          case "app": return r.app?.name ?? null;
-          case "niche": return r.m.niche;
-          case "status": return r.c.status;
-          case "followers": return r.c.follower_count;
-          case "videos": return r.summary.videoCount;
-          case "views": return r.summary.medianViews;
-          case "top": return r.summary.topRated;
-          case "scraped":
-            return r.c.last_scraped_at ? new Date(r.c.last_scraped_at).getTime() : null;
+          case "last7": return r.stats.postsLast7;
+          case "avg": return r.stats.avgViews;
+          case "views": return r.stats.views;
+          case "eng": return r.stats.engPct;
           default: return r.c.handle;
         }
       };
@@ -308,49 +307,35 @@ export default async function OurCreatorsPage({
             <EmptyState message="No roster creators yet — add one above (pick the app they promote and tag their niche)." />
           ) : (
             <div className={tableWrap}>
-              <table className={table}>
-                <thead>
-                  <tr>
-                    {(
-                      [
-                        ["Creator", "creator", "asc"],
-                        ["Niche", "niche", "asc"],
-                      ] as const
-                    ).map(([label, key, first]) => (
-                      <SortHeader
-                        key={key}
-                        label={label}
-                        sortKey={key}
-                        active={sort.key === key}
-                        dir={sort.dir}
-                        hrefFor={sortHref}
-                        firstDir={first}
-                      />
-                    ))}
-                    <th className={th}>Campaigns</th>
-                    {(
-                      [
-                        ["Status", "status", "asc"],
-                        ["Followers", "followers", "desc"],
-                        ["Videos", "videos", "desc"],
-                        ["Median views", "views", "desc"],
-                        ["Rated 8.0+", "top", "desc"],
-                        ["Last scraped", "scraped", "desc"],
-                      ] as const
-                    ).map(([label, key, first]) => (
-                      <SortHeader
-                        key={key}
-                        label={label}
-                        sortKey={key}
-                        active={sort.key === key}
-                        dir={sort.dir}
-                        hrefFor={sortHref}
-                        firstDir={first}
-                      />
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-black/[0.05]">
+              <div className="min-w-[880px]">
+                {/* Grid, not <table> — each row is a <details> so the metrics
+                    stay a calm five columns and everything operational (niche,
+                    campaigns, scrape state) folds underneath the disclosure. */}
+                <div className={`${GRID} border-b border-black/[0.05] pb-1`}>
+                  {(
+                    [
+                      ["Creator", "creator", "asc", ""],
+                      ["Last 7 days", "last7", "desc", ""],
+                      ["Avg views", "avg", "desc", "text-right"],
+                      ["Views", "views", "desc", "text-right"],
+                      ["Eng %", "eng", "desc", "text-right"],
+                    ] as const
+                  ).map(([label, key, first, align]) => (
+                    <SortHeader
+                      key={key}
+                      as="div"
+                      label={label}
+                      sortKey={key}
+                      active={sort.key === key}
+                      dir={sort.dir}
+                      hrefFor={sortHref}
+                      firstDir={first}
+                      className={`!px-0 ${align}`}
+                    />
+                  ))}
+                </div>
+
+                <div className="divide-y divide-black/[0.05]">
                   {orderedGroups.map((group) => {
                     const totalFollowers = group.groupRows.reduce(
                       (sum, r) => sum + (r.c.follower_count ?? 0),
@@ -360,119 +345,276 @@ export default async function OurCreatorsPage({
                     return (
                       <Fragment key={group.appId}>
                         {/* App band: the grouping IS the structure, so the app name
-                            stops repeating down an "App" column. */}
-                        <tr className="bg-surface-sunken">
-                          <td colSpan={9} className="px-3 py-2">
-                            <div className="flex items-center gap-2.5">
-                              {!unassignedBand && (
-                                <Avatar name={group.app?.name ?? "?"} src={group.app?.logo_url} size={22} />
-                              )}
-                              <span className="text-sm font-semibold tracking-[-0.01em] text-neutral-900">
-                                {unassignedBand
-                                  ? "Unassigned"
-                                  : (group.app?.name ?? "Unknown app")}
+                            stops repeating down an "App" column. Hidden when the
+                            whole page is already scoped to one workspace. */}
+                        {!appFilter && (
+                          <div className="flex items-center gap-2.5 bg-surface-sunken px-1 py-2">
+                            {!unassignedBand && (
+                              <Avatar name={group.app?.name ?? "?"} src={group.app?.logo_url} size={22} />
+                            )}
+                            <span className="text-sm font-semibold tracking-[-0.01em] text-neutral-900">
+                              {unassignedBand ? "Unassigned" : (group.app?.name ?? "Unknown app")}
+                            </span>
+                            <span className="font-mono text-[11px] text-neutral-400">
+                              {group.groupRows.length} creator{group.groupRows.length === 1 ? "" : "s"} · {formatCompact(totalFollowers)} followers
+                            </span>
+                            {unassignedBand && (
+                              <span className="rounded-full bg-warning/[0.1] px-2 py-0.5 text-[11px] font-medium text-warning ring-1 ring-inset ring-warning/[0.22]">
+                                No app yet — pick one below to file them
                               </span>
-                              <span className="font-mono text-[11px] text-neutral-400">
-                                {group.groupRows.length} creator{group.groupRows.length === 1 ? "" : "s"} · {formatCompact(totalFollowers)} followers
-                              </span>
-                              {unassignedBand && (
-                                <span className="rounded-full bg-warning/[0.1] px-2 py-0.5 text-[11px] font-medium text-warning ring-1 ring-inset ring-warning/[0.22]">
-                                  No app yet — pick one below to file them
+                            )}
+                          </div>
+                        )}
+                        {group.groupRows.map(({ m, c, stats, videoCount, joined, available }) => (
+                          <details key={m.id} className="group/row">
+                            <summary
+                              className={`${GRID} cursor-pointer select-none list-none py-3 pr-1 transition-colors hover:bg-neutral-900/[0.03] [&::-webkit-details-marker]:hidden`}
+                            >
+                              {/* Creator: identity reads top-down — face, name +
+                                  health dot, then handle with platform marks. */}
+                              <div className="flex min-w-0 items-center gap-2.5">
+                                <svg
+                                  aria-hidden
+                                  width="12"
+                                  height="12"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  className="shrink-0 text-neutral-300 transition-transform duration-200 ease-fluid group-open/row:rotate-90"
+                                >
+                                  <path d="m9 6 6 6-6 6" />
+                                </svg>
+                                <Avatar name={c.handle} src={c.avatar_url} size={36} />
+                                <span className="min-w-0">
+                                  <span className="flex items-center gap-1.5">
+                                    <Link
+                                      href={`/research/${c.id}`}
+                                      className="truncate text-sm font-semibold tracking-[-0.01em] text-neutral-900 hover:underline"
+                                    >
+                                      {c.display_name || `@${c.handle}`}
+                                    </Link>
+                                    <StatusDot status={c.status} error={c.error_message} />
+                                  </span>
+                                  <span className="mt-0.5 flex items-center gap-1.5">
+                                    <PlatformIcon platform={c.platform} size={13} />
+                                    {c.discord_username && <DiscordIcon size={13} />}
+                                    <span className="truncate font-mono text-[11px] text-neutral-400">
+                                      @{c.handle}
+                                    </span>
+                                  </span>
                                 </span>
+                              </div>
+
+                              <DayStrip days={stats.days} />
+
+                              <MetricCell
+                                value={formatCompact(roundOrNull(stats.avgViews))}
+                                all={`${formatCompact(roundOrNull(stats.allAvgViews))} all-time`}
+                                windowed={days != null}
+                              />
+                              <MetricCell
+                                value={formatCompact(stats.views)}
+                                all={`${formatCompact(stats.allViews)} all-time`}
+                                windowed={days != null}
+                              />
+                              <MetricCell
+                                value={stats.engPct != null ? `${stats.engPct.toFixed(1)}%` : "—"}
+                                all={`${stats.allEngPct != null ? `${stats.allEngPct.toFixed(1)}%` : "—"} all-time`}
+                                windowed={days != null}
+                              />
+                            </summary>
+
+                            {/* Fold-out: the operational half of the old table. */}
+                            <div className="border-t border-black/[0.04] bg-surface-sunken px-1 pb-3.5 pt-3">
+                              <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pl-[52px]">
+                                <StatusBadge status={c.status} />
+                                <RowFact label="Followers" value={formatCompact(c.follower_count)} />
+                                <RowFact label="Videos" value={String(videoCount)} />
+                                <RowFact label="Last scraped" value={formatDate(c.last_scraped_at)} />
+                                <form action={setNiche} className="flex items-center gap-1">
+                                  <input type="hidden" name="membershipId" value={m.id} />
+                                  <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-400">
+                                    Niche
+                                  </span>
+                                  <input
+                                    name="niche"
+                                    defaultValue={m.niche ?? ""}
+                                    placeholder="niche…"
+                                    className="w-28 rounded-md bg-transparent px-1.5 py-0.5 text-sm text-neutral-700 transition placeholder:text-neutral-400 hover:bg-surface focus:bg-surface focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent/45"
+                                  />
+                                  <button
+                                    type="submit"
+                                    className="text-xs text-neutral-300 transition-colors hover:text-neutral-900"
+                                    title="Save niche"
+                                  >
+                                    ✓
+                                  </button>
+                                </form>
+                                <span className="flex flex-wrap items-center gap-1">
+                                  {joined.map((cm) => (
+                                    <form key={cm.id} action={removeFromCampaign.bind(null, cm.id)}>
+                                      <button
+                                        type="submit"
+                                        className="group/chip inline-flex items-center gap-1 rounded-md bg-info/[0.1] px-2 py-0.5 text-xs font-medium text-info ring-1 ring-inset ring-info/[0.22] transition hover:bg-danger/[0.1] hover:text-danger hover:ring-danger/[0.22]"
+                                        title="Remove from campaign"
+                                      >
+                                        {campaignById.get(cm.campaign_id)?.name}
+                                        <span className="text-info/50 group-hover/chip:text-danger">✕</span>
+                                      </button>
+                                    </form>
+                                  ))}
+                                  {available.length > 0 && (
+                                    <form action={assignToCampaign} className="inline-flex items-center gap-1">
+                                      <input type="hidden" name="creatorId" value={c.id} />
+                                      <input type="hidden" name="appId" value={m.app_id} />
+                                      <select
+                                        name="campaignId"
+                                        className="rounded-md bg-surface px-1.5 py-0.5 text-xs text-neutral-600 ring-1 ring-inset ring-hairline transition focus:outline-none focus:ring-2 focus:ring-accent/45"
+                                        defaultValue=""
+                                        required
+                                      >
+                                        <option value="" disabled>+ campaign</option>
+                                        {available.map((cp) => (
+                                          <option key={cp.id} value={cp.id}>{cp.name}</option>
+                                        ))}
+                                      </select>
+                                      <button
+                                        type="submit"
+                                        className="text-xs text-neutral-400 transition-colors hover:text-neutral-900"
+                                        title="Assign"
+                                      >
+                                        +
+                                      </button>
+                                    </form>
+                                  )}
+                                </span>
+                              </div>
+                              {c.status === "failed" && c.error_message && (
+                                <p className="mt-2 break-words pl-[52px] text-xs text-danger">
+                                  {c.error_message}
+                                </p>
                               )}
                             </div>
-                          </td>
-                        </tr>
-                        {group.groupRows.map(({ m, c, summary, joined, available }) => (
-                          <tr key={m.id} className={trHover}>
-                            <td className={td}>
-                              <Link
-                                href={`/research/${c.id}`}
-                                className="group/creator flex items-center gap-2.5"
-                              >
-                                <Avatar name={c.handle} src={c.avatar_url} size={32} />
-                                <span className="flex items-center gap-1.5 font-mono text-[13px] font-medium text-neutral-900 group-hover/creator:underline">
-                                  <PlatformIcon platform={c.platform} size={13} />@{c.handle}
-                                </span>
-                              </Link>
-                            </td>
-                            <td className={td}>
-                              <form action={setNiche} className="flex items-center gap-1">
-                                <input type="hidden" name="membershipId" value={m.id} />
-                                <input
-                                  name="niche"
-                                  defaultValue={m.niche ?? ""}
-                                  placeholder="niche…"
-                                  className="w-28 rounded-md bg-transparent px-1.5 py-0.5 text-sm text-neutral-700 transition placeholder:text-neutral-400 hover:bg-surface-sunken focus:bg-surface focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent/45"
-                                />
-                                <button
-                                  type="submit"
-                                  className="text-xs text-neutral-300 transition-colors hover:text-neutral-900"
-                                  title="Save niche"
-                                >
-                                  ✓
-                                </button>
-                              </form>
-                            </td>
-                            <td className={td}>
-                              <span className="flex flex-wrap items-center gap-1">
-                                {joined.map((cm) => (
-                                  <form key={cm.id} action={removeFromCampaign.bind(null, cm.id)}>
-                                    <button
-                                      type="submit"
-                                      className="group/chip inline-flex items-center gap-1 rounded-md bg-info/[0.1] px-2 py-0.5 text-xs font-medium text-info ring-1 ring-inset ring-info/[0.22] transition hover:bg-danger/[0.1] hover:text-danger hover:ring-danger/[0.22]"
-                                      title="Remove from campaign"
-                                    >
-                                      {campaignById.get(cm.campaign_id)?.name}
-                                      <span className="text-info/50 group-hover/chip:text-danger">✕</span>
-                                    </button>
-                                  </form>
-                                ))}
-                                {available.length > 0 && (
-                                  <form action={assignToCampaign} className="inline-flex items-center gap-1">
-                                    <input type="hidden" name="creatorId" value={c.id} />
-                                    <input type="hidden" name="appId" value={m.app_id} />
-                                    <select
-                                      name="campaignId"
-                                      className="rounded-md bg-surface px-1.5 py-0.5 text-xs text-neutral-600 ring-1 ring-inset ring-hairline transition focus:outline-none focus:ring-2 focus:ring-accent/45"
-                                      defaultValue=""
-                                      required
-                                    >
-                                      <option value="" disabled>+ campaign</option>
-                                      {available.map((cp) => (
-                                        <option key={cp.id} value={cp.id}>{cp.name}</option>
-                                      ))}
-                                    </select>
-                                    <button
-                                      type="submit"
-                                      className="text-xs text-neutral-400 transition-colors hover:text-neutral-900"
-                                      title="Assign"
-                                    >
-                                      +
-                                    </button>
-                                  </form>
-                                )}
-                              </span>
-                            </td>
-                            <td className={td}>
-                              <StatusBadge status={c.status} />
-                            </td>
-                            <td className={`${td} tabular-nums`}>{formatCompact(c.follower_count)}</td>
-                            <td className={`${td} tabular-nums`}>{summary.videoCount}</td>
-                            <td className={`${td} tabular-nums`}>{formatCompact(summary.medianViews)}</td>
-                            <td className={`${td} tabular-nums`}>{summary.topRated}</td>
-                            <td className={`${td} font-mono text-neutral-500`}>{formatDate(c.last_scraped_at)}</td>
-                          </tr>
+                          </details>
                         ))}
                       </Fragment>
                     );
                   })}
-                </tbody>
-              </table>
+                </div>
+              </div>
             </div>
           )}
         </Card>
 
+        <AppsCampaignsCard
+          apps={apps}
+          campaigns={campaigns}
+          memberships={memberships}
+          creatorById={creatorById}
+        />
+      </div>
+    </>
+  );
+}
+
+const roundOrNull = (n: number | null) => (n == null ? null : Math.round(n));
+
+/** Creator health at a glance: green ready, amber queued/scraping, red failed. */
+function StatusDot({
+  status,
+  error,
+}: {
+  status: ResearchCreatorStatus;
+  error?: string | null;
+}) {
+  const tone =
+    status === "ready" ? "bg-success" : status === "failed" ? "bg-danger" : "bg-warning";
+  return (
+    <span
+      title={status === "failed" && error ? `failed — ${error}` : status}
+      className={`inline-block h-[7px] w-[7px] shrink-0 rounded-full ${tone} ${
+        status === "scraping" ? "animate-pulse" : ""
+      }`}
+    />
+  );
+}
+
+/** The 7-day posting rhythm: a chip per day, lit when something went out. */
+function DayStrip({ days }: { days: DayCell[] }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      {days.map((d, i) => (
+        <span key={i} className="flex flex-col items-center gap-1">
+          <span className="text-[9px] font-medium uppercase leading-none tracking-[0.08em] text-neutral-400">
+            {d.label}
+          </span>
+          <span
+            className={`flex h-7 w-7 items-center justify-center rounded-[9px] text-xs font-semibold tabular-nums ${
+              d.count > 0
+                ? "bg-neutral-900 text-white inset-shadow-highlight"
+                : "bg-neutral-900/[0.04] text-neutral-300 ring-1 ring-inset ring-hairline"
+            }`}
+          >
+            {d.count}
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Right-aligned figure with its all-time baseline underneath. When the page is
+ *  on All time the two are the same number, so the caption drops the "vs". */
+function MetricCell({
+  value,
+  all,
+  windowed,
+}: {
+  value: string;
+  all: string;
+  windowed: boolean;
+}) {
+  return (
+    <span className="text-right">
+      <span className="block text-[15px] font-semibold tracking-[-0.01em] tabular-nums text-neutral-900">
+        {value}
+      </span>
+      <span className="mt-0.5 block text-[11px] leading-tight text-neutral-400">
+        {windowed ? `vs ${all}` : "all-time"}
+      </span>
+    </span>
+  );
+}
+
+/** Label/value pair inside the fold-out. */
+function RowFact({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="flex items-baseline gap-1.5">
+      <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-400">
+        {label}
+      </span>
+      <span className="text-sm tabular-nums text-neutral-700">{value}</span>
+    </span>
+  );
+}
+
+/** The apps & campaigns management card, unchanged — split out so the page
+ *  component stays about the roster. */
+function AppsCampaignsCard({
+  apps,
+  campaigns,
+  memberships,
+  creatorById,
+}: {
+  apps: ResearchApp[];
+  campaigns: ResearchCampaign[];
+  memberships: ResearchAppCreator[];
+  creatorById: Map<string, ResearchCreator>;
+}) {
+  return (
         <Card
           title="Apps &amp; campaigns"
           id="apps"
@@ -553,7 +695,5 @@ export default async function OurCreatorsPage({
             </div>
           </div>
         </Card>
-      </div>
-    </>
   );
 }

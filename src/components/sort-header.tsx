@@ -49,6 +49,7 @@ export function SortHeader<K extends string>({
   hrefFor,
   firstDir = "desc",
   className = "",
+  as: Tag = "th",
 }: {
   label: string;
   sortKey: K;
@@ -57,12 +58,16 @@ export function SortHeader<K extends string>({
   hrefFor: (key: K, dir: SortDir) => string;
   firstDir?: SortDir;
   className?: string;
+  /** "div" for grid-based tables (aria-sort is only valid on real th cells). */
+  as?: "th" | "div";
 }) {
   const nextDir: SortDir = active ? (dir === "asc" ? "desc" : "asc") : firstDir;
   return (
-    <th
+    <Tag
       className={`${th} ${className}`}
-      aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
+      aria-sort={
+        Tag === "th" ? (active ? (dir === "asc" ? "ascending" : "descending") : "none") : undefined
+      }
     >
       <Link
         href={hrefFor(sortKey, nextDir)}
@@ -101,6 +106,6 @@ export function SortHeader<K extends string>({
           </svg>
         )}
       </Link>
-    </th>
+    </Tag>
   );
 }
