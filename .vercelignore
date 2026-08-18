@@ -1,0 +1,3 @@
+# Never ship to Vercel: the local Python workers and their multi-GB media
+# cache (worker/data). Only the Next.js app deploys; the workers stay local.
+worker
