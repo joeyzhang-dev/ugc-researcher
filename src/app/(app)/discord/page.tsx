@@ -14,6 +14,7 @@ import { NICHE_PALETTE } from "../scripts/cal";
 import { DiscordLink } from "@/components/discord-link";
 import { channelUrl, cleanSnippet, messageUrl, ROLE_CHIP, ROLE_SENDER } from "@/lib/discord-render";
 import { linkChannelToCreator } from "./actions";
+import { DISCORD_DEPRECATED, DiscordDeprecatedNotice } from "./deprecated";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function DiscordPage({
 }: {
   searchParams: Promise<{ status?: string; q?: string; error?: string }>;
 }) {
+  if (DISCORD_DEPRECATED) return <DiscordDeprecatedNotice />;
   const { status: statusParam, q, error } = await searchParams;
   const status = statusParam === "creating" || statusParam === "paused" ? statusParam : "all";
   const supabase = await createClient();

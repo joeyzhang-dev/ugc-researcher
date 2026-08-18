@@ -13,6 +13,7 @@ import { formatDateTime } from "@/lib/format";
 import { NICHE_PALETTE } from "../../scripts/cal";
 import { DiscordLink } from "@/components/discord-link";
 import { channelUrl, cleanSnippet, messageUrl, ROLE_CHIP, ROLE_SENDER } from "@/lib/discord-render";
+import { DISCORD_DEPRECATED, DiscordDeprecatedNotice } from "../deprecated";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export default async function DiscordChannelPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ role?: string }>;
 }) {
+  if (DISCORD_DEPRECATED) return <DiscordDeprecatedNotice />;
   const { id } = await params;
   const { role: roleParam } = await searchParams;
   const role = ROLES.includes(roleParam as DiscordAuthorRole)

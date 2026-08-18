@@ -40,7 +40,7 @@ type SectionTab = { href: string; label: string; icon: ReactNode };
 
 const SECTION_TABS: SectionTab[] = [
   {
-    href: "/overview", // cross-creator highest lifts
+    href: "/overview", // the roster's campaign dashboard: totals, series, nudges
     label: "Overview",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" {...stroke}>
@@ -52,7 +52,7 @@ const SECTION_TABS: SectionTab[] = [
     ),
   },
   {
-    href: "/research", // creators we study / steal from
+    href: "/research", // creators we study / steal from — KPIs + highest lifts up top
     label: "Research",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" {...stroke}>
@@ -84,18 +84,9 @@ const SECTION_TABS: SectionTab[] = [
       </svg>
     ),
   },
-  {
-    href: "/discord", // the Folk UGC server: channels + feeds
-    label: "Discord",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden>
-        <path
-          fill="currentColor"
-          d="M19.3 5.4A16.3 16.3 0 0 0 15.1 4l-.2.4a13 13 0 0 1 3.7 1.2 15.1 15.1 0 0 0-12.8 0A13 13 0 0 1 9.5 4.4L9.3 4A16.3 16.3 0 0 0 5.1 5.4C2.6 9 1.9 12.6 2.2 16.1a16.5 16.5 0 0 0 5 2.6l.6-.9c-.9-.3-1.7-.7-2.4-1.2l.6-.4a11.8 11.8 0 0 0 10.1 0l.6.4c-.8.5-1.6.9-2.4 1.2l.6.9a16.5 16.5 0 0 0 5-2.6c.4-4.1-.6-7.7-3.2-10.7ZM9 14.1c-.8 0-1.5-.8-1.5-1.7s.7-1.7 1.5-1.7 1.5.8 1.5 1.7-.7 1.7-1.5 1.7Zm6 0c-.8 0-1.5-.8-1.5-1.7s.7-1.7 1.5-1.7 1.5.8 1.5 1.7-.7 1.7-1.5 1.7Z"
-        />
-      </svg>
-    ),
-  },
+  // The Discord CRM is deprecated for now — see DISCORD_DEPRECATED in
+  // src/app/(app)/discord/deprecated.tsx. Restore this tab when it comes back:
+  // { href: "/discord", label: "Discord", icon: <Discord mark> }
   {
     href: "/settings", // scrape schedule + manual runs
     label: "Settings",
