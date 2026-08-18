@@ -4,7 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Trace Research",
+  title: "bludgc",
   description: "Internal tool for studying outside UGC creators and formats",
 };
 

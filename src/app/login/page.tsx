@@ -36,10 +36,10 @@ export default async function LoginPage({
         {/* Brand moment — the one screen that earns generous space + larger type. */}
         <div className="mb-8 flex flex-col items-center text-center">
           <span className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-950 text-xl font-bold text-white shadow-ambient ring-1 ring-hairline inset-shadow-highlight">
-            T
+            B
           </span>
           <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-neutral-900">
-            Trace Research
+            bludgc
           </h1>
           <p className="mt-2 text-sm text-neutral-500">
             Creator &amp; format study — sign in to continue

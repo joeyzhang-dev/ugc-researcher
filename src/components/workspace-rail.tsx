@@ -51,16 +51,16 @@ export function WorkspaceRail({
         {/* Brand / home */}
         <Link
           href="/research"
-          title="Trace Research"
+          title="bludgc"
           className="group/row relative flex w-full items-center gap-3 rounded-xl px-[14px] py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
         >
           <span className={RAIL_GLYPH}>
             <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-sm font-bold text-white shadow-ambient inset-shadow-highlight">
-              T
+              B
             </span>
           </span>
           <span className={`${RAIL_LABEL} leading-tight`}>
-            <span className="block font-semibold tracking-[-0.01em] text-neutral-900">Trace Research</span>
+            <span className="block font-semibold tracking-[-0.01em] text-neutral-900">bludgc</span>
             <span className="block text-[11px] text-neutral-500">Creator &amp; format study</span>
           </span>
         </Link>
