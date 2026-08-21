@@ -847,6 +847,14 @@ def process_research(video: dict) -> None:
             "pip install whisperx (recommended) or set OPENAI_API_KEY"
         )
     segments = refine_segments(segments)
+    if not segments:
+        # A reel with music and no speech transcribes to nothing, and
+        # refine_segments drops the empty text. That is a real, correct
+        # outcome — not an error — so it is recorded as transcribed with an
+        # empty transcript rather than left to fail. (Before this guard the
+        # empty list reached segments[-1] below and raised "list index out of
+        # range", which marked the row failed with an undiagnosable message.)
+        print("    no speech detected — storing an empty transcript")
 
     update = {
         "transcript_status": "transcribed",
@@ -861,7 +869,8 @@ def process_research(video: dict) -> None:
         if public_url:
             update["video_url"] = public_url
     # Duration from the last segment end — better than nothing, cheap.
-    if video.get("duration_seconds") is None and segments[-1].get("end_time"):
+    # `segments` may legitimately be empty (no speech), so guard the index.
+    if segments and video.get("duration_seconds") is None and segments[-1].get("end_time"):
         update["duration_seconds"] = segments[-1]["end_time"]
     sb("PATCH", f"research_videos?id=eq.{vid}", update, prefer="return=minimal")
 
