@@ -146,6 +146,12 @@ export interface ResearchScript {
   body: string | null;
   /** Content lane, same vocabulary as a roster creator's per-app niche. */
   niche: string | null;
+  /** Link to the video that inspired it — the doc's INSPO VIDEO line. */
+  inspo_url: string | null;
+  /** What to demo on screen while filming — the doc's DEMO TO USE line. */
+  demo: string | null;
+  /** Track(s) to run under the video — the doc's SONG(S) TO USE line. */
+  songs: string | null;
   notes: string | null;
   status: ResearchScriptStatus;
   created_at: string;

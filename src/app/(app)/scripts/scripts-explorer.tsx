@@ -6,6 +6,10 @@ import { ResearchScoreChip } from "@/components/research-panel";
 import { Segmented, StatusBadge, table, tableWrap, td, th, trHover } from "@/components/ui";
 import { formatCompact, formatDateUTC } from "@/lib/format";
 import { weekKeyUTC, weekLabel } from "./cal";
+import { assignScriptNumbers } from "./doc";
+import { ScriptsDocView } from "./scripts-doc-view";
+import { AnnounceBar } from "./announce-bar";
+import { SendBar, type SendTarget } from "./send-bar";
 
 /* Categorical niche colors, restyled from cal.ts's flat pastels into the app's
    hairline-ring + tint language. The server deals a stable index per niche
@@ -82,6 +86,12 @@ export type ScriptRow = {
   sentDay: string;
   createdAt: string;
   status: string;
+  /** Full text for the Doc view — the other views only need the label. */
+  hook: string | null;
+  body: string | null;
+  inspoUrl: string | null;
+  demo: string | null;
+  songs: string | null;
   medianScore: number | null;
   medianLift: number | null;
   medianViews: number | null;
@@ -94,6 +104,7 @@ export type ScriptRow = {
 const VIEWS = [
   ["table", "Table"],
   ["grid", "Gallery"],
+  ["doc", "Doc"],
 ] as const;
 type ViewMode = (typeof VIEWS)[number][0];
 
@@ -153,6 +164,8 @@ export function ScriptsExplorer({
   initialStatus,
   initialNiches,
   initialSents,
+  currentAppId,
+  sendTargets,
   formSlot,
   footnote,
 }: {
@@ -164,6 +177,10 @@ export function ScriptsExplorer({
   initialStatus: string;
   initialNiches: string[];
   initialSents: string[];
+  /** Workspace app the Doc view files new scripts under (null = All apps). */
+  currentAppId: string | null;
+  /** Roster creators the send bar can deliver to. */
+  sendTargets: SendTarget[];
   /** The server-rendered "Write a script" card, slotted between KPIs and table. */
   formSlot: ReactNode;
   footnote?: ReactNode;
@@ -174,6 +191,27 @@ export function ScriptsExplorer({
   // View is a local preference, not a filter — keeping it out of the URL means
   // a shared link still lands on the recipient's own preferred layout.
   const [view, setView] = useState<ViewMode>("table");
+  // Scripts ticked for sending — survives filter changes on purpose, so you
+  // can gather a batch across weeks; the bar's Clear empties it.
+  // Canonical #N per script (Doc position within week+niche) — computed over
+  // ALL rows so filters never renumber anything.
+  const scriptNumbers = useMemo(() => assignScriptNumbers(rows), [rows]);
+  const [announceOpen, setAnnounceOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  // Group checkbox semantics: all selected → clear them, else select all.
+  const toggleMany = (ids: string[]) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const allIn = ids.length > 0 && ids.every((id) => next.has(id));
+      for (const id of ids) (allIn ? next.delete(id) : next.add(id));
+      return next;
+    });
 
   const apply = (nextStatus: string, nextNiches: string[], nextSents: string[]) => {
     setStatus(nextStatus);
@@ -334,6 +372,18 @@ export function ScriptsExplorer({
               both genuine single-value pickers, so both ride the shared
               Segmented. The week/niche pills below stay multi-select. */}
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAnnounceOpen((v) => !v)}
+              title="Post an announcement into picked creators' channels, tagging each creator"
+              className={`rounded-lg px-2.5 py-1.5 text-[12px] font-medium ring-1 ring-inset transition ${
+                announceOpen
+                  ? "bg-neutral-900 text-white ring-white/10"
+                  : "text-neutral-600 ring-hairline hover:bg-neutral-500/[0.06] hover:text-neutral-900"
+              }`}
+            >
+              📣 Announce
+            </button>
             <Segmented
               size="sm"
               aria-label="View mode"
@@ -418,12 +468,23 @@ export function ScriptsExplorer({
         )}
 
         <div className={`px-5 pb-5 ${hasFilterRow ? "pt-3" : "pt-1"}`}>
-          {filtered.length === 0 ? (
+          {/* Doc view renders even with nothing to show — its current-week
+              grid is where a fresh batch gets written. */}
+          {filtered.length === 0 && view !== "doc" ? (
             <p className="py-10 text-center text-sm text-neutral-400">
               {!hasAnyScripts
                 ? "No scripts yet — write one above, hand it to a creator, then link the video they post."
                 : "No scripts match these filters in the current workspace."}
             </p>
+          ) : view === "doc" ? (
+            <ScriptsDocView
+              rows={filtered}
+              colorOf={colorOf}
+              knownNiches={Object.keys(nicheColorIndex).sort()}
+              currentAppId={currentAppId}
+              selectedIds={selectedIds}
+              onToggleSelect={toggleSelected}
+            />
           ) : view === "grid" ? (
             /* Gallery: the hook plus the face of its best post. Scanning 102
                scripts as rows of numbers tells you nothing about what they
@@ -491,6 +552,8 @@ export function ScriptsExplorer({
               <table className={table}>
                 <thead>
                   <tr>
+                    {/* Selection column: header intentionally unlabeled. */}
+                    <th className={`${th} w-8`} aria-label="Select" />
                     <th className={th}>Sent</th>
                     <th className={th}>Niche</th>
                     <th className={th}>Script</th>
@@ -506,18 +569,32 @@ export function ScriptsExplorer({
                     return (
                       <Fragment key={week.key}>
                         <tr className="bg-neutral-900/[0.03]">
-                          <td colSpan={7} className="px-3 py-2">
-                            <button
-                              type="button"
-                              onClick={() => toggleWeek(week.key)}
-                              className="flex w-full items-center gap-2 text-left text-[13px] font-semibold text-neutral-900"
-                            >
-                              <Chevron open={weekOpen} />
-                              {week.label}
-                              <span className="font-normal tabular-nums text-neutral-400">
-                                {week.count}
-                              </span>
-                            </button>
+                          <td colSpan={8} className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                aria-label={`Select every ${week.label} script`}
+                                checked={
+                                  week.niches.length > 0 &&
+                                  week.niches.every((g) => g.rows.every((r) => selectedIds.has(r.id)))
+                                }
+                                onChange={() =>
+                                  toggleMany(week.niches.flatMap((g) => g.rows.map((r) => r.id)))
+                                }
+                                className="size-3.5 accent-neutral-900"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => toggleWeek(week.key)}
+                                className="flex w-full items-center gap-2 text-left text-[13px] font-semibold text-neutral-900"
+                              >
+                                <Chevron open={weekOpen} />
+                                {week.label}
+                                <span className="font-normal tabular-nums text-neutral-400">
+                                  {week.count}
+                                </span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                         {weekOpen &&
@@ -530,24 +607,42 @@ export function ScriptsExplorer({
                                     actually spans more than one niche. */}
                                 {week.niches.length > 1 && (
                                   <tr>
-                                    <td colSpan={7} className="px-3 py-1.5 pl-8">
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleNiche(groupKey)}
-                                        className="flex items-center gap-2 text-left text-[12px] font-medium text-neutral-500"
-                                      >
-                                        <Chevron open={groupOpen} small />
-                                        {group.niche === UNGROUPED ? "No niche" : group.niche}
-                                        <span className="tabular-nums text-neutral-400">
-                                          {group.rows.length}
-                                        </span>
-                                      </button>
+                                    <td colSpan={8} className="px-3 py-1.5 pl-8">
+                                      <div className="flex items-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          aria-label={`Select all ${group.niche === UNGROUPED ? "un-niched" : group.niche} scripts this week`}
+                                          checked={group.rows.every((r) => selectedIds.has(r.id))}
+                                          onChange={() => toggleMany(group.rows.map((r) => r.id))}
+                                          className="size-3.5 accent-neutral-900"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleNiche(groupKey)}
+                                          className="flex items-center gap-2 text-left text-[12px] font-medium text-neutral-500"
+                                        >
+                                          <Chevron open={groupOpen} small />
+                                          {group.niche === UNGROUPED ? "No niche" : group.niche}
+                                          <span className="tabular-nums text-neutral-400">
+                                            {group.rows.length}
+                                          </span>
+                                        </button>
+                                      </div>
                                     </td>
                                   </tr>
                                 )}
                                 {(groupOpen || week.niches.length === 1) &&
                                   group.rows.map((r) => (
                             <tr key={r.id} className={trHover}>
+                              <td className={`${td} w-8`}>
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Select ${r.label}`}
+                                  checked={selectedIds.has(r.id)}
+                                  onChange={() => toggleSelected(r.id)}
+                                  className="size-3.5 accent-neutral-900"
+                                />
+                              </td>
                               <td className={`${td} whitespace-nowrap tabular-nums text-neutral-500`}>
                                 {formatDateUTC(r.createdAt)}
                               </td>
@@ -565,6 +660,11 @@ export function ScriptsExplorer({
                               <td className={`${td} max-w-[32rem]`}>
                                 <Link href={`/scripts/${r.id}`} className="group block">
                                   <span className="flex items-center gap-1.5">
+                                    {scriptNumbers.get(r.id) != null && (
+                                      <span className="shrink-0 tabular-nums text-[12px] font-semibold text-neutral-400">
+                                        #{scriptNumbers.get(r.id)}
+                                      </span>
+                                    )}
                                     <span className="truncate font-medium text-neutral-900 group-hover:underline">
                                       {r.label}
                                     </span>
@@ -604,6 +704,19 @@ export function ScriptsExplorer({
         </div>
         </div>
       </section>
+
+      {selectedIds.size > 0 && (
+        <SendBar
+          scriptIds={[...selectedIds]}
+          targets={sendTargets}
+          onClear={() => setSelectedIds(new Set())}
+        />
+      )}
+      {/* The script send bar wins the bottom slot — an active selection means
+          a send is in progress, so the announcer waits its turn. */}
+      {announceOpen && selectedIds.size === 0 && (
+        <AnnounceBar targets={sendTargets} onClose={() => setAnnounceOpen(false)} />
+      )}
     </div>
   );
 }

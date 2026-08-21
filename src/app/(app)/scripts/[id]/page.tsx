@@ -287,6 +287,51 @@ export default async function ScriptDetailPage({
               />
             </div>
 
+            {/* The doc's three metadata lines share one frame, labels folded
+                in like the hook's so they cost three thin rows, not six. */}
+            <div className="overflow-hidden rounded-xl bg-surface ring-1 ring-hairline">
+              {(
+                [
+                  ["inspoUrl", "Inspo", script.inspo_url, "Link to the video that inspired it"],
+                  ["demo", "Demo", script.demo, "What to demo on screen"],
+                  ["songs", "Songs", script.songs, "Track name or link"],
+                ] as const
+              ).map(([name, label, value, placeholder], i) => (
+                <div
+                  key={name}
+                  className={`flex items-baseline gap-2 px-3 py-1.5 ${i > 0 ? "border-t border-hairline" : ""}`}
+                >
+                  <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+                    {label}
+                  </span>
+                  <input
+                    name={name}
+                    defaultValue={value ?? ""}
+                    placeholder={placeholder}
+                    className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-neutral-900 outline-none placeholder:text-neutral-400"
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Internal notes: never shown to creators. The Discord card's
+                📝 Note button appends attributed lines here; this is the one
+                place they can be edited or pruned. */}
+            <div className="overflow-hidden rounded-xl bg-surface ring-1 ring-hairline">
+              <div className="border-b border-hairline bg-surface-sunken px-3 py-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">
+                  Notes
+                </span>
+              </div>
+              <textarea
+                name="notes"
+                rows={3}
+                defaultValue={script.notes ?? ""}
+                placeholder="Internal notes — creators never see these. Notes added from the Discord card land here too."
+                className="block w-full resize-y border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
+              />
+            </div>
+
             {/* Labelled by aria only — three stacked captions cost more height
                 than they explain next to a niche chip, an app and a status. */}
             <div className="grid gap-2 sm:grid-cols-3">

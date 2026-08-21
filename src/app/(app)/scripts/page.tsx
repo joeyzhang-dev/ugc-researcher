@@ -16,8 +16,12 @@ import { AppSelect } from "@/components/app-select";
 import { ALL_APPS } from "@/lib/workspace";
 import { getWorkspace } from "@/lib/workspace/server";
 import { ScriptsExplorer, type ScriptRow } from "./scripts-explorer";
+import type { SendTarget } from "./send-bar";
 
 export const dynamic = "force-dynamic";
+// Server actions invoked from this page inherit this budget — a full-batch
+// send posts one card per script per creator and can pass a minute easily.
+export const maxDuration = 300;
 
 /** Scripts we wrote for our own creators, ranked by how they actually did. */
 export default async function ScriptsPage({
@@ -92,6 +96,11 @@ export default async function ScriptsPage({
     sentDay: p.script.created_at.slice(0, 10),
     createdAt: p.script.created_at,
     status: p.script.status,
+    hook: p.script.hook,
+    body: p.script.body,
+    inspoUrl: p.script.inspo_url,
+    demo: p.script.demo,
+    songs: p.script.songs,
     medianScore: p.medianScore,
     medianLift: p.medianLift,
     medianViews: p.medianViews,
@@ -129,6 +138,35 @@ export default async function ScriptsPage({
       : memberships.some((m) => m.app_id === appFilter && m.research_creator_id === c.id)
   );
 
+  // Send targets: every roster creator in scope, flagged with whether a
+  // Discord channel is linked (unlinked ones render un-pickable in the bar).
+  // Snowflake ids cast to text — they overflow JS numbers otherwise.
+  const { data: channelsData } = await supabase
+    .from("research_discord_channels")
+    .select("channel_id::text, research_creator_id, niche")
+    .eq("is_tracked", true)
+    .not("research_creator_id", "is", null);
+  const channelByCreator = new Map(
+    ((channelsData ?? []) as { channel_id: string; research_creator_id: string; niche: string | null }[]).map(
+      (c) => [c.research_creator_id, c]
+    )
+  );
+  const nicheOf = (creatorId: string) =>
+    memberships.find(
+      (m) => m.research_creator_id === creatorId && m.niche && (!appFilter || m.app_id === appFilter)
+    )?.niche ??
+    memberships.find((m) => m.research_creator_id === creatorId && m.niche)?.niche ??
+    channelByCreator.get(creatorId)?.niche ??
+    null;
+  const sendTargets: SendTarget[] = scopedCreators
+    .map((c) => ({
+      creatorId: c.id,
+      handle: c.handle,
+      niche: nicheOf(c.id),
+      hasChannel: channelByCreator.has(c.id),
+    }))
+    .sort((a, b) => a.handle.localeCompare(b.handle));
+
   return (
     <>
       {/* No standing description under the title: the owner asked for none — it
@@ -151,6 +189,8 @@ export default async function ScriptsPage({
         initialStatus={statusFilter ?? ""}
         initialNiches={nicheFilters}
         initialSents={sentFilters}
+        currentAppId={appFilter}
+        sendTargets={sendTargets}
         footnote={
           scopedCreators.length === 0 ? (
             <p className="mt-3 text-xs text-neutral-400">
@@ -214,6 +254,22 @@ export default async function ScriptsPage({
                     className="w-full resize-y border-0 bg-transparent p-0 text-sm leading-relaxed text-neutral-800 outline-none placeholder:text-neutral-400"
                   />
                 </div>
+              </div>
+
+              {/* The doc's three metadata lines, in the doc's order. */}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label>
+                  <span className={labelClass}>Inspo video</span>
+                  <input name="inspoUrl" placeholder="https://…" className={inputClass} />
+                </label>
+                <label>
+                  <span className={labelClass}>Demo to use</span>
+                  <input name="demo" placeholder="e.g. Folk saving you $500" className={inputClass} />
+                </label>
+                <label>
+                  <span className={labelClass}>Song(s) to use</span>
+                  <input name="songs" placeholder="Track name or link" className={inputClass} />
+                </label>
               </div>
 
               <div className="flex flex-wrap items-end gap-3">
