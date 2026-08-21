@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scrapeAll } from "@/lib/jobs/scrape-all";
-import { authorizeJobRequest } from "../../jobs/authorize";
+import { authorizeJobRequest } from "../authorize";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -12,6 +12,11 @@ export const dynamic = "force-dynamic";
  *  answer a cron with 405 forever. Vercel attaches
  *  `Authorization: Bearer $CRON_SECRET` automatically because CRON_SECRET is
  *  set on the project, and authorizeJobRequest already accepts exactly that.
+ *
+ *  It lives under /api/jobs deliberately: isPublicPath() allows that prefix
+ *  past the staff-session gate, because these routes authorize themselves.
+ *  A cron route anywhere else is redirected to /login by the middleware and
+ *  never runs — the request carries a bearer token, not a session cookie.
  *
  *  Safe to run often: scrapeAll no-ops unless the configured schedule says a
  *  run is due, and an in-flight queue resumes on the next tick. One pass

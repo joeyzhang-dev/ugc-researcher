@@ -134,11 +134,17 @@ Rules that matter:
 
 ## Scheduled work
 
-`vercel.json` runs `/api/cron/research` hourly. Vercel Cron issues a **GET**,
+`vercel.json` runs `/api/jobs/cron` hourly. Vercel Cron issues a **GET**,
 which is why that route exists instead of pointing the cron at
 `/api/jobs/research` (POST-only — a cron would 405 forever). Vercel attaches
 `Authorization: Bearer $CRON_SECRET` automatically because `CRON_SECRET` is set
 on the project. Both routes share `src/lib/jobs/scrape-all.ts`.
+
+**The `/api/jobs` prefix is load-bearing.** `isPublicPath()` in
+`src/lib/routing.ts` lets that prefix past the staff-session gate because those
+routes authorize themselves. A cron route anywhere else gets 307'd to `/login`
+by the middleware and never runs — the request carries a bearer token, not a
+session cookie. `tests/routing.test.ts` pins this.
 
 The cron is a no-op while `research_settings.auto_scrape_enabled` is false —
 flip it in /settings to arm it. `scrapeAll` also self-skips when a run is not
