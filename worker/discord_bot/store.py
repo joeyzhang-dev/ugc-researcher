@@ -12,6 +12,12 @@ from typing import Optional
 import discord_pull_worker as pull
 
 PAUSED_CATEGORY = "Not Creating 🚫"
+
+# Ceiling on the message rows /creator and /creators summarise. Matches the
+# web app's own .limit(10000) on the /discord page.
+MESSAGE_STATS_CAP = 10_000
+
+_ROLE_KEYS = frozenset({"creator", "coach", "launchpoint", "unknown"})
 _CHANNEL_PREFIXES = ("coaching-", "coachking-", "influencer-")
 
 
@@ -173,8 +179,6 @@ def link_creator(
     on it, and points the channel at it. Returns {"error": ...} instead of
     writing when the link would steal an identity that belongs to someone else.
     """
-    from datetime import datetime as _dt
-
     channel_rows = pull.sb(
         "GET",
         f"research_discord_channels?select=channel_id,channel_name,niche,research_creator_id"
@@ -218,7 +222,7 @@ def link_creator(
             "handle": handle,
             "kind": "roster",
             "status": "pending",
-            "scrape_queued_at": _dt.utcnow().isoformat() + "Z",
+            "scrape_queued_at": datetime.now(timezone.utc).isoformat(),
         }])
         creator_id = inserted[0]["id"]
         created = True
@@ -292,9 +296,14 @@ def creator_overview() -> list[dict]:
         "research_discord_channels?select=channel_id,channel_name,niche,category,"
         "research_creator_id,research_creators(handle,discord_user_id)&is_tracked=eq.true"
     )
+    # Bounded on purpose: this runs on every /creator, /creators, /health and
+    # autocomplete cache miss, and the table grows 24/7. The counters are a
+    # recent-activity summary, not an audit — an unbounded sb_all here would
+    # page the entire message history into the bot's 512MB machine.
     messages = pull.sb_all(
         "research_discord_messages?select=channel_id,author_role,posted_at,attachments"
-        "&order=posted_at.desc"
+        "&order=posted_at.desc",
+        cap=MESSAGE_STATS_CAP,
     )
     stats: dict[int, dict] = {}
     for m in messages:
@@ -303,7 +312,11 @@ def creator_overview() -> list[dict]:
             "drafts": 0, "last": None,
         })
         s["total"] += 1
-        s[m["author_role"]] = s.get(m["author_role"], 0) + 1
+        # Only the four known roles get a tally. Writing author_role straight
+        # in would share a namespace with total/drafts/last, so a future role
+        # named "last" would corrupt the counts instead of being ignored.
+        role = m["author_role"] if m["author_role"] in _ROLE_KEYS else "unknown"
+        s[role] += 1
         s["drafts"] += len(m.get("attachments") or [])
         if s["last"] is None:
             s["last"] = m["posted_at"]

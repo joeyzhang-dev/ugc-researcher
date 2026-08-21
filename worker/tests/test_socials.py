@@ -38,6 +38,28 @@ class NormalizeSocial(unittest.TestCase):
         self.assertIsNone(normalize_social("instagram", ""))
         self.assertIsNone(normalize_social("instagram", "ftp://weird"))
 
+    def test_url_must_belong_to_the_named_platform(self):
+        # Otherwise /socials view renders an unrelated link under the
+        # Instagram label and reading it gives no hint anything is wrong.
+        self.assertIsNone(normalize_social("instagram", "https://example.com/amrinrants"))
+        self.assertIsNone(
+            normalize_social("instagram", "https://www.tiktok.com/@amrinrants")
+        )
+        self.assertIsNone(
+            normalize_social("tiktok", "https://www.instagram.com/amrinrants/")
+        )
+
+    def test_platform_subdomains_still_pass(self):
+        for url in (
+            "https://instagram.com/amrinrants",
+            "https://www.instagram.com/amrinrants/",
+        ):
+            self.assertEqual(normalize_social("instagram", url), url)
+        self.assertEqual(
+            normalize_social("tiktok", "https://vm.tiktok.com/ZMabc/"),
+            "https://vm.tiktok.com/ZMabc/",
+        )
+
 
 class FormatSocials(unittest.TestCase):
     def test_lists_every_platform_with_missing_lines(self):

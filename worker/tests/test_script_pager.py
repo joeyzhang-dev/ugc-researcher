@@ -15,6 +15,7 @@ for var, dummy in {
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from discord_bot.script_pager import (  # noqa: E402
+    MAX_V2_CHARS,
     collect_text,
     detect_platform,
     extract_video_url,
@@ -323,6 +324,35 @@ class MediaResolution(unittest.TestCase):
             "https://cdn/t.mp4",
         )
         self.assertIsNone(extract_video_url("instagram", {}))
+
+
+class LeadingTextBudget(unittest.TestCase):
+    """A page flip re-renders the original header verbatim. Left unbudgeted,
+    a long header plus a full-length script exceeds Discord's V2 character
+    cap; the edit 400s, and _edit_original treats 4xx as non-retryable, so
+    the button reports "Something went wrong" on every single click."""
+
+    def _total_chars(self, page):
+        def walk(components):
+            n = 0
+            for c in components:
+                n += len(c.get("content") or "")
+                n += walk(c.get("components") or [])
+            return n
+
+        return walk(page["components"])
+
+    def test_long_leading_is_trimmed_to_fit(self):
+        big = {"id": "s1", "hook": "H" * 200, "body": "B" * 2800,
+               "demo": "D" * 400, "songs": "S" * 400}
+        page = render_page([big], 0, leading=["L" * 3000])
+        self.assertLessEqual(self._total_chars(page), MAX_V2_CHARS)
+
+    def test_short_leading_survives_verbatim(self):
+        header = "<@123> new scripts are up"
+        page = render_page([{"id": "s1", "hook": "hi", "body": "there"}], 0,
+                           leading=[header])
+        self.assertEqual(page["components"][0]["content"], header)
 
 
 if __name__ == "__main__":

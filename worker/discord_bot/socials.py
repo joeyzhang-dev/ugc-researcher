@@ -19,6 +19,13 @@ _PROFILE_URL = {
     "tiktok": "https://www.tiktok.com/@{handle}",
 }
 _HANDLE_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+# A pasted URL still has to belong to the platform it is being filed under —
+# otherwise /socials view renders an unrelated link under the Instagram label
+# and nobody can tell it is wrong by looking at it.
+_PLATFORM_HOSTS = {
+    "instagram": ("instagram.com",),
+    "tiktok": ("tiktok.com",),
+}
 
 
 def normalize_social(platform: str, raw: str) -> str | None:
@@ -26,6 +33,12 @@ def normalize_social(platform: str, raw: str) -> str | None:
     None means the input is unusable and the caller should say so."""
     value = (raw or "").strip()
     if value.startswith(("http://", "https://")):
+        from urllib.parse import urlparse
+
+        host = (urlparse(value).hostname or "").lower()
+        allowed = _PLATFORM_HOSTS.get(platform, ())
+        if not any(host == h or host.endswith(f".{h}") for h in allowed):
+            return None
         return value
     handle = value.lstrip("@")
     if not _HANDLE_RE.match(handle):
@@ -113,6 +126,6 @@ def remove_social(creator_id: str, platform: str) -> bool:
             f"research_creator_socials?research_creator_id=eq.{creator_id}&platform=eq.{platform}",
         )
     except Exception as exc:  # noqa: BLE001
+        # Always raises: SocialsNotMigrated, or the original error re-raised.
         _raise_if_unmigrated(exc)
-        return False
     return bool(deleted)

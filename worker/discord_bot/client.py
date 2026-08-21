@@ -75,6 +75,31 @@ class UgcCrmClient(discord.Client):
         self.cfg = cfg
         self.state = state
         self.tree = discord.app_commands.CommandTree(self)
+        self.tree.error(self._on_command_error)
+
+    async def _on_command_error(
+        self, interaction: discord.Interaction, error: Exception
+    ) -> None:
+        """Every command defers first, so an unhandled error would otherwise
+        leave the operator staring at a 'thinking' state forever — worst on
+        /onboard, which raises only AFTER the channel and role already exist,
+        making a retry duplicate real work. Always say something."""
+        logger.exception(
+            "slash command failed: %s",
+            getattr(getattr(interaction, "command", None), "qualified_name", "?"),
+            exc_info=error,
+        )
+        note = (
+            "❌ that command hit an error — nothing further was changed. "
+            "Check `fly logs -a bludgc-workers` for the detail."
+        )
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(note, ephemeral=True)
+            else:
+                await interaction.response.send_message(note, ephemeral=True)
+        except Exception:  # noqa: BLE001 - the interaction may have expired
+            logger.warning("could not deliver the error notice to the operator")
 
     async def setup_hook(self) -> None:
         """Register + sync commands before the gateway connects. Failures are
@@ -92,22 +117,24 @@ class UgcCrmClient(discord.Client):
             logger.info("synced %d slash commands", len(synced))
         except Exception:  # noqa: BLE001
             logger.exception("slash command sync failed; ingestion continues without commands")
-        # Self-healing tracking: the pull worker owns discover/enrich but is
-        # not always running, and manual channel renames/moves used to drift
-        # silently until someone noticed a creator missing. The always-on bot
-        # re-runs both on a slow loop; every write is an idempotent upsert, so
-        # overlapping with a running pull worker is harmless.
+        # Self-healing tracking: manual channel renames/moves used to drift
+        # silently until someone noticed a creator missing.
+        #
+        # Only enrich runs here. discover used to as well, back when the pull
+        # worker was not always running — since both moved to Fly the pull
+        # loop runs discover every 15 min of its own accord, so repeating it
+        # here was ~6 redundant guild sweeps an hour. enrich has no such
+        # owner, so the bot remains the only thing that re-attributes.
         self._crm_sync_task = self.loop.create_task(self._crm_sync_loop())
 
     async def _crm_sync_loop(self) -> None:
         await asyncio.sleep(120)  # let the gateway settle before the first pass
         while True:
             try:
-                await asyncio.to_thread(pull.cmd_discover)
                 await asyncio.to_thread(pull.cmd_enrich, False)
-                logger.info("periodic discover+enrich pass done")
+                logger.info("periodic enrich pass done")
             except Exception:  # noqa: BLE001 - the loop must survive any pass
-                logger.exception("periodic discover/enrich failed; retrying next cycle")
+                logger.exception("periodic enrich failed; retrying next cycle")
             await asyncio.sleep(1800)
 
     async def on_ready(self) -> None:

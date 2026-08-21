@@ -205,7 +205,11 @@ def register_commands(
     state: BotState,
     niche_options: Optional[Sequence[str]] = None,
 ) -> None:
-    """Register all six commands against the configured guild."""
+    """Register every command against the configured guild.
+
+    Eight top-level entries: /onboard /offboard /link /socials (a group of
+    view|add|remove) /help /health /creator /creators.
+    """
     guild = discord.Object(id=cfg.discord_guild_id)
 
     def channel_owner(channel_id: int) -> Optional[int]:

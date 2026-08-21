@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -134,8 +135,17 @@ def render_page(
     # `leading` re-renders a message's existing prefix texts verbatim on page
     # flips (header + ping + test marker all survive); `marker` remains for
     # composing a fresh test send.
+    #
+    # A long header plus a full-length script can exceed MAX_V2_CHARS, and
+    # Discord answers that with a 400 that _edit_original treats as
+    # non-retryable — the click would just report "Something went wrong" every
+    # time. Spend what the card left over, newest prefix first.
+    budget = MAX_V2_CHARS - sum(len(c.get("content") or "") for c in inner)
     for text in leading if leading is not None else ([marker] if marker else []):
-        components.append({"type": 10, "content": text})
+        if budget <= 0:
+            break
+        components.append({"type": 10, "content": _clamp(text, budget)})
+        budget -= min(len(text), budget)
     components.append({"type": 17, "accent_color": ACCENT_COLOR, "components": inner})
     return {"flags": V2_FLAG, "components": components}
 
@@ -227,6 +237,11 @@ def fetch_batch(message_id: int) -> list[dict]:
 # Mirrors src/lib/inspo-media.ts: Instagram blocks Discord's unfurler, so the
 # reference only reliably PLAYS when the mp4 itself is attached. Files cache
 # under worker/data/media/inspo/ so page flips don't re-download.
+
+# Discord's total character budget for a Components V2 message. The per-field
+# clamps above sum to ~3850, which leaves very little for `leading` — so the
+# prefix is trimmed to what actually remains rather than assumed free.
+MAX_V2_CHARS = 4000
 
 MAX_ATTACHMENT_BYTES = 9_500_000
 # Oversize sources get transcoded down to this instead of dropped — "always
@@ -347,12 +362,15 @@ def _ytdlp_download(url: str, dest: Path) -> Path | None:
     """Last resort: yt-dlp handles the CDN quirks (TikTok 403s, IG DASH)."""
     import subprocess
 
-    ytdlp = Path(__file__).resolve().parent.parent / ".venv" / "bin" / "yt-dlp"
-    if not ytdlp.exists():
+    # The local venv first (Joey's Mac), then PATH (the container, where
+    # .dockerignore excludes worker/.venv so the venv copy can never exist).
+    venv_ytdlp = Path(__file__).resolve().parent.parent / ".venv" / "bin" / "yt-dlp"
+    ytdlp = str(venv_ytdlp) if venv_ytdlp.exists() else shutil.which("yt-dlp")
+    if not ytdlp:
         return None
     dest.parent.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
-        [str(ytdlp), "-f", "mp4/bestvideo*+bestaudio/best", "--merge-output-format", "mp4",
+        [ytdlp, "-f", "mp4/bestvideo*+bestaudio/best", "--merge-output-format", "mp4",
          "-o", str(dest), "--no-playlist", "--quiet", url],
         capture_output=True, timeout=300,
     )

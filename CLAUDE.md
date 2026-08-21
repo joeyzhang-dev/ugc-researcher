@@ -98,9 +98,17 @@ Rules that matter:
   `requirements.txt`.** The latter pulls whisperx/torch (multi-GB) for local
   transcription only. The image is ~42MB; keep it that way.
 - Fly secrets: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-  `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`. Not `SUPABASE_ACCESS_TOKEN`
-  (migrations), not `SCRAPECREATORS_API_KEY` / `CRON_SECRET` (web app).
-  A missing one is a loud `KeyError` at startup, not a silent degrade.
+  `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `SCRAPECREATORS_API_KEY`. Not
+  `SUPABASE_ACCESS_TOKEN` (migrations), not `CRON_SECRET` (web app).
+  The first four are a loud `KeyError` at startup. `SCRAPECREATORS_API_KEY`
+  is the exception and the trap: `discord_bot/script_pager.py` reads it with
+  `os.environ.get`, so a missing key degrades *silently* — inspo videos stop
+  rendering inside script cards and fall back to a bare link. It was left out
+  of the original Fly secret set for exactly that reason.
+- The image has **no ffmpeg** (~100MB, deliberately omitted), so
+  `script_pager._fit_video` can never transcode an oversize inspo video —
+  those are dropped rather than shrunk. `yt-dlp` IS installed and resolved via
+  PATH. Both fallbacks sit behind the Scrape Creators lookup.
 - The retired `discord-creator-crm` project's launchd agents were unloaded
   2026-08-20 and parked in
   `~/Library/LaunchAgents/.disabled-discord-crm-2026-08-20/`. They were a live

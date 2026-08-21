@@ -6,3 +6,9 @@
 # yt-dlp, faster-whisper). Never install that here — it is multi-GB and neither
 # hosted process transcribes anything.
 discord.py>=2.3
+# Last-resort inspo-video fetch in discord_bot/script_pager.py, when the
+# Scrape Creators lookup fails. Pure Python and ~3MB, so the image stays
+# small. Found via PATH here; via worker/.venv on Joey's Mac.
+# NOTE: ffmpeg is deliberately NOT in the image (~100MB), so _fit_video
+# cannot transcode — oversize videos are dropped rather than shrunk.
+yt-dlp>=2025.1.1

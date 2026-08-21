@@ -34,6 +34,8 @@ import argparse
 import json
 import os
 import re
+import signal
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -80,6 +82,12 @@ _CONTENT_MESSAGE_TYPES = {0, 19}
 
 # --- supabase REST ----------------------------------------------------------
 
+# Every sb() call from the bot runs inside asyncio.to_thread. Without a
+# timeout a stalled connection parks that thread forever, the slash command
+# never gets its followup, and repeated stalls exhaust the default pool.
+SB_TIMEOUT_SECONDS = 30
+
+
 def sb(method: str, path: str, payload=None, prefer="return=representation"):
     req = urllib.request.Request(
         f"{SUPA}/rest/v1/{path}",
@@ -93,7 +101,7 @@ def sb(method: str, path: str, payload=None, prefer="return=representation"):
         method=method,
     )
     try:
-        with urllib.request.urlopen(req) as r:
+        with urllib.request.urlopen(req, timeout=SB_TIMEOUT_SECONDS) as r:
             body = r.read()
             return json.loads(body) if body else None
     except urllib.error.HTTPError as exc:
@@ -101,16 +109,24 @@ def sb(method: str, path: str, payload=None, prefer="return=representation"):
         raise RuntimeError(f"supabase {method} {path} -> {exc.code}: {detail}") from exc
 
 
-def sb_all(path_query: str, page: int = 1000) -> list:
-    """GET every row of a filtered query, paging past PostgREST's row cap."""
+def sb_all(path_query: str, page: int = 1000, cap: int | None = None) -> list:
+    """GET every row of a filtered query, paging past PostgREST's row cap.
+
+    ``cap`` bounds the total rows returned, for callers that only need a
+    recent slice of a table that grows without limit (see
+    discord_bot/store.py's message stats). None means every row.
+    """
     rows: list = []
     offset = 0
     while True:
-        batch = sb("GET", f"{path_query}&limit={page}&offset={offset}") or []
-        rows.extend(batch)
-        if len(batch) < page:
+        want = page if cap is None else min(page, cap - len(rows))
+        if want <= 0:
             return rows
-        offset += page
+        batch = sb("GET", f"{path_query}&limit={want}&offset={offset}") or []
+        rows.extend(batch)
+        if len(batch) < want:
+            return rows
+        offset += want
 
 
 # --- discord REST -----------------------------------------------------------
@@ -579,6 +595,14 @@ def pull_once() -> dict:
 MAINTENANCE_SECONDS = 15 * 60  # pick up newly created channels
 
 
+class _Stop(SystemExit):
+    """Raised on SIGTERM so shutdown unwinds like a clean exit."""
+
+
+def _request_stop(signum, frame) -> None:  # noqa: ARG001 - signal handler shape
+    raise _Stop(0)
+
+
 def cmd_pull(once: bool) -> None:
     last_maintenance = 0.0
     while True:
@@ -600,7 +624,11 @@ def cmd_pull(once: bool) -> None:
             print(f"[{time.strftime('%H:%M:%S')}] pull failed: {exc}", flush=True)
         if once:
             return
-        time.sleep(POLL_SECONDS)
+        try:
+            time.sleep(POLL_SECONDS)
+        except (KeyboardInterrupt, _Stop):
+            print("shutting down", flush=True)
+            return
 
 
 # --- enrich (ported from discord-crm's enrich_discord_crm.py) ---------------
@@ -944,6 +972,10 @@ def sync_scripts() -> dict:
 # --- main -------------------------------------------------------------------
 
 def main() -> None:
+    # Fly stops a machine with SIGINT/SIGTERM on every deploy. Without this the
+    # 24/7 loop dies out of time.sleep() with a KeyboardInterrupt traceback,
+    # which reads as a crash in `fly logs` and buries real errors.
+    signal.signal(signal.SIGTERM, _request_stop)
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("discover", help="guild channels -> research_discord_channels")
@@ -968,4 +1000,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (KeyboardInterrupt, _Stop):
+        print("shutting down", flush=True)
+        sys.exit(0)
