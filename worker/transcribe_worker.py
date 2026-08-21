@@ -646,6 +646,111 @@ def mux_av(video_f: Path, audio_f: Path, dest: Path) -> Path | None:
         return None
 
 
+# How long a playable copy stays in storage. Instagram encodes these at a
+# very high bitrate, so shrink_for_storage() re-encodes at the SAME resolution
+# for ~29% of the bytes, and anything older than the window is pruned back to
+# thumbnail + transcript + permalink.
+#
+# This constant governs BOTH prune_old_media() and backfill_research_media().
+# They must agree: backfill re-fetches any transcribed row whose video_url is
+# not a storage URL, so without the same cutoff it would immediately re-upload
+# everything prune just deleted, forever.
+MEDIA_RETENTION_DAYS = 90
+STORAGE_MAX_HEIGHT = 720
+STORAGE_CRF = 28
+
+
+def _retention_cutoff() -> str:
+    """The cutoff timestamp, formatted for a PostgREST query string.
+
+    Must end in "Z", not "+00:00": a literal "+" in a query string decodes as
+    a space, and Postgres rejects the result with 22007 (invalid input syntax
+    for type timestamp with time zone). That would break prune AND the media
+    backfill, which share this cutoff.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=MEDIA_RETENTION_DAYS)
+    return cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def shrink_for_storage(src: Path) -> Path:
+    """Re-encode a playable copy down to storage size, or return it unchanged.
+
+    Never raises and never returns something unplayable: if ffmpeg is missing
+    or the encode is not actually smaller, the original is kept. Losing the
+    video to save bytes would be a bad trade.
+    """
+    import subprocess
+
+    dest = src.with_suffix(".small.mp4")
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-i", str(src),
+             "-vf", f"scale=-2:'min({STORAGE_MAX_HEIGHT},ih)'",
+             "-c:v", "libx264", "-preset", "veryfast", "-crf", str(STORAGE_CRF),
+             "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart", str(dest)],
+            capture_output=True, timeout=600,
+        )
+    except Exception as e:  # ffmpeg absent (local venv without it), or a timeout
+        print(f"    shrink skipped ({type(e).__name__}); uploading original")
+        return src
+    if result.returncode != 0 or not dest.exists() or dest.stat().st_size == 0:
+        print("    shrink failed; uploading original")
+        dest.unlink(missing_ok=True)
+        return src
+    before, after = src.stat().st_size, dest.stat().st_size
+    if after >= before:
+        dest.unlink(missing_ok=True)
+        return src
+    print(f"    shrunk {before / 1e6:.1f}MB -> {after / 1e6:.1f}MB ({after / before:.0%})")
+    return dest
+
+
+def prune_old_media(days: int = MEDIA_RETENTION_DAYS, limit: int = 200) -> int:
+    """Delete stored mp4s for rows ingested more than `days` ago.
+
+    Only the media goes: transcript, metadata, thumbnail and the source
+    permalink all stay, and the UI already degrades to the thumbnail when
+    video_url is null (HoverVideo guards on `src &&`).
+
+    Keyed on created_at, NOT posted_at — the window is "90 days since we
+    ingested it", so a freshly scraped but old post still gets its full window
+    rather than being pruned before anyone sees it.
+    """
+    rows = sb(
+        "GET",
+        "research_videos?select=id,video_url"
+        "&video_url=like.*storage/v1/object/public*"
+        f"&created_at=lt.{_retention_cutoff()}&limit={limit}",
+    ) or []
+    removed = 0
+    for row in rows:
+        marker = "/storage/v1/object/public/videos/"
+        _, _, path = (row.get("video_url") or "").partition(marker)
+        if not path:
+            continue
+        try:
+            req = urllib.request.Request(
+                f"{SUPA}/storage/v1/object/videos/{path}",
+                method="DELETE",
+                headers={"Authorization": f"Bearer {KEY}", "apikey": KEY},
+            )
+            with urllib.request.urlopen(req, timeout=60) as r:
+                r.read()
+        except Exception as e:
+            print(f"    prune: storage delete failed for {path}: {e}")
+            continue
+        # Only clear the pointer once the object is actually gone, so a failed
+        # delete never leaves a row claiming media it no longer has.
+        sb("PATCH", f"research_videos?id=eq.{row['id']}",
+           {"video_url": None}, prefer="return=minimal")
+        removed += 1
+    if removed:
+        print(f"pruned {removed} stored video(s) older than {days}d")
+    return removed
+
+
 def upload_storage(local: Path, bucket: str, path: str, content_type: str) -> str | None:
     """Upload into a public Supabase Storage bucket, return the permanent URL.
     CDN links 403 when hotlinked + expire."""
@@ -750,7 +855,9 @@ def process_research(video: dict) -> None:
         "updated_at": "now()",
     }
     if playable:
-        public_url = upload_storage(playable, "videos", f"research/{vid}.mp4", "video/mp4")
+        public_url = upload_storage(
+            shrink_for_storage(playable), "videos", f"research/{vid}.mp4", "video/mp4"
+        )
         if public_url:
             update["video_url"] = public_url
     # Duration from the last segment end — better than nothing, cheap.
@@ -772,6 +879,9 @@ def backfill_research_media(limit: int = 15) -> int:
         "GET",
         "research_videos?transcript_status=eq.transcribed"
         "&or=(video_url.is.null,video_url.not.like.*storage/v1*)"
+        # Same window as prune_old_media, or backfill would immediately
+        # re-download and re-upload everything the prune just deleted.
+        f"&created_at=gte.{_retention_cutoff()}"
         f"&select=id,url,video_url,audio_url:raw_metadata->>audioUrl"
         f"&order=view_count.desc.nullslast&limit={limit}",
     )
@@ -783,7 +893,10 @@ def backfill_research_media(limit: int = 15) -> int:
             if not playable:
                 print("    ✗ no playable media with audio")
                 continue
-            public_url = upload_storage(playable, "videos", f"research/{video['id']}.mp4", "video/mp4")
+            public_url = upload_storage(
+                shrink_for_storage(playable), "videos",
+                f"research/{video['id']}.mp4", "video/mp4",
+            )
             if public_url:
                 sb("PATCH", f"research_videos?id=eq.{video['id']}",
                    {"video_url": public_url, "updated_at": "now()"}, prefer="return=minimal")
@@ -831,6 +944,7 @@ if __name__ == "__main__":
     parser.add_argument("--once", action="store_true", help="process the queue once and exit")
     args = parser.parse_args()
     print(f"worker: {SUPA}")
+    last_prune = 0.0
     while True:
         # One crashed cycle (Supabase 522, DNS blip, media host timeout) must
         # not end a multi-hour run — log it and try again next poll.
@@ -839,6 +953,18 @@ if __name__ == "__main__":
             print(f"processed {n} video(s)")
         except Exception as e:
             print(f"worker cycle failed ({type(e).__name__}): {e}")
+        # Storage retention, once a day. Separate try: a prune failure must
+        # never stop transcription, which is the job that actually matters.
+        if time.monotonic() - last_prune >= 86_400:
+            last_prune = time.monotonic()
+            try:
+                prune_old_media()
+            except Exception as e:
+                print(f"prune failed ({type(e).__name__}): {e}")
         if args.once:
             break
-        time.sleep(60)
+        try:
+            time.sleep(60)
+        except KeyboardInterrupt:
+            print("shutting down", flush=True)
+            break
