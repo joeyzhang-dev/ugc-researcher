@@ -102,6 +102,20 @@ Three deploy targets, deliberately different:
   - The local GPU path still works on Joey's Mac via `worker/.venv-transcribe`
     and `worker/requirements.txt`; media caches under `worker/data/`, which
     `.dockerignore` keeps out of every image.
+  - **Storage policy — `MEDIA_RETENTION_DAYS = 90`.** Instagram encodes reels
+    at a very high bitrate, so `shrink_for_storage()` re-encodes at the SAME
+    720p resolution before upload (measured 23–29% of the original; growth
+    ~17GB/mo → ~5GB/mo). `prune_old_media()` runs daily and deletes stored
+    mp4s for rows ingested more than 90 days ago — transcript, metadata,
+    thumbnail and permalink all stay, and `HoverVideo` guards on `src &&` so a
+    pruned row degrades to its thumbnail.
+  - `prune_old_media()` and `backfill_research_media()` MUST share
+    `MEDIA_RETENTION_DAYS`. Backfill re-fetches any transcribed row whose
+    `video_url` is not a storage URL, so a mismatched cutoff would re-upload
+    everything the prune just deleted, in a loop, forever.
+  - Retention cutoffs are formatted `...Z`, never `isoformat()`'s `+00:00` — a
+    literal `+` in a query string decodes as a space and Postgres rejects it
+    with `22007`.
 
 Rules that matter:
 
