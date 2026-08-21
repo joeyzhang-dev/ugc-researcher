@@ -6,4 +6,5 @@
 # still runs locally on Joey's Mac.
 worker
 fly.toml
+fly.transcribe.toml
 .dockerignore

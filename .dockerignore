@@ -13,12 +13,13 @@ docs
 *.log
 dev.log.old
 
-# Worker-local state that must never enter the image.
+# Worker-local state that must never enter the image. transcribe_worker.py
+# IS shipped now (fly.transcribe.toml runs it); only its multi-GB media
+# cache under worker/data stays out.
 worker/.venv
 worker/.venv-transcribe
 worker/data
 worker/tests
-worker/transcribe_worker.py
 worker/rechunk_segments.py
 worker/requirements.txt
 worker/__pycache__

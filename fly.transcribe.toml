@@ -1,0 +1,34 @@
+# Fly.io hosting for the transcription worker.
+#
+# Separate app from bludgc-workers on purpose — see worker/Dockerfile.transcribe
+# for why (ffmpeg image size vs. bot downtime, and failure isolation).
+#
+# Deploy:  fly deploy -c fly.transcribe.toml
+# Logs:    fly logs -a bludgc-transcribe
+
+app = "bludgc-transcribe"
+primary_region = "iad"
+
+[build]
+  dockerfile = "worker/Dockerfile.transcribe"
+
+[env]
+  PYTHONUNBUFFERED = "1"
+
+[processes]
+  transcribe = "python worker/transcribe_worker.py"
+
+# No [[services]] — it polls research_videos and serves nothing.
+#
+# Unlike the bot there is no single-instance constraint here (claims are
+# per-row), but one machine comfortably covers the current ~120 videos/day at
+# ~35s each, so there is no reason to run two.
+[deploy]
+  strategy = "immediate"
+
+# 1GB: ffmpeg muxing a short reel plus a ~5MB download in flight. The videos
+# are 35s on average, so this is not a memory-hungry workload.
+[[vm]]
+  processes = ["transcribe"]
+  size = "shared-cpu-1x"
+  memory = "1gb"

@@ -84,8 +84,24 @@ Three deploy targets, deliberately different:
   cannot double-connect the token). See
   `fly.toml` + `worker/Dockerfile`, design record in
   `docs/superpowers/specs/2026-08-20-worker-hosting-design.md`.
-- **`worker/transcribe_worker.py` → still local.** GPU + a multi-GB media
-  cache in `worker/data/`; it is excluded from the image by `.dockerignore`.
+- **`worker/transcribe_worker.py` → Fly**, its own app `bludgc-transcribe`
+  (`fly.transcribe.toml` + `worker/Dockerfile.transcribe`), one machine.
+  Separate app from `bludgc-workers` on purpose: it needs ffmpeg, which makes
+  an 822MB image against the bot image's 265MB (both uncompressed; Fly's
+  reported figure is the smaller compressed one), and the bot deploys with
+  `strategy = "immediate"` — sharing an image would put that pull on Discord
+  downtime. Separate apps also mean a transcription crash-loop cannot restart
+  the bot. Deploy it with `fly deploy -c fly.transcribe.toml`.
+  - Hosted transcription goes through the **OpenAI Whisper API**
+    (`OPENAI_API_KEY`), not WhisperX — `transcribe_whisperx` returns None on
+    `ImportError` and the code falls through. No torch in the image.
+  - **A video with no working transcriber is PATCHed to
+    `transcript_status = "failed"`.** Never start this worker without
+    `OPENAI_API_KEY` set, or it will walk the pending queue marking every row
+    failed. Those rows then need a manual reset to `pending`.
+  - The local GPU path still works on Joey's Mac via `worker/.venv-transcribe`
+    and `worker/requirements.txt`; media caches under `worker/data/`, which
+    `.dockerignore` keeps out of every image.
 
 Rules that matter:
 
@@ -96,7 +112,9 @@ Rules that matter:
   `run_discord_bot.py` locally while Fly is up.
 - **The hosted image installs `worker/requirements-hosted.txt`, not
   `requirements.txt`.** The latter pulls whisperx/torch (multi-GB) for local
-  transcription only. The image is ~42MB; keep it that way.
+  transcription only. The image is ~48MB as Fly reports it (265MB
+  uncompressed); keep it that way — the bot deploys with
+  `strategy = "immediate"`, so image size is Discord downtime.
 - Fly secrets: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
   `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `SCRAPECREATORS_API_KEY`. Not
   `SUPABASE_ACCESS_TOKEN` (migrations), not `CRON_SECRET` (web app).
@@ -113,6 +131,19 @@ Rules that matter:
   2026-08-20 and parked in
   `~/Library/LaunchAgents/.disabled-discord-crm-2026-08-20/`. They were a live
   duplicate ingester. Don't reload them.
+
+## Scheduled work
+
+`vercel.json` runs `/api/cron/research` hourly. Vercel Cron issues a **GET**,
+which is why that route exists instead of pointing the cron at
+`/api/jobs/research` (POST-only — a cron would 405 forever). Vercel attaches
+`Authorization: Bearer $CRON_SECRET` automatically because `CRON_SECRET` is set
+on the project. Both routes share `src/lib/jobs/scrape-all.ts`.
+
+The cron is a no-op while `research_settings.auto_scrape_enabled` is false —
+flip it in /settings to arm it. `scrapeAll` also self-skips when a run is not
+due, and resumes an in-flight queue on the next tick, so hourly polling is
+safe against a 12-hour schedule.
 
 ## Env
 

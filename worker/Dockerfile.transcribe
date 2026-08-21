@@ -1,0 +1,34 @@
+# Image for the hosted transcription worker (see fly.transcribe.toml).
+#
+# Deliberately a SEPARATE app+image from bludgc-workers. Two reasons:
+#   1. ffmpeg drags in Debian's whole codec tree: 822MB here against the bot
+#      image's 265MB (both uncompressed — Fly reports a smaller compressed
+#      number). Folding that into the bot image would make every gateway
+#      restart pull it, and the bot deploys with strategy="immediate", so it
+#      would land directly on Discord downtime. Here it costs only a few cents
+#      a month of rootfs on a worker that rarely deploys.
+#   2. A transcription crash-loop must never be able to restart the bot.
+#      Separate apps mean separate failure domains and independent deploys.
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# ffmpeg + ffprobe: muxing DASH video-only/audio renditions, and probing for
+# an audio stream before spending an API call on a silent file.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY worker/requirements-transcribe.txt ./worker/requirements-transcribe.txt
+RUN pip install --no-cache-dir -r worker/requirements-transcribe.txt
+
+COPY worker/ ./worker/
+
+# transcribe_worker writes media under worker/data/media while it works. On Fly
+# that is ephemeral scratch, which is fine: media is download -> upload to
+# Supabase storage -> discard. Nothing here is meant to survive a restart.
+RUN useradd --create-home --uid 10001 worker && chown -R worker:worker /app
+USER worker

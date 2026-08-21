@@ -1,0 +1,10 @@
+# Dependencies for the hosted transcription worker ONLY (fly.transcribe.toml).
+#
+# Transcription itself goes through the OpenAI Whisper API over plain urllib —
+# transcribe_worker.transcribe_openai builds the multipart body by hand — so
+# there is NO torch and NO whisperx here. Those stay in worker/requirements.txt
+# for the local GPU path, which is multi-GB.
+#
+# ffmpeg comes from apt in the Dockerfile, not from pip: Instagram serves DASH
+# video-only + audio renditions that have to be muxed before transcription.
+yt-dlp>=2025.1.1
