@@ -33,3 +33,4 @@ worker/.venv/
 # python bytecode
 __pycache__/
 *.pyc
+worker/.venv-transcribe/

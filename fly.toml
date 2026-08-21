@@ -1,0 +1,39 @@
+# Fly.io hosting for the two always-on Discord workers.
+#
+# Design record: docs/superpowers/specs/2026-08-20-worker-hosting-design.md
+#
+# The Next.js app is NOT here — it deploys to Vercel (project "bludgc").
+# The transcription worker is NOT here — it stays local (GPU + multi-GB media).
+
+app = "bludgc-workers"
+primary_region = "iad"
+
+[build]
+  dockerfile = "worker/Dockerfile"
+
+[env]
+  PYTHONUNBUFFERED = "1"
+
+# Two process groups, one machine each. Neither serves HTTP, so this app
+# declares no [[services]] — no proxy, no health checks, no autostop.
+[processes]
+  bot  = "python worker/run_discord_bot.py"
+  pull = "python worker/discord_pull_worker.py"
+
+# CRITICAL: "immediate" stops the old machine before starting the new one.
+# Fly's bluegreen and canary strategies boot a replacement machine FIRST, which
+# would put two gateway connections on one bot token — the exact failure
+# run_discord_bot.py warns about (double-handled commands, fought interactions).
+# The cost is a few seconds of downtime per deploy. That is the right trade.
+[deploy]
+  strategy = "immediate"
+
+[[vm]]
+  processes = ["bot"]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[[vm]]
+  processes = ["pull"]
+  size = "shared-cpu-1x"
+  memory = "256mb"

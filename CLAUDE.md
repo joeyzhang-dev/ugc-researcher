@@ -2,9 +2,8 @@
 
 Standalone research pool, extracted from `trace-ugc-tracker` 2026-07-23. Study
 outside creators: Scrape Creators profile scrapes → view-lift math → format buckets →
-local transcription. **Localhost-only by design** — Joey runs it with
-`npm run dev` for his own use; do not add deployment/CI/Vercel infrastructure
-unless he asks.
+local transcription. See **Hosting** below for what runs where — the Next.js
+app and the two Discord workers are deployed; transcription stays local.
 
 ## Database — shared with trace-ugc-tracker (important)
 
@@ -53,12 +52,15 @@ Rules for new migrations in this repo:
   linking. Data lives in `research_discord_*` tables.
 - `worker/discord_pull_worker.py` — stdlib-only 24/7 Discord ingester
   (REST pull every 60s → normalize → attribute roles → idempotent upsert),
-  plus subcommands: `discover` (channels/niches from guild categories),
+  plus subcommands: `discover` (creator channels are `<track-emoji><name>`,
+  e.g. `✝️jas` — `TRACK_EMOJI_NICHES` is the emoji→niche source of truth;
+  categories are coach teams),
   `enrich` (creator discord ids, coach/launchpoint roles, re-attribution),
   `sync` (launchpoint `## Script N/M` messages → `research_scripts` +
-  assignments, dedupe marker `[lp:<md5(body)[:10]>]`), `summarize`
-  (channel summaries via `claude -p`). The loop runs sync after every pull
-  and discover+summarize every 15 min.
+  assignments, dedupe marker `[lp:<md5(body)[:10]>]`). The loop runs sync
+  after every pull and discover every 15 min. (AI channel summaries were
+  removed 2026-08-20 — the `research_discord_summaries` table still exists but
+  nothing reads or writes it.)
 - `worker/discord_bot/` + `worker/run_discord_bot.py` — the "mach ugc"
   gateway bot (discord.py, lives in `worker/.venv`): slash commands
   `/onboard /offboard /link /creator /creators /health /help` + real-time
@@ -66,6 +68,43 @@ Rules for new migrations in this repo:
   creator's Instagram ↔ Discord profile ↔ coaching channel in one command.
   Run exactly ONE instance per bot token (the old discord-crm deployment
   must stay off).
+
+## Hosting
+
+Three deploy targets, deliberately different:
+
+- **Next.js app → Vercel**, project `bludgc` (`https://bludgc.vercel.app`).
+  Linked via `.vercel/project.json`. `.vercelignore` keeps `worker/` out.
+  `portal.ts` and `discord_bot/config.py` both default to that origin for
+  `/c/<share_token>` links — keep them in sync.
+- **The two always-on Discord workers → Fly.io**, app `bludgc-workers`, one
+  app with two process groups (`bot`, `pull`), one machine each — plus a
+  stopped standby machine per group that Fly adds automatically and boots only
+  on host hardware failure (the primary's gateway dies with its host, so this
+  cannot double-connect the token). See
+  `fly.toml` + `worker/Dockerfile`, design record in
+  `docs/superpowers/specs/2026-08-20-worker-hosting-design.md`.
+- **`worker/transcribe_worker.py` → still local.** GPU + a multi-GB media
+  cache in `worker/data/`; it is excluded from the image by `.dockerignore`.
+
+Rules that matter:
+
+- **Never run the bot in two places.** One gateway connection per token, or
+  slash commands get double-handled. Fly's deploy `strategy = "immediate"`
+  exists for exactly this — do not switch it to `bluegreen`/`canary`, which
+  boot a replacement machine *before* retiring the old one. Likewise, don't run
+  `run_discord_bot.py` locally while Fly is up.
+- **The hosted image installs `worker/requirements-hosted.txt`, not
+  `requirements.txt`.** The latter pulls whisperx/torch (multi-GB) for local
+  transcription only. The image is ~42MB; keep it that way.
+- Fly secrets: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`. Not `SUPABASE_ACCESS_TOKEN`
+  (migrations), not `SCRAPECREATORS_API_KEY` / `CRON_SECRET` (web app).
+  A missing one is a loud `KeyError` at startup, not a silent degrade.
+- The retired `discord-creator-crm` project's launchd agents were unloaded
+  2026-08-20 and parked in
+  `~/Library/LaunchAgents/.disabled-discord-crm-2026-08-20/`. They were a live
+  duplicate ingester. Don't reload them.
 
 ## Env
 
@@ -82,3 +121,10 @@ Discord: `DISCORD_BOT_TOKEN` (the mach ugc bot) + `DISCORD_GUILD_ID`; the
 `npm run typecheck` · `npm test` ·
 `python3 -m py_compile worker/transcribe_worker.py worker/discord_pull_worker.py` ·
 `worker/.venv/bin/python -m py_compile worker/discord_bot/*.py worker/run_discord_bot.py`
+
+Hosted image: `docker build -f worker/Dockerfile -t bludgc-workers:test .` then
+`docker run --rm -e NEXT_PUBLIC_SUPABASE_URL=x -e SUPABASE_SERVICE_ROLE_KEY=x
+-e DISCORD_BOT_TOKEN=x -e DISCORD_GUILD_ID=1 bludgc-workers:test python -c
+"import sys; sys.path.insert(0,'worker'); import discord_pull_worker, discord_bot.client"`.
+Deployed: `fly logs -a bludgc-workers` — the bot logs its tracked-channel count
+at startup, the pull loop logs a completed cycle within 60s.

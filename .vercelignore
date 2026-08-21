@@ -1,3 +1,9 @@
-# Never ship to Vercel: the local Python workers and their multi-GB media
-# cache (worker/data). Only the Next.js app deploys; the workers stay local.
+# Never ship to Vercel: the Python workers and their multi-GB media cache
+# (worker/data). Only the Next.js app deploys here.
+#
+# The two Discord workers deploy to Fly.io instead — see fly.toml and
+# docs/superpowers/specs/2026-08-20-worker-hosting-design.md. Transcription
+# still runs locally on Joey's Mac.
 worker
+fly.toml
+.dockerignore

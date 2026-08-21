@@ -1,0 +1,29 @@
+# Everything the Next.js app owns — the image is workers-only.
+node_modules
+.next
+.next-build
+.git
+.vercel
+src
+tests
+public
+supabase
+scripts
+docs
+*.log
+dev.log.old
+
+# Worker-local state that must never enter the image.
+worker/.venv
+worker/.venv-transcribe
+worker/data
+worker/tests
+worker/transcribe_worker.py
+worker/rechunk_segments.py
+worker/requirements.txt
+worker/__pycache__
+**/__pycache__
+
+# The hosted workers read config from Fly secrets, never from a baked-in file.
+.env
+.env.local

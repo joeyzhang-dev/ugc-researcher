@@ -1,0 +1,8 @@
+# Dependencies for the two hosted workers ONLY (the Fly image):
+#   run_discord_bot.py      -> discord.py
+#   discord_pull_worker.py  -> stdlib only
+#
+# worker/requirements.txt is the LOCAL transcription set (whisperx, torch,
+# yt-dlp, faster-whisper). Never install that here — it is multi-GB and neither
+# hosted process transcribes anything.
+discord.py>=2.3
