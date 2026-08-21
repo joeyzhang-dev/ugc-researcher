@@ -23,7 +23,7 @@ const FEED_LIMIT = 300;
 const ROLES: readonly DiscordAuthorRole[] = ["creator", "coach", "launchpoint", "unknown"];
 
 /** One coaching channel's recent feed — the drilldown the old discord-crm
- *  dashboard had, minus the AI summary (that analysis lives in this app now). */
+ *  dashboard had. */
 export default async function DiscordChannelPage({
   params,
   searchParams,
@@ -65,7 +65,6 @@ export default async function DiscordChannelPage({
     roleCounts,
     { data: scriptNichesData },
     { data: membershipNichesData },
-    { data: summaryData },
     { data: rosterIdsData },
     { data: roleNotesData },
     { data: allChannelsData },
@@ -90,11 +89,6 @@ export default async function DiscordChannelPage({
       supabase.from("research_scripts").select("niche"),
       supabase.from("research_app_creators").select("niche"),
       supabase
-        .from("research_discord_summaries")
-        .select("status, summary, updated_at")
-        .eq("channel_id", id)
-        .maybeSingle(),
-      supabase
         .from("research_creators")
         .select("handle, discord_user_id::text")
         .eq("kind", "roster")
@@ -106,7 +100,6 @@ export default async function DiscordChannelPage({
   const users = (usersData ?? []) as unknown as ResearchDiscordUser[];
   const messages = (messagesData ?? []) as unknown as ResearchDiscordMessage[];
   const total = roleCounts.reduce((sum, [, n]) => sum + n, 0);
-  const summary = summaryData as { status: string | null; summary: string } | null;
 
   // Same name priority as the overview: roster name > server display > note.
   const names = new Map<string, string>();
@@ -202,18 +195,6 @@ export default async function DiscordChannelPage({
           </div>
         </div>
       </div>
-
-      {summary && (
-        <div className="mb-5 rounded-2xl bg-surface p-4 shadow-ambient ring-1 ring-hairline">
-          <div className="flex items-center gap-2">
-            {summary.status && <StatusBadge status={summary.status} />}
-            <span className="text-[11px] font-medium uppercase tracking-[0.1em] text-neutral-400">
-              where things stand
-            </span>
-          </div>
-          <p className="mt-2 text-sm leading-relaxed text-neutral-600">{summary.summary}</p>
-        </div>
-      )}
 
       <Card
         title={`Feed${messages.length === FEED_LIMIT ? ` — last ${FEED_LIMIT}` : ""}`}

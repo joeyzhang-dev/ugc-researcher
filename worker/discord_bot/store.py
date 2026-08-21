@@ -24,26 +24,33 @@ def onboard_creator_channel(
     discord_user_id: int,
     username: Optional[str] = None,
     display_name: Optional[str] = None,
-) -> None:
+    niche: Optional[str] = None,
+) -> Optional[str]:
     """Track a freshly onboarded channel, mirroring what discover would derive.
 
+    ``niche`` is the /onboard track choice — under coach-team categories the
+    category no longer implies a niche, so the explicit track wins and the
+    old category derivation is only a legacy fallback.
+
     If the member's discord id already belongs to a roster creator, the channel
-    is linked immediately; otherwise it stays unlinked until /discord's link
-    field (or a future /link command) names their Instagram.
+    is linked immediately and that creator's handle is returned; otherwise the
+    channel stays unlinked (returns None) until /link names their Instagram.
     """
     row = {
         "channel_id": channel_id,
         "guild_id": guild_id,
         "channel_name": channel_name,
         "category": category_name,
-        "niche": pull.niche_from_category(category_name),
+        "niche": niche or pull.niche_from_category(category_name),
         "is_tracked": True,
     }
+    linked_handle: Optional[str] = None
     roster = pull.sb(
-        "GET", f"research_creators?select=id&discord_user_id=eq.{discord_user_id}&limit=1"
+        "GET", f"research_creators?select=id,handle&discord_user_id=eq.{discord_user_id}&limit=1"
     )
     if roster:
         row["research_creator_id"] = roster[0]["id"]
+        linked_handle = roster[0]["handle"]
     pull.sb(
         "POST",
         "research_discord_channels?on_conflict=channel_id",
@@ -62,14 +69,61 @@ def onboard_creator_channel(
         }],
         prefer="resolution=merge-duplicates,return=minimal",
     )
+    return linked_handle
+
+
+def tracking_drift() -> dict:
+    """DB-side tracking gaps for /health: active tracked channels that are
+    unlinked, and linked creators sends can't ping. Paused channels are
+    parked on purpose and excluded."""
+    channels = pull.sb_all(
+        "research_discord_channels"
+        "?select=channel_id,channel_name,category,research_creator_id&is_tracked=eq.true"
+    )
+    creators = {
+        c["id"]: c
+        for c in pull.sb_all("research_creators?select=id,handle,discord_user_id")
+    }
+    unlinked: list[str] = []
+    unpingable: list[str] = []
+    for ch in channels:
+        if not ch.get("category") or ch["category"] == PAUSED_CATEGORY:
+            continue
+        creator_id = ch.get("research_creator_id")
+        if not creator_id:
+            unlinked.append(ch["channel_name"])
+            continue
+        creator = creators.get(creator_id)
+        if creator and not creator.get("discord_user_id"):
+            unpingable.append(f"{ch['channel_name']} (@{creator['handle']})")
+    return {
+        "unlinked": sorted(unlinked),
+        "unpingable": sorted(unpingable),
+        "tracked_channel_ids": {int(ch["channel_id"]) for ch in channels},
+    }
+
+
+def channel_creator_handle(channel_id: int) -> Optional[str]:
+    """Handle of the roster creator a channel is linked to, or None."""
+    rows = pull.sb(
+        "GET",
+        "research_discord_channels"
+        f"?channel_id=eq.{channel_id}&select=research_creators(handle)&limit=1",
+    )
+    creator = (rows or [{}])[0].get("research_creators") or {}
+    return creator.get("handle") or None
 
 
 def offboard_creator_channel(channel_id: int) -> bool:
-    """Mark a channel paused the same way discover reads it from the category."""
+    """Mark a channel paused the same way discover reads it from the category.
+
+    The niche stays: it is carried by the channel's track emoji now, and
+    discover would re-derive it from the name on the next run anyway.
+    """
     updated = pull.sb(
         "PATCH",
         f"research_discord_channels?channel_id=eq.{channel_id}",
-        {"category": PAUSED_CATEGORY, "niche": None},
+        {"category": PAUSED_CATEGORY},
         prefer="return=representation",
     )
     return bool(updated)
@@ -227,11 +281,9 @@ def _relative(iso: Optional[str]) -> str:
 
 
 def _creator_name(channel_name: Optional[str]) -> str:
-    name = channel_name or ""
-    for prefix in _CHANNEL_PREFIXES:
-        if name.startswith(prefix):
-            return name[len(prefix):]
-    return name
+    # One derivation for every convention (legacy coaching-* and the live
+    # emoji-track names) — see derive_creator_name in the pull worker.
+    return pull.derive_creator_name(channel_name or "")
 
 
 def creator_overview() -> list[dict]:

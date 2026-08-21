@@ -17,8 +17,17 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Iterable, Mapping, Optional, Sequence
 
-# Creator channels in this guild are named ``coaching-<name>``.
+import discord_pull_worker as pull
+
+# Live convention 2026-08-20: a creator channel is ``<track-emoji><name>``
+# (``✝️jas``) and the CATEGORY records the coach team, not the niche. The
+# emoji-per-niche map lives in the pull worker (TRACK_EMOJI_NICHES) so the
+# bot, the pull loop and the web app share one vocabulary; unmapped tracks
+# fall back to the legacy ``coaching-`` prefix, which every parser accepts.
 CHANNEL_PREFIX = "coaching-"
+NICHE_CHANNEL_PREFIXES: dict[str, str] = {
+    niche: emoji for emoji, niche in pull.TRACK_EMOJI_NICHES.items()
+}
 
 # Discord hard limit for a channel name.
 MAX_CHANNEL_NAME_LEN = 100
@@ -110,12 +119,14 @@ def slugify_creator_name(raw: str) -> str:
     return slug.strip("-")
 
 
-def build_channel_name(display_name: str, fallback: str = "") -> str:
-    """Build the ``coaching-<slug>`` channel name for a creator."""
+def build_channel_name(display_name: str, fallback: str = "", niche: Optional[str] = None) -> str:
+    """Channel name for a creator: the niche track's emoji prefix when the
+    track is known, else the legacy ``coaching-<slug>``."""
     slug = slugify_creator_name(display_name) or slugify_creator_name(fallback)
     if not slug:
         raise ValueError("cannot derive a channel name from an empty display name")
-    return f"{CHANNEL_PREFIX}{slug}"[:MAX_CHANNEL_NAME_LEN]
+    prefix = NICHE_CHANNEL_PREFIXES.get(niche or "", CHANNEL_PREFIX)
+    return f"{prefix}{slug}"[:MAX_CHANNEL_NAME_LEN]
 
 
 def is_niche_category(name: str) -> bool:
@@ -310,6 +321,7 @@ async def execute_onboarding(
     guild: Any,
     member: Any,
     niche: str,
+    channel_niche: Optional[str] = None,
     creator_role_name: str,
     welcome_links: WelcomeLinks,
     launchpoint_bot_id: Optional[int] = None,
@@ -318,7 +330,7 @@ async def execute_onboarding(
     niche_role_ids: Optional[Mapping[int, int]] = None,
     build_overwrite: Callable[[OverwriteSpec], Any],
     fetch_member: Optional[Callable[[int], Awaitable[Any]]] = None,
-    sync_crm: Optional[Callable[[int, str, str, str, int], None]] = None,
+    sync_crm: Optional[Callable[[int, str, str, str, int, Optional[str]], None]] = None,
     get_channel_owner: Optional[Callable[[int], Optional[int]]] = None,
     reason: str = "creator onboarding via /onboard",
 ) -> OnboardOutcome:
@@ -338,7 +350,9 @@ async def execute_onboarding(
 
     display_name = getattr(member, "display_name", None) or getattr(member, "name", "")
     try:
-        channel_name = build_channel_name(display_name, fallback=str(getattr(member, "id", "")))
+        channel_name = build_channel_name(
+            display_name, fallback=str(getattr(member, "id", "")), niche=channel_niche
+        )
     except ValueError as exc:
         return OnboardOutcome(ok=False, error=str(exc))
 
@@ -485,6 +499,7 @@ async def execute_onboarding(
                 slugify_creator_name(display_name),
                 matched,
                 int(getattr(member, "id", 0)),
+                channel_niche,
             )
             crm_synced = True
         except Exception as exc:  # noqa: BLE001 - CRM sync must not fail onboarding

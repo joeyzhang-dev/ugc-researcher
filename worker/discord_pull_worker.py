@@ -144,14 +144,46 @@ def discord_get(path: str):
 
 CREATOR_PREFIXES: tuple[str, ...] = ("coaching-", "coachking-", "influencer-")
 EXCLUDE_CATEGORIES = frozenset({"👤・Creators"})
-# Categories that describe a state, not a niche.
+# Live convention 2026-08-20: a creator channel is ``<track-emoji><name>``
+# (``✝️jas``, ``🤍anna🌸``, ``🌱austin-gavin``) — the emoji alone carries the
+# niche. This map is the entire niche vocabulary: classification, name
+# derivation, /onboard's track choices and the bot's channel names all derive
+# from it, so adding a niche is adding ONE line here (the value must match
+# research_scripts.niche verbatim) and restarting the bot/worker.
+TRACK_EMOJI_NICHES: dict[str, str] = {
+    "✝️": "Christian",
+    "🤍": "Female General Self-Improvement",
+    "🌱": "General Motivation / Hustle",
+}
+# 2026-08-19 names carried a niche word between the emoji and the creator
+# (``✝️christian-jas``, ``🌱improvement-terai``); dropping these words keeps
+# every historical name deriving the same creator.
+LEGACY_TRACK_WORDS = frozenset({"christian", "improvement"})
+# Prefix-match with variation selectors / zero-width joiners stripped so ✝️
+# and ✝ are the same track; longest base first so a multi-codepoint emoji can
+# never be shadowed by a shorter one.
+_TRACK_BASES: tuple[tuple[str, str], ...] = tuple(
+    sorted(
+        (
+            (emoji.replace("\ufe0f", "").replace("\u200d", ""), niche)
+            for emoji, niche in TRACK_EMOJI_NICHES.items()
+        ),
+        key=lambda pair: len(pair[0]),
+        reverse=True,
+    )
+)
+# Categories that describe a state or an owner, not a niche. Coach-team
+# categories (Will's Team, Luke's Team, FOLK TEAM, ...) record WHO runs the
+# channel — matched by the word "team" so a new coach's category can't
+# silently become a niche.
 NON_NICHE_CATEGORIES = frozenset({"Not Creating 🚫"})
+_TEAM_CATEGORY = re.compile(r"\bteam\b", re.IGNORECASE)
 _NICHE_JUNK = re.compile(r"[^\w\s&/-]", re.UNICODE)
 
 
 def niche_from_category(category: str | None) -> str | None:
     """'Creators: 💸 Finance General' -> 'Finance General'; state buckets -> None."""
-    if not category or category in NON_NICHE_CATEGORIES:
+    if not category or category in NON_NICHE_CATEGORIES or _TEAM_CATEGORY.search(category):
         return None
     name = category.split(":", 1)[-1]
     name = _NICHE_JUNK.sub("", name).strip()
@@ -159,6 +191,7 @@ def niche_from_category(category: str | None) -> str | None:
 _TEXT_CHANNEL_TYPES = frozenset({0, 5})
 _CATEGORY_TYPE = 4
 _TRAILING_NON_WORD = re.compile(r"[^0-9a-z]+$")
+_LEADING_NON_WORD = re.compile(r"^[^0-9a-z]+")
 
 # Verified Discord channel name -> roster handle (evidence: display names +
 # channel content, checked 2026-08-04). vincent is lockedinwvinny, NOT
@@ -199,18 +232,59 @@ def _stripped_name(channel_name: str) -> str:
     return name
 
 
+def split_track_channel(channel_name: str) -> tuple[str, str] | None:
+    """``(niche, name)`` when the channel follows the track convention.
+
+    ``✝️jas`` -> ("Christian", "jas"); the 2026-08-19 interim form
+    ``✝️christian-jas`` gives the same. ``name`` is raw â emoji tails stay
+    (``🤍anna🌸`` -> "anna🌸") so callers pick how much to normalize.
+    Decorative channels (punctuation after the emoji, ``🌱・guide``) and
+    non-track names give None.
+    """
+    lowered = channel_name.strip().lower()
+    for base, niche in _TRACK_BASES:
+        if not lowered.startswith(base):
+            continue
+        rest = lowered[len(base):].lstrip("\ufe0f\u200d").lstrip("-_ ")
+        if not rest or not rest[0].isalnum():
+            return None
+        first, _, tail = rest.partition("-")
+        if first in LEGACY_TRACK_WORDS and tail:
+            rest = tail
+        return (niche, rest)
+    return None
+
+
 def derive_creator_name(channel_name: str) -> str:
-    """Turn a channel name like ``coaching-malik💪`` into ``malik``."""
+    """``✝️jas`` -> ``jas``; ``🤍improvement-anna🌸`` -> ``anna``;
+    ``coaching-malik💪`` -> ``malik``. Names without a legacy prefix or a
+    track emoji pass through (minus any decorative emoji around them)."""
     name = channel_name.strip().lower()
     for prefix in CREATOR_PREFIXES:
         if name.startswith(prefix):
-            name = name[len(prefix):]
-            break
-    return _TRAILING_NON_WORD.sub("", name)
+            return _TRAILING_NON_WORD.sub("", name[len(prefix):])
+    split = split_track_channel(name)
+    if split:
+        return _TRAILING_NON_WORD.sub("", split[1])
+    core = _LEADING_NON_WORD.sub("", name)
+    return _TRAILING_NON_WORD.sub("", core or name)
 
 
 def classify_creator_channels(channels: list[dict]) -> list[dict]:
-    """Pick the per-creator text channels out of a raw guild channel list."""
+    """Pick the per-creator text channels out of a raw guild channel list.
+
+    Two naming conventions coexist:
+    - live: ``<track-emoji><name>`` â the emoji alone decides the niche via
+      TRACK_EMOJI_NICHES (the 2026-08-19 ``<emoji><word>-<name>`` interim
+      form parses identically);
+    - legacy: ``coaching-<name>`` (+ coachking-/influencer-) where the niche
+      comes from the *category*, if it names one.
+
+    Anything else is not a creator channel: decorative furniture
+    (``📃・creator-brief``), unmapped emojis (a new track needs its
+    TRACK_EMOJI_NICHES line first â /health flags these as untracked), and
+    wordy names without an emoji (``folk-branding``).
+    """
     category_names = {
         str(c["id"]): c.get("name", "") for c in channels if c.get("type") == _CATEGORY_TYPE
     }
@@ -219,19 +293,34 @@ def classify_creator_channels(channels: list[dict]) -> list[dict]:
         if c.get("type") not in _TEXT_CHANNEL_TYPES:
             continue
         name = c.get("name", "")
-        if not any(name.strip().lower().startswith(p) for p in CREATOR_PREFIXES):
-            continue
+        lowered = name.strip().lower()
         parent_id = c.get("parent_id")
-        niche = category_names.get(str(parent_id)) if parent_id is not None else None
-        if niche in EXCLUDE_CATEGORIES:
+        cat = category_names.get(str(parent_id)) if parent_id is not None else None
+        if cat in EXCLUDE_CATEGORIES:
             continue
-        rows.append({
-            "channel_id": int(c["id"]),
-            "channel_name": name,
-            "creator_name": derive_creator_name(name),
-            "niche": niche_from_category(niche),
-            "category": niche,
-        })
+        if any(lowered.startswith(p) for p in CREATOR_PREFIXES):
+            # Legacy convention: niche comes from the category, if it names one.
+            rows.append({
+                "channel_id": int(c["id"]),
+                "channel_name": name,
+                "creator_name": derive_creator_name(name),
+                "niche": niche_from_category(cat),
+                "category": cat,
+            })
+            continue
+        split = split_track_channel(lowered)
+        if split is None:
+            continue
+        niche, raw_name = split
+        creator = _TRAILING_NON_WORD.sub("", raw_name)
+        if creator:
+            rows.append({
+                "channel_id": int(c["id"]),
+                "channel_name": name,
+                "creator_name": creator,
+                "niche": niche,
+                "category": cat,
+            })
     return rows
 
 
@@ -267,6 +356,12 @@ def cmd_discover() -> None:
     payload, unlinked = [], []
     for row in rows:
         creator_id = match_roster(row["creator_name"], roster)
+        # 🤍anna vs 🤍anna🌸 (and coaching-madison vs coaching-madison✝️)
+        # both derive the same creator but are different people; only the
+        # channel whose name ends cleanly in the derived creator — no emoji
+        # tail — may keep a roster link when a collision happens below.
+        split = split_track_channel(row["channel_name"])
+        bare = split[1] if split else _stripped_name(row["channel_name"])
         payload.append({
             "channel_id": row["channel_id"],
             "guild_id": GUILD_ID,
@@ -274,10 +369,8 @@ def cmd_discover() -> None:
             "research_creator_id": creator_id,
             "niche": row["niche"],
             "category": row["category"],
-            # coaching-madison vs coaching-madison✝️ both derive "madison" but
-            # are different people; only the exact-named channel may keep a
-            # roster link when a collision happens below.
-            "_exact": _stripped_name(row["channel_name"]) == row["creator_name"],
+            "_exact": bare == row["creator_name"]
+            or bare.endswith(f"-{row['creator_name']}"),
         })
     by_creator: dict[str, list[dict]] = {}
     for p in payload:
@@ -483,7 +576,7 @@ def pull_once() -> dict:
     return {"channels": len(ids), "messages": len(message_rows), "users": len(users)}
 
 
-MAINTENANCE_SECONDS = 15 * 60  # discover new channels + refresh summaries
+MAINTENANCE_SECONDS = 15 * 60  # pick up newly created channels
 
 
 def cmd_pull(once: bool) -> None:
@@ -499,14 +592,10 @@ def cmd_pull(once: bool) -> None:
                 if synced["scripts"] or synced["assignments"]:
                     print(f"[{time.strftime('%H:%M:%S')}] scripts sync: "
                           f"+{synced['scripts']} scripts, +{synced['assignments']} assignments", flush=True)
-            # Every 15 min: pick up newly created channels and re-summarize
-            # whatever changed (incremental — quiet periods cost nothing).
+            # Every 15 min: pick up newly created channels.
             if not once and time.time() - last_maintenance >= MAINTENANCE_SECONDS:
                 last_maintenance = time.time()
                 cmd_discover()
-                s = summarize_channels()
-                if s["stale"]:
-                    print(f"[{time.strftime('%H:%M:%S')}] summaries: {s['summarized']}/{s['stale']} refreshed", flush=True)
         except Exception as exc:  # noqa: BLE001 - a bad cycle must not kill 24/7
             print(f"[{time.strftime('%H:%M:%S')}] pull failed: {exc}", flush=True)
         if once:
@@ -852,115 +941,6 @@ def sync_scripts() -> dict:
     return {"scripts": new_scripts, "assignments": new_assignments}
 
 
-# --- summaries --------------------------------------------------------------
-# Ported from discord-crm's copilot summaries, generated with `claude -p`
-# instead (no API key to manage). Incremental: a channel is re-summarized only
-# when its newest message_id moved past based_on_message_id, and every stale
-# channel goes into ONE batched claude call.
-
-SUMMARY_MODEL = "claude -p"
-SUMMARY_CONTEXT_MESSAGES = 30
-SUMMARY_STATUSES = [
-    "Onboarding", "Awaiting videos", "Needs video review", "Revision requested",
-    "Ready to post", "In discussion", "Inactive",
-]
-
-
-def _summary_context(channel_id: int, names: dict) -> tuple[int, str]:
-    """(newest_message_id, transcript excerpt) for one channel, oldest-first."""
-    rows = sb(
-        "GET",
-        "research_discord_messages?select=message_id,author_discord_user_id,author_role,content,attachments"
-        f"&channel_id=eq.{channel_id}&order=message_id.desc&limit={SUMMARY_CONTEXT_MESSAGES}",
-    ) or []
-    newest = rows[0]["message_id"] if rows else 0
-    lines = []
-    for r in reversed(rows):
-        who = names.get(r["author_discord_user_id"]) or r["author_role"]
-        text = (r["content"] or "").strip().replace("\n", " ")
-        if len(text) > 300:
-            text = text[:300] + "…"
-        if not text and r["attachments"]:
-            text = f"[{len(r['attachments'])} attachment(s)]"
-        lines.append(f"{who} ({r['author_role']}): {text}")
-    return newest, "\n".join(lines)
-
-
-def summarize_channels(limit: int | None = None) -> dict:
-    import subprocess
-
-    channels = tracked_channels()
-    names = {
-        u["discord_user_id"]: u["display_name"] or u["username"]
-        for u in sb_all("research_discord_users?select=discord_user_id,username,display_name")
-    }
-    existing = {
-        s["channel_id"]: s
-        for s in sb_all("research_discord_summaries?select=channel_id,based_on_message_id")
-    }
-
-    stale: list[dict] = []
-    for c in channels:
-        newest, context = _summary_context(c["channel_id"], names)
-        if not newest:
-            continue
-        seen = (existing.get(c["channel_id"]) or {}).get("based_on_message_id") or 0
-        if newest > seen:
-            stale.append({**c, "newest": newest, "context": context})
-    if limit is not None:
-        stale = stale[:limit]
-    if not stale:
-        return {"summarized": 0, "stale": 0}
-
-    sections = "\n\n".join(
-        f"### channel_id={c['channel_id']} ({c['channel_name']})\n{c['context']}" for c in stale
-    )
-    prompt = f"""You are summarizing coaching-channel conversations from a UGC creator Discord.
-For EACH channel below, produce where the workflow stands right now.
-
-Rules:
-- "status": exactly one of {SUMMARY_STATUSES}.
-- "summary": ONE sentence, concrete and factual (who did/said what, what is awaited). No fluff.
-- Judge from the newest messages; older context is background.
-
-Respond with ONLY a JSON object mapping channel_id (string) to {{"status": ..., "summary": ...}}.
-
-{sections}"""
-    out = subprocess.run(
-        ["claude", "-p", "--output-format", "text", prompt],
-        capture_output=True, text=True, timeout=600,
-    )
-    if out.returncode != 0:
-        raise RuntimeError(f"claude -p failed: {out.stderr[:300]}")
-    text = out.stdout.strip()
-    m = re.search(r"\{.*\}", text, re.S)
-    if not m:
-        raise RuntimeError(f"claude -p returned no JSON: {text[:200]}")
-    parsed = json.loads(m.group(0))
-
-    rows = []
-    for c in stale:
-        entry = parsed.get(str(c["channel_id"]))
-        if not entry or not entry.get("summary"):
-            continue
-        status = entry.get("status")
-        rows.append({
-            "channel_id": c["channel_id"],
-            "summary": str(entry["summary"])[:500],
-            "status": status if status in SUMMARY_STATUSES else None,
-            "based_on_message_id": c["newest"],
-            "model": SUMMARY_MODEL,
-        })
-    if rows:
-        sb(
-            "POST",
-            "research_discord_summaries?on_conflict=channel_id",
-            rows,
-            prefer="resolution=merge-duplicates,return=minimal",
-        )
-    return {"summarized": len(rows), "stale": len(stale)}
-
-
 # --- main -------------------------------------------------------------------
 
 def main() -> None:
@@ -972,8 +952,6 @@ def main() -> None:
     enrich_p = sub.add_parser("enrich", help="derive creator ids + roles, re-attribute")
     enrich_p.add_argument("--dry-run", action="store_true")
     sub.add_parser("sync", help="launchpoint script messages -> research_scripts")
-    summ_p = sub.add_parser("summarize", help="refresh AI channel summaries via claude -p")
-    summ_p.add_argument("--limit", type=int, default=None, help="summarize at most N stale channels")
     args = parser.parse_args()
 
     if args.command == "discover":
@@ -983,9 +961,6 @@ def main() -> None:
     elif args.command == "sync":
         counts = sync_scripts()
         print(f"scripts sync: +{counts['scripts']} scripts, +{counts['assignments']} assignments")
-    elif args.command == "summarize":
-        counts = summarize_channels(limit=args.limit)
-        print(f"summaries: {counts['summarized']}/{counts['stale']} stale channels refreshed")
     elif args.command == "pull":
         cmd_pull(once=args.once)
     else:

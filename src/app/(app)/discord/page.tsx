@@ -13,6 +13,7 @@ import { formatCompact } from "@/lib/format";
 import { NICHE_PALETTE } from "../scripts/cal";
 import { DiscordLink } from "@/components/discord-link";
 import { channelUrl, cleanSnippet, messageUrl, ROLE_CHIP, ROLE_SENDER } from "@/lib/discord-render";
+import { creatorNameFromChannel } from "@/lib/discord-channels";
 import { linkChannelToCreator } from "./actions";
 import { DISCORD_DEPRECATED, DiscordDeprecatedNotice } from "./deprecated";
 
@@ -21,16 +22,10 @@ export const dynamic = "force-dynamic";
 const NOT_CREATING = "Not Creating 🚫";
 const SNAPSHOT_MESSAGES = 5;
 
-interface ChannelSummary {
-  channel_id: string;
-  status: string | null;
-  summary: string;
-}
-
 /** Consolidated view of the Folk UGC Discord (the old discord-crm dashboard):
- *  per-channel cards with an AI summary of where the workflow stands and a
- *  snapshot of the last few messages. The 24/7 worker keeps everything fresh;
- *  click a creator for the full feed. */
+ *  per-channel rows with the creator's state and a snapshot of the last few
+ *  messages. The 24/7 worker keeps everything fresh; click a creator for the
+ *  full feed. */
 export default async function DiscordPage({
   searchParams,
 }: {
@@ -46,7 +41,6 @@ export default async function DiscordPage({
     { data: creatorsData },
     { data: usersData },
     { data: messagesData },
-    { data: summariesData },
     { data: scriptNichesData },
     { data: membershipNichesData },
   ] = await Promise.all([
@@ -66,7 +60,6 @@ export default async function DiscordPage({
       )
       .order("posted_at", { ascending: false })
       .limit(10000),
-    supabase.from("research_discord_summaries").select("channel_id::text, status, summary"),
     supabase.from("research_scripts").select("niche"),
     supabase.from("research_app_creators").select("niche"),
   ]);
@@ -84,10 +77,8 @@ export default async function DiscordPage({
   const creators = (creatorsData ?? []) as ResearchCreator[];
   const users = (usersData ?? []) as unknown as ResearchDiscordUser[];
   const messages = (messagesData ?? []) as unknown as ResearchDiscordMessage[];
-  const summaries = (summariesData ?? []) as unknown as ChannelSummary[];
 
   const creatorById = new Map(creators.map((c) => [c.id, c]));
-  const summaryByChannel = new Map(summaries.map((s) => [s.channel_id, s]));
 
   // discord_user_id -> readable name (roster name > server display name > role
   // note), used for sender chips and for resolving <@id> mentions in text.
@@ -142,10 +133,9 @@ export default async function DiscordPage({
     .map((ch) => {
       const creator = ch.research_creator_id ? creatorById.get(ch.research_creator_id) : undefined;
       const stats = statsByChannel.get(ch.channel_id) ?? { count: 0, recent: [], last: null };
-      const summary = summaryByChannel.get(ch.channel_id);
       const paused = ch.category === NOT_CREATING;
-      const name = (ch.channel_name ?? "").replace(/^(coaching-|coachking-|influencer-)/, "");
-      return { ch, creator, stats, summary, paused, name };
+      const name = creatorNameFromChannel(ch.channel_name ?? "");
+      return { ch, creator, stats, paused, name };
     })
     .filter((r) => (status === "creating" ? !r.paused : status === "paused" ? r.paused : true))
     .filter(
@@ -194,7 +184,7 @@ export default async function DiscordPage({
     <>
       <PageHeader
         title="Discord"
-        subtitle="Every coaching channel on the Folk UGC server: the AI read on where each creator's workflow stands, plus their latest messages. The local worker pulls every minute, re-summarizes every 15, and syncs Launchpoint scripts into Scripts automatically."
+        subtitle="Every coaching channel on the Folk UGC server: each creator's state plus their latest messages. The worker pulls every minute, picks up new channels every 15, and syncs Launchpoint scripts into Scripts automatically."
       />
 
       {error && (
@@ -264,18 +254,17 @@ export default async function DiscordPage({
         {rows.length === 0 ? (
           <EmptyState message="No channels match — the worker's discover step fills this page." />
         ) : (
-          <div className="hidden gap-4 border-b border-hairline pb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-400 lg:grid lg:grid-cols-[200px_minmax(0,5fr)_minmax(0,6fr)_70px]">
+          <div className="hidden gap-4 border-b border-hairline pb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-400 lg:grid lg:grid-cols-[200px_minmax(0,1fr)_70px]">
             <span>Creator &amp; state</span>
-            <span>Summary</span>
             <span>Recent</span>
             <span />
           </div>
         )}
         <ul className="divide-y divide-black/[0.05]">
-          {rows.map(({ ch, creator, stats, summary, paused, name }) => (
+          {rows.map(({ ch, creator, stats, paused, name }) => (
             <li
               key={ch.channel_id}
-              className="grid gap-x-4 gap-y-2 py-3.5 lg:grid-cols-[200px_minmax(0,5fr)_minmax(0,6fr)_70px]"
+              className="grid gap-x-4 gap-y-2 py-3.5 lg:grid-cols-[200px_minmax(0,1fr)_70px]"
             >
               <div className="flex min-w-0 items-start gap-2.5">
                 <DiscordLink
@@ -340,17 +329,6 @@ export default async function DiscordPage({
                     </form>
                   )}
                 </div>
-              </div>
-
-              <div className="min-w-0">
-                {summary ? (
-                  <>
-                    {summary.status && <StatusBadge status={summary.status} />}
-                    <p className="mt-1 text-sm leading-snug text-neutral-600">{summary.summary}</p>
-                  </>
-                ) : (
-                  <p className="text-sm text-neutral-400">summary pending…</p>
-                )}
               </div>
 
               <div className="min-w-0">

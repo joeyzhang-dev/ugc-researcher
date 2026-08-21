@@ -50,10 +50,17 @@ def _default_niche_role_ids() -> dict[int, int]:
     return dict(DEFAULT_NICHE_ROLE_ID_PAIRS)
 
 
+# Public origin of the webapp — the paged card's "View all scripts" button
+# links to <app_public_url>/c/<share_token>. Mirrors the default in
+# src/app/c/portal.ts (NEXT_PUBLIC_APP_URL there) — keep them in sync.
+DEFAULT_APP_PUBLIC_URL = "https://bludgc.vercel.app"
+
+
 @dataclass(frozen=True)
 class BotConfig:
     discord_bot_token: str
     discord_guild_id: int
+    app_public_url: str = DEFAULT_APP_PUBLIC_URL
     creator_role_name: str = DEFAULT_CREATOR_ROLE_NAME
     creator_role_id: int | None = DEFAULT_CREATOR_ROLE_ID
     launchpoint_bot_id: int | None = DEFAULT_LAUNCHPOINT_BOT_ID
@@ -102,6 +109,7 @@ def load_bot_config() -> BotConfig:
     return BotConfig(
         discord_bot_token=os.environ["DISCORD_BOT_TOKEN"],
         discord_guild_id=int(os.environ["DISCORD_GUILD_ID"]),
+        app_public_url=(os.environ.get("APP_PUBLIC_URL", "").strip() or DEFAULT_APP_PUBLIC_URL).rstrip("/"),
         creator_role_name=os.environ.get("CREATOR_ROLE_NAME", "").strip() or DEFAULT_CREATOR_ROLE_NAME,
         creator_role_id=_env_int("CREATOR_ROLE_ID", DEFAULT_CREATOR_ROLE_ID),
         launchpoint_bot_id=_env_int("LAUNCHPOINT_BOT_ID", DEFAULT_LAUNCHPOINT_BOT_ID),

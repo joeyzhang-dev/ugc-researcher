@@ -47,6 +47,29 @@ class OffboardOutcome:
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
+def find_member_channel(text_channels: Any, member: Any) -> list[Any]:
+    """Channels where this MEMBER holds an explicit view_channel=True
+    overwrite — how every onboarded creator channel grants its creator access,
+    regardless of what the channel is currently named. Role overwrites are
+    filtered out (roles have no ``display_name``); a denied overwrite is not
+    access."""
+    member_id = getattr(member, "id", None)
+    matches = []
+    for ch in text_channels or []:
+        overwrites = getattr(ch, "overwrites", {}) or {}
+        if not isinstance(overwrites, dict):
+            continue
+        for target, ow in overwrites.items():
+            if getattr(target, "id", None) != member_id:
+                continue
+            if not hasattr(target, "display_name"):
+                continue  # a role that happens to share the id shape
+            if getattr(ow, "view_channel", None) is True:
+                matches.append(ch)
+                break
+    return matches
+
+
 def category_denies_everyone(category: Any, default_role: Any) -> bool:
     """Whether the category explicitly denies ``view_channel`` to @everyone."""
     overwrite = None
@@ -187,6 +210,10 @@ async def execute_offboarding(
                 error=f"couldn't find the CRM-linked creator channel <#{int(linked_channel_id)}>",
             )
     else:
+        # Channel names have changed conventions twice, so a reconstructed
+        # legacy name is only the FIRST guess. The reliable signal is the
+        # member's own permission overwrite — every onboarded channel grants
+        # its creator explicit access, whatever it is currently called.
         try:
             channel_name = build_channel_name(display_name, fallback=str(member_id))
         except ValueError as exc:
@@ -194,7 +221,27 @@ async def execute_offboarding(
 
         channel = find_existing_channel(text_channels, channel_name)
         if channel is None:
-            return OffboardOutcome(ok=False, channel_name=channel_name, error=f"couldn't find `#{channel_name}`")
+            by_access = find_member_channel(text_channels, member)
+            if len(by_access) == 1:
+                channel = by_access[0]
+                channel_name = getattr(channel, "name", channel_name)
+            elif len(by_access) > 1:
+                shown = ", ".join(f"<#{getattr(c, 'id', '?')}>" for c in by_access[:5])
+                return OffboardOutcome(
+                    ok=False,
+                    error=(
+                        f"<@{member_id}> has access to several channels ({shown}) and none is "
+                        "CRM-linked — link the right one in the app, then run this again."
+                    ),
+                )
+            else:
+                return OffboardOutcome(
+                    ok=False,
+                    error=(
+                        f"couldn't find a creator channel for <@{member_id}> — no CRM link, "
+                        f"no `#{channel_name}` legacy match, and no channel grants them access."
+                    ),
+                )
 
         if get_channel_owner is not None:
             owner_id = get_channel_owner(int(getattr(channel, "id", 0)))

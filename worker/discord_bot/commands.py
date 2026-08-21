@@ -16,7 +16,7 @@ from typing import Optional, Sequence
 import discord
 from discord import app_commands
 
-from discord_bot import store
+from discord_bot import socials, store
 from discord_bot.command_ui import (
     EmbedSpec,
     build_creator_embed,
@@ -31,6 +31,7 @@ from discord_bot.command_ui import (
 )
 from discord_bot.config import BotConfig
 from discord_bot.onboarding import (
+    NICHE_CHANNEL_PREFIXES,
     OverwriteSpec,
     execute_onboarding,
     render_outcome,
@@ -140,9 +141,43 @@ async def _gather_health(guild, cfg: BotConfig):
 
     tracked = None
     db_error = None
+    untracked: list[str] = []
+    unlinked: list[str] = []
+    unpingable: list[str] = []
     try:
         rows = await _creator_rows(force=True)
         tracked = len(rows)
+        drift = await asyncio.to_thread(store.tracking_drift)
+        unlinked = drift["unlinked"]
+        unpingable = drift["unpingable"]
+        # Guild-side coverage: a channel under a coach category with no
+        # tracked row is invisible to the app (its name doesn't classify).
+        # Uncategorized channels that grant a single member their own view
+        # overwrite are creator channels too (that's how onboarding builds
+        # them) — an orphan like a bare "firstname-lastname" channel shows
+        # up here instead of silently not existing.
+        coach_category_ids = {
+            int(c.id)
+            for c in getattr(guild, "categories", []) or []
+            if getattr(c, "name", "").lower().startswith("coach")
+        }
+
+        def _member_overwritten(ch) -> bool:
+            overwrites = getattr(ch, "overwrites", {}) or {}
+            return any(
+                hasattr(target, "display_name") and getattr(ow, "view_channel", None) is True
+                for target, ow in (overwrites.items() if isinstance(overwrites, dict) else [])
+            )
+
+        untracked = sorted(
+            ch.name
+            for ch in getattr(guild, "text_channels", []) or []
+            if int(ch.id) not in drift["tracked_channel_ids"]
+            and (
+                getattr(ch, "category_id", None) in coach_category_ids
+                or (getattr(ch, "category_id", None) is None and _member_overwritten(ch))
+            )
+        )
     except Exception as exc:  # noqa: BLE001 - reported as a failed check
         db_error = str(exc)
 
@@ -158,6 +193,9 @@ async def _gather_health(guild, cfg: BotConfig):
         missing_welcome_channels=missing_channels,
         tracked_channel_count=tracked,
         db_error=db_error,
+        untracked_channels=untracked,
+        unlinked_channels=unlinked,
+        unpingable_creators=unpingable,
     )
 
 
@@ -179,14 +217,19 @@ def register_commands(
                 return int(mapped_channel_id)
         return None
 
-    def onboard_crm_sync(channel_id: int, channel_name: str, creator_name: str, niche: str, user_id: int) -> None:
-        # `niche` here is the matched category *name* — store derives the clean
-        # niche from it exactly like the pull worker's discover step does.
+    def onboard_crm_sync(
+        channel_id: int, channel_name: str, creator_name: str, niche: str, user_id: int,
+        channel_niche: Optional[str] = None,
+    ) -> None:
+        # `niche` here is the matched category *name* (now a coach team);
+        # `channel_niche` is the /onboard track choice, which is the real
+        # niche under the live convention.
         store.onboard_creator_channel(
             guild_id=cfg.discord_guild_id,
             channel_id=channel_id,
             channel_name=channel_name,
             category_name=niche,
+            niche=channel_niche,
             discord_user_id=user_id,
         )
         state.allowlisted_channel_ids.add(channel_id)
@@ -199,7 +242,12 @@ def register_commands(
 
     # ---- /onboard -----------------------------------------------------
 
-    async def onboard(interaction: discord.Interaction, username: discord.Member, niche: str) -> None:
+    async def onboard(
+        interaction: discord.Interaction,
+        username: discord.Member,
+        niche: str,
+        track: str,
+    ) -> None:
         # Channel creation + role assignment + posting is several round trips,
         # comfortably past Discord's 3s initial-response budget.
         await interaction.response.defer(ephemeral=True)
@@ -211,6 +259,9 @@ def register_commands(
             guild=interaction.guild,
             member=username,
             niche=niche,
+            # "legacy" is the escape hatch for a niche outside the mapped
+            # tracks — the channel gets the old coaching- prefix.
+            channel_niche=None if track == "legacy" else track,
             creator_role_name=cfg.creator_role_name,
             creator_role_id=cfg.creator_role_id,
             welcome_links=cfg.welcome_links,
@@ -227,13 +278,40 @@ def register_commands(
             "onboard %s -> channel=%s created=%s role=%s",
             getattr(username, "id", None), outcome.channel_id, outcome.channel_created, outcome.role_assigned,
         )
-        await interaction.followup.send(
-            render_outcome(outcome, cfg.creator_role_name), ephemeral=True, allowed_mentions=NO_MENTIONS
-        )
+        reply = render_outcome(outcome, cfg.creator_role_name)
+        # Tracking status is part of the outcome: either the Discord id already
+        # matched a roster creator (auto-linked) or /link is the required next
+        # step — say which, so nobody drifts untracked.
+        if outcome.ok and outcome.channel_id:
+            linked = await asyncio.to_thread(store.channel_creator_handle, int(outcome.channel_id))
+            if linked:
+                state.channel_creator[int(outcome.channel_id)] = int(username.id)
+                reply += f"\n✅ linked to **@{linked}** (matched by Discord id)"
+            else:
+                reply += (
+                    f"\n⚠️ not linked to an Instagram yet — run "
+                    f"`/link username:@{getattr(username, 'display_name', username)} instagram:<handle>` to finish tracking."
+                )
+        await interaction.followup.send(reply, ephemeral=True, allowed_mentions=NO_MENTIONS)
 
+    # The param Discord shows as `niche` historically picked a niche category;
+    # categories are coach teams now, so rename what the operator sees while
+    # the internal plumbing keeps its name.
+    onboard = app_commands.rename(niche="team")(onboard)
+    track_emojis = "/".join(NICHE_CHANNEL_PREFIXES.values())
     onboard = app_commands.describe(
         username="The creator to onboard",
-        niche="Which niche category their channel goes in",
+        niche="Which coach team category their channel goes in",
+        track=f"Niche track — names the channel {track_emojis}<name> and sets their niche everywhere",
+    )(onboard)
+    onboard = app_commands.choices(
+        track=[
+            *(
+                app_commands.Choice(name=f"{emoji} {niche_name}"[:100], value=niche_name)
+                for niche_name, emoji in NICHE_CHANNEL_PREFIXES.items()
+            ),
+            app_commands.Choice(name="coaching- (legacy, niche set later)", value="legacy"),
+        ]
     )(onboard)
     options = list(niche_options or [])[:MAX_CHOICES]
     if options:
@@ -340,27 +418,38 @@ def register_commands(
             return
         platform, handle = parsed
 
-        # The channel: the one the command runs in when it's tracked, else the
-        # member's coaching channel found by slug — same naming rule /onboard uses.
+        # The channel, in order of confidence: the one the command runs in
+        # (when tracked) → the CRM-linked channel for this member → the
+        # member's own permission overwrite (names have changed conventions
+        # twice, so name reconstruction is no longer trusted).
         channel_id: Optional[int] = None
         if interaction.channel_id in state.allowlisted_channel_ids:
             channel_id = interaction.channel_id
-        else:
-            from discord_bot.onboarding import build_channel_name, find_existing_channel
+        if channel_id is None:
+            channel_id = creator_channel(int(username.id))
+        if channel_id is None:
+            from discord_bot.offboarding import find_member_channel
 
-            try:
-                wanted = build_channel_name(
-                    getattr(username, "display_name", None) or getattr(username, "name", ""),
-                    fallback=str(getattr(username, "id", "")),
+            candidates = [
+                int(c.id)
+                for c in find_member_channel(
+                    getattr(interaction.guild, "text_channels", []) or [], username
                 )
-            except ValueError:
-                wanted = ""
-            found = find_existing_channel(getattr(interaction.guild, "text_channels", []) or [], wanted)
-            if found is not None and int(found.id) in state.allowlisted_channel_ids:
-                channel_id = int(found.id)
+                if int(c.id) in state.allowlisted_channel_ids
+            ]
+            if len(candidates) == 1:
+                channel_id = candidates[0]
+            elif len(candidates) > 1:
+                shown = ", ".join(f"<#{c}>" for c in candidates[:5])
+                await interaction.followup.send(
+                    f"❌ <@{username.id}> has access to several tracked channels ({shown}) — "
+                    "run this inside the right one.",
+                    ephemeral=True, allowed_mentions=NO_MENTIONS,
+                )
+                return
         if channel_id is None:
             await interaction.followup.send(
-                "❌ couldn't find their coaching channel — run this inside it.",
+                f"❌ couldn't find a tracked channel for <@{username.id}> — run this inside their channel.",
                 ephemeral=True, allowed_mentions=NO_MENTIONS,
             )
             return
@@ -404,6 +493,128 @@ def register_commands(
     link = app_commands.default_permissions(manage_channels=True)(link)
     link = app_commands.guild_only()(link)
     tree.command(name="link", description=command_description("link"), guild=guild)(link)
+
+    # ---- /socials -----------------------------------------------------
+    # A group: /socials view|add|remove. Discord permissions only gate whole
+    # top-level commands, so the group stays open (view is for everyone) and
+    # add/remove enforce the staff check at runtime.
+
+    socials_group = app_commands.Group(
+        name="socials",
+        description=command_description("socials"),
+        guild_only=True,
+    )
+
+    def _is_staff(interaction: discord.Interaction) -> bool:
+        perms = getattr(interaction.user, "guild_permissions", None)
+        return bool(perms and perms.manage_channels)
+
+    async def _socials_creator(
+        interaction: discord.Interaction, user: discord.Member
+    ) -> Optional[dict]:
+        """The roster creator behind a member, or None after replying."""
+        creator = await asyncio.to_thread(socials.creator_by_discord_id, user.id)
+        if creator is None:
+            await interaction.followup.send(
+                f"❌ {user.mention} isn't linked to a roster creator yet — run "
+                "`/link` in their coaching channel first.",
+                ephemeral=True, allowed_mentions=NO_MENTIONS,
+            )
+        return creator
+
+    _PLATFORM_CHOICES = [
+        app_commands.Choice(name=socials.LABELS[p], value=p) for p in socials.PLATFORMS
+    ]
+
+    @socials_group.command(name="view", description="Show a creator's socials, with missing ones flagged.")
+    @app_commands.describe(user="The creator's Discord account")
+    async def socials_view(interaction: discord.Interaction, user: discord.Member) -> None:
+        await interaction.response.defer(ephemeral=True)
+        creator = await _socials_creator(interaction, user)
+        if creator is None:
+            return
+        links, migrated = await asyncio.to_thread(socials.fetch_socials, creator)
+        note = None if migrated else "socials table not migrated yet — add/remove are disabled"
+        await interaction.followup.send(
+            socials.format_socials(f"@{creator['handle']}", links, note),
+            ephemeral=True, allowed_mentions=NO_MENTIONS, suppress_embeds=True,
+        )
+
+    @socials_group.command(name="add", description="Add or update one of a creator's socials (staff).")
+    @app_commands.describe(
+        user="The creator's Discord account",
+        platform="Which platform",
+        link="Profile URL or @handle",
+    )
+    @app_commands.choices(platform=_PLATFORM_CHOICES)
+    async def socials_add(
+        interaction: discord.Interaction,
+        user: discord.Member,
+        platform: app_commands.Choice[str],
+        link: str,
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+        if not _is_staff(interaction):
+            await interaction.followup.send("❌ staff only.", ephemeral=True)
+            return
+        url = socials.normalize_social(platform.value, link)
+        if url is None:
+            await interaction.followup.send(
+                f"❌ `{clip(link, 60)}` doesn't look like a profile URL or handle.",
+                ephemeral=True, allowed_mentions=NO_MENTIONS,
+            )
+            return
+        creator = await _socials_creator(interaction, user)
+        if creator is None:
+            return
+        try:
+            await asyncio.to_thread(socials.set_social, creator["id"], platform.value, url)
+        except socials.SocialsNotMigrated:
+            await interaction.followup.send(
+                "❌ the socials table isn't migrated yet — rotate the Supabase "
+                "token and apply the pending migrations first.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(
+            f"✅ {socials.LABELS[platform.value]} for @{creator['handle']}: {url}",
+            ephemeral=True, allowed_mentions=NO_MENTIONS, suppress_embeds=True,
+        )
+
+    @socials_group.command(name="remove", description="Remove one of a creator's socials (staff).")
+    @app_commands.describe(user="The creator's Discord account", platform="Which platform")
+    @app_commands.choices(platform=_PLATFORM_CHOICES)
+    async def socials_remove(
+        interaction: discord.Interaction,
+        user: discord.Member,
+        platform: app_commands.Choice[str],
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+        if not _is_staff(interaction):
+            await interaction.followup.send("❌ staff only.", ephemeral=True)
+            return
+        creator = await _socials_creator(interaction, user)
+        if creator is None:
+            return
+        try:
+            removed = await asyncio.to_thread(
+                socials.remove_social, creator["id"], platform.value
+            )
+        except socials.SocialsNotMigrated:
+            await interaction.followup.send(
+                "❌ the socials table isn't migrated yet — rotate the Supabase "
+                "token and apply the pending migrations first.",
+                ephemeral=True,
+            )
+            return
+        await interaction.followup.send(
+            f"✅ removed {socials.LABELS[platform.value]} for @{creator['handle']}."
+            if removed
+            else f"nothing stored for {socials.LABELS[platform.value]} — note the roster's own Instagram can't be removed here.",
+            ephemeral=True, allowed_mentions=NO_MENTIONS,
+        )
+
+    tree.add_command(socials_group, guild=guild)
 
     # ---- /help --------------------------------------------------------
 

@@ -109,11 +109,12 @@ COMMAND_CATALOG: tuple[CommandInfo, ...] = (
     CommandInfo(
         name="onboard",
         description="Create a creator's channel, give them the creator role, and post the welcome message.",
-        usage="/onboard username:@person niche:Dating Advice / Girls",
+        usage="/onboard username:@person team:Coach: Will's Team track:✝️ Christian",
         detail=(
-            "Creates `#coaching-<name>` in the niche category with the same permissions "
-            "the other creator channels use, grants the creator role, posts the welcome "
-            "message, and starts tracking the channel in the CRM."
+            "Creates `<track-emoji><name>` (e.g. `✝️jas`) under the coach team's category, "
+            "grants the creator role, posts the welcome message, and tracks the channel "
+            "(the emoji IS the niche) in the CRM. Finish with `/link` to attach their "
+            "Instagram — the reply tells you if that step is still needed."
         ),
     ),
     CommandInfo(
@@ -131,9 +132,19 @@ COMMAND_CATALOG: tuple[CommandInfo, ...] = (
         description="Link a creator's Instagram to their Discord profile and coaching channel.",
         usage="/link username:@person instagram:@handle",
         detail=(
-            "Run it in the creator's coaching channel (or let it find the channel by name). "
-            "A new Instagram handle joins the roster and the scrape queue; scripts sent to "
-            "the channel start counting as their assignments."
+            "Run it in the creator's channel, or anywhere — it finds their channel via the "
+            "CRM link or their channel permissions. A new Instagram handle joins the roster "
+            "and the scrape queue; scripts sent to the channel count as their assignments."
+        ),
+    ),
+    CommandInfo(
+        name="socials",
+        description="View or manage a creator's social links, with missing ones flagged.",
+        usage="/socials view user:@person · /socials add user:@person platform:TikTok link:@handle",
+        detail=(
+            "`view` lists Instagram and TikTok with links (or ❌ missing) — the roster's "
+            "own Instagram shows automatically. `add`/`remove` are staff-only and accept "
+            "a full profile URL or a bare @handle."
         ),
     ),
     CommandInfo(
@@ -236,6 +247,9 @@ def evaluate_health(
     missing_welcome_channels: Sequence[str] = (),
     tracked_channel_count: Optional[int] = None,
     db_error: Optional[str] = None,
+    untracked_channels: Sequence[str] = (),
+    unlinked_channels: Sequence[str] = (),
+    unpingable_creators: Sequence[str] = (),
 ) -> HealthReport:
     """Turn gathered guild/DB facts into pass/warn/fail checks.
 
@@ -317,6 +331,47 @@ def evaluate_health(
             else "connected, but no channels are tracked yet"
         )
         checks.append(HealthCheck("Database", status, detail))
+
+    # Tracking drift — the process guardrail: every channel under a coach
+    # category must be classified, linked to a creator, and pingable, or
+    # sends/stats quietly skip people.
+    if untracked_channels:
+        checks.append(
+            HealthCheck(
+                "Channel coverage",
+                "fail",
+                "invisible to the app (name doesn't classify): "
+                + ", ".join(f"`{escape_markdown(n)}`" for n in untracked_channels)
+                + " — rename to `<track-emoji><name>` (✝️/🤍/🌱, e.g. `✝️jas`)",
+            )
+        )
+    else:
+        checks.append(HealthCheck("Channel coverage", "ok", "every coach-team channel classifies"))
+
+    if unlinked_channels:
+        checks.append(
+            HealthCheck(
+                "Creator links",
+                "warn",
+                "no creator linked (sends can't target them): "
+                + ", ".join(f"`{escape_markdown(n)}`" for n in unlinked_channels)
+                + " — run /link in each",
+            )
+        )
+    else:
+        checks.append(HealthCheck("Creator links", "ok", "every tracked channel is linked"))
+
+    if unpingable_creators:
+        checks.append(
+            HealthCheck(
+                "Ping readiness",
+                "warn",
+                "linked but no Discord id (sends won't ping): "
+                + ", ".join(escape_markdown(n) for n in unpingable_creators),
+            )
+        )
+    else:
+        checks.append(HealthCheck("Ping readiness", "ok", "every linked creator is pingable"))
 
     return HealthReport(checks=tuple(checks))
 
