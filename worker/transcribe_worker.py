@@ -322,9 +322,50 @@ def align_words(whisperx, result: dict, audio, device: str) -> list[dict] | None
         return None
 
 
+# OpenAI's audio endpoint rejects anything over 25MB. Sending video was always
+# wasteful — Whisper only reads the audio track — and a long reel can cross the
+# limit on the video bitrate alone.
+OPENAI_AUDIO_LIMIT_BYTES = 25_000_000
+
+
+def _audio_only(media: Path) -> Path:
+    """A small mono 16kHz m4a for Whisper, or the original if ffmpeg can't.
+
+    Whisper ignores the video track, so shipping it is pure upload cost and
+    the only reason a file ever approaches the 25MB limit.
+    """
+    import subprocess
+
+    dest = media.with_suffix(".whisper.m4a")
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-i", str(media),
+             "-vn", "-ac", "1", "-ar", "16000", "-c:a", "aac", "-b:a", "32k", str(dest)],
+            capture_output=True, timeout=600,
+        )
+    except Exception:  # ffmpeg absent — fall back to the original file
+        return media
+    if result.returncode != 0 or not dest.exists() or dest.stat().st_size == 0:
+        dest.unlink(missing_ok=True)
+        return media
+    return dest
+
+
 def transcribe_openai(media: Path) -> list[dict] | None:
+    """Segments from OpenAI Whisper.
+
+    Returns [] when the API ran fine but the clip has no speech (a music-only
+    reel), and None only when the transcriber could not run at all. The caller
+    depends on that distinction — collapsing both to None is what made
+    speechless videos fail with "no transcriber available".
+    """
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
+        return None
+    media = _audio_only(media)
+    size = media.stat().st_size
+    if size > OPENAI_AUDIO_LIMIT_BYTES:
+        print(f"    openai whisper skipped: {size / 1e6:.1f}MB exceeds the 25MB limit")
         return None
     boundary = uuid.uuid4().hex
     content_type = mimetypes.guess_type(media.name)[0] or "video/mp4"
@@ -346,7 +387,9 @@ def transcribe_openai(media: Path) -> list[dict] | None:
     try:
         with urllib.request.urlopen(req, timeout=300) as r:
             srt = r.read().decode("utf-8", "replace")
-        return parse_srt(srt) or None
+        # NOT `or None` — an empty SRT means the API ran and heard no speech,
+        # which is a real answer. None is reserved for "could not run".
+        return parse_srt(srt)
     except Exception as e:
         print(f"    openai whisper failed: {e}")
         return None
@@ -839,12 +882,16 @@ def process_research(video: dict) -> None:
     segments = transcribe_whisperx(transcribe_src)
     method = "whisperx local" if segments else None
     if not segments:
-        segments = transcribe_openai(transcribe_src)
-        method = "openai whisper-1" if segments else None
-    if not segments:
+        # `is not None` on purpose: [] means Whisper ran and heard no speech,
+        # which is an answer, not a failure to transcribe.
+        result = transcribe_openai(transcribe_src)
+        if result is not None:
+            segments, method = result, "openai whisper-1"
+    if segments is None:
         raise RuntimeError(
-            "media downloaded but no transcriber available — "
-            "pip install whisperx (recommended) or set OPENAI_API_KEY"
+            "media downloaded but no transcriber could run it — check the "
+            "worker log for the whisper error (no OPENAI_API_KEY, over the "
+            "25MB limit, or an API failure)"
         )
     segments = refine_segments(segments)
     if not segments:
