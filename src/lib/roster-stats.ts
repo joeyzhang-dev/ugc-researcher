@@ -72,7 +72,9 @@ export function rosterRowStats(
     if (offset >= 0 && offset <= 6) days[6 - offset].count++;
   }
 
-  const windowed = metrics(withinWindow(videos, windowDays));
+  // Pass `now` through: the day strip above already uses it, and the two must
+  // describe the same instant.
+  const windowed = metrics(withinWindow(videos, windowDays, now.getTime()));
   const allTime = metrics(videos);
   return {
     days,

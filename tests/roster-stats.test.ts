@@ -103,4 +103,21 @@ describe("rosterRowStats metrics", () => {
     expect(s.avgViews).toBe(1000);
     expect(s.engPct).toBeCloseTo(10);
   });
+
+  it("honours the injected `now` for windowed metrics, not just the day strip", () => {
+    // Regression: withinWindow used to read Date.now() directly while the day
+    // strip used the injected `now`, so the same call described two different
+    // instants. Every windowed assertion above silently depended on the real
+    // date sitting near the fixtures, and they all broke the morning the clock
+    // rolled far enough past Aug 17 2026.
+    //
+    // Anchored a decade out: if `now` is ignored, the window collapses to zero
+    // and this fails permanently instead of on a surprise date.
+    const then = new Date(2036, 0, 15, 12, 0, 0);
+    const posted = new Date(2036, 0, 13, 9, 0, 0).toISOString();
+    const s = rosterRowStats([video({ posted_at: posted, view_count: 500 })], 7, then);
+    expect(s.views).toBe(500);
+    expect(s.avgViews).toBe(500);
+    expect(s.postsLast7).toBe(1);
+  });
 });

@@ -33,15 +33,27 @@ export function parseDays(raw: string | string[] | undefined | null): DayPreset 
   return Math.min(days, MAX_DAYS);
 }
 
-/** Epoch ms cutoff for a window (posted_at >= this is in-window), or null. */
-export function windowStart(days: DayPreset | null): number | null {
-  return days == null ? null : Date.now() - days * 24 * 60 * 60 * 1000;
+/** Epoch ms cutoff for a window (posted_at >= this is in-window), or null.
+ *  `now` is injectable so callers that already have a reference time can pass
+ *  it — see withinWindow. */
+export function windowStart(days: DayPreset | null, now: number = Date.now()): number | null {
+  return days == null ? null : now - days * 24 * 60 * 60 * 1000;
 }
 
 /** Keep only videos posted within the window. Undated videos drop out of any
- *  window (they can't be placed in time); All time keeps everything. */
-export function withinWindow(videos: ResearchVideo[], days: DayPreset | null): ResearchVideo[] {
-  const start = windowStart(days);
+ *  window (they can't be placed in time); All time keeps everything.
+ *
+ *  `now` must be injectable: rosterRowStats accepts a reference time and used
+ *  to honour it for the day strip while this silently read the wall clock, so
+ *  its windowed metrics disagreed with its own day cells whenever the two
+ *  differed. In production they agree (both default to now); in tests they did
+ *  not, which made the suite pass or fail depending on the date it ran. */
+export function withinWindow(
+  videos: ResearchVideo[],
+  days: DayPreset | null,
+  now: number = Date.now()
+): ResearchVideo[] {
+  const start = windowStart(days, now);
   if (start == null) return videos;
   return videos.filter((v) => v.posted_at != null && new Date(v.posted_at).getTime() >= start);
 }
