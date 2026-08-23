@@ -40,6 +40,11 @@ Rules for new migrations in this repo:
 - `src/app/(app)/research/` — creator list + detail pages (server components,
   server actions in `actions.ts`).
 - `src/lib/research.ts` — lift math + format detection (pure, unit-tested).
+- `src/lib/scripts.ts` — per-script performance + transcript matching, incl.
+  `resolveScriptMatches` (pure, unit-tested — see **Script matching** below).
+- `src/lib/jobs/match-scripts.ts` — loads every script/assignment/video, resolves,
+  writes the unambiguous links. `src/app/(app)/scripts/review/` is the queue for
+  the rest.
 - `src/lib/jobs/research.ts` — profile scrape → upsert → thumbnail capture.
 - `src/app/api/jobs/research/route.ts` — CRON_SECRET- or admin-authorized
   scrape endpoint (no cron exists; scrapes are manual).
@@ -146,6 +151,39 @@ Rules that matter:
   `~/Library/LaunchAgents/.disabled-discord-crm-2026-08-20/`. They were a live
   duplicate ingester. Don't reload them.
 
+## Script matching
+
+Every number on /scripts comes from `research_script_assignments.research_video_id`
+— the link between a script and the post it produced. That link used to be set
+only by hand, one assignment at a time, so 1,036 of 1,073 assignments were
+unlinked and nearly every script read "0 posts" while the posts sat in the
+database, scraped and transcribed. A 2026-08-22 backfill linked 350 of them.
+
+`resolveScriptMatches` scores each open assignment's script against its
+creator's transcripts (containment, via `transcriptMatchScore`) and settles all
+pairs **globally, best-first** — never per assignment. That is load-bearing: a
+partial unique index means one video can back only one assignment, so resolving
+each assignment independently lets whichever runs first claim a video the next
+one wanted more.
+
+A pair is linked automatically only when it is BOTH strong (`MATCH_AUTO_MIN`,
+0.5) AND beats its nearest rival by `MATCH_AUTO_MARGIN` (0.12). The margin is
+the whole safety story — the original design kept linking manual precisely
+because two near-identical scripts would otherwise get silently swapped, and
+that is real here: a live pair scored 0.97 and 0.91 for the same post. Anything
+doubtful goes to /scripts/review instead of being guessed at. Don't lower the
+margin without re-checking the contested count.
+
+The review queue recomputes candidates from transcripts on every load rather
+than storing them, which is why it needs no "reject" and no extra table: it
+self-drains. Confirming one side of a contested pair claims that video, so the
+rival's claim disappears on the next pass. Because of that the job converges
+over a few runs rather than in one (350 links took 3 passes) — this is expected,
+not drift; it goes quiet once stable.
+
+Low-confidence leftovers are usually just creators who have not posted yet.
+Leave them: when they post, the strong match links itself.
+
 ## Scheduled work
 
 `vercel.json` runs `/api/jobs/cron` hourly. Vercel Cron issues a **GET**,
@@ -159,6 +197,12 @@ on the project. Both routes share `src/lib/jobs/scrape-all.ts`.
 routes authorize themselves. A cron route anywhere else gets 307'd to `/login`
 by the middleware and never runs — the request carries a bearer token, not a
 session cookie. `tests/routing.test.ts` pins this.
+
+The hourly tick also runs `matchScriptPosts`, but only when the scrape queue is
+empty (`remaining === 0`) so a mid-drain tick keeps its 300s budget. It runs on
+idle ticks on purpose: transcription is asynchronous on a separate Fly app, so
+tying matching to the 12-hourly scrape would leave a new post unlinked for half
+a day. `POST /api/jobs/research {"action":"match-scripts"}` runs it on demand.
 
 The cron is a no-op while `research_settings.auto_scrape_enabled` is false —
 flip it in /settings to arm it. `scrapeAll` also self-skips when a run is not

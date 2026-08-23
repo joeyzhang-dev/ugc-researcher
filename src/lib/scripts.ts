@@ -174,3 +174,191 @@ export function suggestMatches(
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 }
+
+// ===========================================================================
+// Resolving every open assignment at once
+// ===========================================================================
+
+/** A pair below this is never worth a human's attention. */
+export const MATCH_REVIEW_MIN = 0.25;
+/** A pair must clear this to be linked without a human looking at it. */
+export const MATCH_AUTO_MIN = 0.5;
+/**
+ * How far the winner must beat its nearest rival to count as unambiguous.
+ *
+ * The failure this guards is the one that matters: two near-identical scripts
+ * competing for one video. Observed live, a real pair scored 0.97 and 0.91 for
+ * the same post — a gap far too small to call, and exactly the "silently
+ * swapped" case that kept linking manual in the first place.
+ */
+export const MATCH_AUTO_MARGIN = 0.12;
+
+/** Why a pair needs eyes on it rather than being linked outright. */
+export type MatchReviewReason = "contested" | "low-confidence";
+
+export interface ResolvedMatch {
+  assignmentId: string;
+  scriptId: string;
+  creatorId: string;
+  videoId: string;
+  score: number;
+  /** Best score any rival pair reached for this video or this assignment. */
+  runnerUp: number;
+  reason?: MatchReviewReason;
+}
+
+export interface MatchResolution {
+  confirm: ResolvedMatch[];
+  review: ResolvedMatch[];
+}
+
+/** Pre-tokenized transcript, so a creator's library is tokenized once. */
+function counted(text: string): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const w of tokens(text)) m.set(w, (m.get(w) ?? 0) + 1);
+  return m;
+}
+
+/** transcriptMatchScore against an already-tokenized transcript. */
+function scoreTokens(scriptTokens: string[], have: Map<string, number>): number {
+  if (scriptTokens.length === 0 || have.size === 0) return 0;
+  let hit = 0;
+  const used = new Map<string, number>();
+  for (const w of scriptTokens) {
+    const spent = used.get(w) ?? 0;
+    if (spent < (have.get(w) ?? 0)) {
+      hit++;
+      used.set(w, spent + 1);
+    }
+  }
+  return hit / scriptTokens.length;
+}
+
+/**
+ * Match every open assignment to the video it produced, in one pass.
+ *
+ * Resolution is global rather than per-assignment on purpose. A video can back
+ * only one assignment (there is a partial unique index enforcing it), so
+ * picking each assignment's favourite independently lets whoever runs first
+ * claim a video the next assignment wanted more. Scoring every pair and
+ * settling them best-first means the strongest claim wins outright.
+ *
+ * Nothing is linked unless it is both strong AND clearly better than its
+ * nearest rival; everything else is returned for a human to confirm. That
+ * keeps the original guarantee — two similar scripts are never silently
+ * swapped — while sparing the ~600 open assignments that have no rival at all.
+ *
+ * `takenVideoIds` are videos already linked to some assignment; they are never
+ * offered again.
+ */
+export function resolveScriptMatches(
+  scripts: ResearchScript[],
+  assignments: ResearchScriptAssignment[],
+  videos: ResearchVideo[],
+  takenVideoIds: Set<string>
+): MatchResolution {
+  const scriptById = new Map(scripts.map((s) => [s.id, s]));
+
+  // Only assignments still waiting on a post. A Skipped creator isn't posting
+  // it, and an already-linked one is settled.
+  const open = assignments.filter(
+    (a) => !a.research_video_id && a.status !== "Skipped" && scriptById.has(a.script_id)
+  );
+  if (!open.length) return { confirm: [], review: [] };
+
+  const wanted = new Set(open.map((a) => a.research_creator_id));
+  const poolByCreator = new Map<string, ResearchVideo[]>();
+  for (const v of videos) {
+    if (!v.transcript_text || takenVideoIds.has(v.id)) continue;
+    if (!wanted.has(v.research_creator_id)) continue;
+    (poolByCreator.get(v.research_creator_id) ??
+      poolByCreator.set(v.research_creator_id, []).get(v.research_creator_id)!).push(v);
+  }
+
+  const scriptTokens = new Map<string, string[]>();
+  const transcriptTokens = new Map<string, Map<string, number>>();
+
+  // Every candidate pair worth considering, plus each side's best rival.
+  type Pair = ResolvedMatch;
+  const pairs: Pair[] = [];
+  const bestForVideo = new Map<string, number>();
+  const bestForAssignment = new Map<string, number>();
+  const runnerUpForVideo = new Map<string, number>();
+  const runnerUpForAssignment = new Map<string, number>();
+
+  const note = (
+    best: Map<string, number>,
+    runner: Map<string, number>,
+    key: string,
+    score: number
+  ) => {
+    const top = best.get(key);
+    if (top == null || score > top) {
+      if (top != null) runner.set(key, Math.max(runner.get(key) ?? 0, top));
+      best.set(key, score);
+    } else {
+      runner.set(key, Math.max(runner.get(key) ?? 0, score));
+    }
+  };
+
+  for (const a of open) {
+    const s = scriptById.get(a.script_id)!;
+    let toks = scriptTokens.get(s.id);
+    if (!toks) {
+      toks = tokens([s.hook, s.body].filter(Boolean).join(" "));
+      scriptTokens.set(s.id, toks);
+    }
+    if (!toks.length) continue;
+
+    for (const v of poolByCreator.get(a.research_creator_id) ?? []) {
+      let have = transcriptTokens.get(v.id);
+      if (!have) {
+        have = counted(v.transcript_text!);
+        transcriptTokens.set(v.id, have);
+      }
+      const score = scoreTokens(toks, have);
+      if (score < MATCH_REVIEW_MIN) continue;
+      pairs.push({
+        assignmentId: a.id,
+        scriptId: s.id,
+        creatorId: a.research_creator_id,
+        videoId: v.id,
+        score,
+        runnerUp: 0,
+      });
+      note(bestForVideo, runnerUpForVideo, v.id, score);
+      note(bestForAssignment, runnerUpForAssignment, a.id, score);
+    }
+  }
+
+  // Settle best-first so the strongest claim on a contested video wins.
+  pairs.sort((x, y) => y.score - x.score || x.videoId.localeCompare(y.videoId));
+
+  const confirm: ResolvedMatch[] = [];
+  const review: ResolvedMatch[] = [];
+  const usedAssignments = new Set<string>();
+  const usedVideos = new Set<string>();
+
+  for (const p of pairs) {
+    if (usedAssignments.has(p.assignmentId) || usedVideos.has(p.videoId)) continue;
+    usedAssignments.add(p.assignmentId);
+    usedVideos.add(p.videoId);
+
+    // A rival is any *other* pair touching this video or this assignment.
+    const rival = Math.max(
+      runnerUpForVideo.get(p.videoId) ?? 0,
+      runnerUpForAssignment.get(p.assignmentId) ?? 0
+    );
+    const resolved: ResolvedMatch = { ...p, runnerUp: rival };
+
+    if (p.score < MATCH_AUTO_MIN) {
+      review.push({ ...resolved, reason: "low-confidence" });
+    } else if (p.score - rival < MATCH_AUTO_MARGIN) {
+      review.push({ ...resolved, reason: "contested" });
+    } else {
+      confirm.push(resolved);
+    }
+  }
+
+  return { confirm, review };
+}

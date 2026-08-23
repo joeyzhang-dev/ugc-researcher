@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scrapeAll } from "@/lib/jobs/scrape-all";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { matchScriptPosts } from "@/lib/jobs/match-scripts";
 import { authorizeJobRequest } from "../authorize";
 
 export const maxDuration = 300;
@@ -21,12 +23,21 @@ export const dynamic = "force-dynamic";
  *  Safe to run often: scrapeAll no-ops unless the configured schedule says a
  *  run is due, and an in-flight queue resumes on the next tick. One pass
  *  drains within a 4-minute budget and reports what is left, so an hourly
- *  cron finishes a long queue across successive ticks. */
+ *  cron finishes a long queue across successive ticks.
+ *
+ *  Script matching runs on every idle tick, not just after a scrape. Posts are
+ *  transcribed asynchronously by the Fly worker long after the scrape that
+ *  found them, so tying matching to the 12-hourly scrape would leave a new
+ *  post unlinked for half a day. It is skipped while a scrape queue is still
+ *  draining, purely to protect the 300s budget. */
 export async function GET(request: NextRequest) {
   const denied = await authorizeJobRequest(request);
   if (denied) return denied;
   try {
-    return NextResponse.json(await scrapeAll(false));
+    const scrape = await scrapeAll(false);
+    // Only once the scrape queue is empty — mid-drain the budget is spoken for.
+    const matched = scrape.remaining === 0 ? await matchScriptPosts(createAdminClient()) : null;
+    return NextResponse.json({ ...scrape, matched });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });

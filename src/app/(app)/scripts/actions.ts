@@ -114,12 +114,27 @@ export async function linkAssignmentVideo(assignmentId: string, formData: FormDa
   const videoId = str(formData, "videoId");
   const scriptId = str(formData, "scriptId");
 
-  const { error } = await createAdminClient()
+  const db = createAdminClient();
+
+  // Stamp the day the creator posted, not the day we noticed. The bulk matcher
+  // links hundreds of months-old posts at once, and "now" would date every one
+  // of them today.
+  let postedAt: string | null = null;
+  if (videoId) {
+    const { data: video } = await db
+      .from("research_videos")
+      .select("posted_at")
+      .eq("id", videoId)
+      .maybeSingle();
+    postedAt = (video?.posted_at as string | null) ?? new Date().toISOString();
+  }
+
+  const { error } = await db
     .from("research_script_assignments")
     .update({
       research_video_id: videoId,
       status: videoId ? "Posted" : "Assigned",
-      posted_at: videoId ? new Date().toISOString() : null,
+      posted_at: postedAt,
     })
     .eq("id", assignmentId);
   if (error) {

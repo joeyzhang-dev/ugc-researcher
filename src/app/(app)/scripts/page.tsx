@@ -7,10 +7,11 @@ import type {
   ResearchScriptAssignment,
   ResearchVideo,
 } from "@/lib/types";
-import { summarizeScripts } from "@/lib/scripts";
+import { resolveScriptMatches, summarizeScripts } from "@/lib/scripts";
 import { createScript } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
-import { Card, PageHeader, buttonClass, inputClass, labelClass } from "@/components/ui";
+import Link from "next/link";
+import { Card, PageHeader, buttonClass, inputClass, labelClass, secondaryButtonClass } from "@/components/ui";
 import { NicheCombobox } from "@/components/niche-combobox";
 import { AppSelect } from "@/components/app-select";
 import { ALL_APPS } from "@/lib/workspace";
@@ -85,6 +86,17 @@ export default async function ScriptsPage({
 
   // Perf for the whole workspace once — the explorer filters client-side.
   const perf = summarizeScripts(inWorkspace, assignments, videosByCreator);
+
+  // How many open assignments the matcher cannot settle on its own. Computed
+  // from rows already in hand rather than re-fetching — it is pure arithmetic
+  // over data this page loads anyway, and it is what makes the review link
+  // worth showing at all.
+  const needsReview = resolveScriptMatches(
+    allScripts,
+    assignments,
+    videos,
+    new Set(assignments.map((a) => a.research_video_id).filter((id): id is string => !!id))
+  ).review.length;
   const creatorById = new Map(creators.map((c) => [c.id, c]));
 
   const rows: ScriptRow[] = perf.map((p) => ({
@@ -173,7 +185,15 @@ export default async function ScriptsPage({
           explained the lift ranking once, then cost a band of screen on every
           visit. The workspace still rides the eyebrow, since that is the thing
           that changes what you are looking at. */}
-      <PageHeader title="Scripts" eyebrow={app?.name} />
+      <PageHeader
+        title="Scripts"
+        eyebrow={app?.name}
+        action={
+          <Link href="/scripts/review" className={secondaryButtonClass}>
+            Match review{needsReview > 0 ? ` (${needsReview})` : ""}
+          </Link>
+        }
+      />
 
       {error && (
         <p className="mb-6 rounded-xl bg-danger/[0.08] px-3.5 py-2.5 text-sm text-danger ring-1 ring-inset ring-danger/[0.2]">

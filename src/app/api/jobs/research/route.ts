@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runFormatCategorization, runResearchScrape } from "@/lib/jobs/research";
 import { scrapeAll } from "@/lib/jobs/scrape-all";
+import { matchScriptPosts } from "@/lib/jobs/match-scripts";
 import { authorizeJobRequest } from "../authorize";
 
 export const maxDuration = 300;
@@ -15,7 +16,10 @@ export const dynamic = "force-dynamic";
  *              cron can safely poll far more often than the schedule.
  *              Repeat the call until { remaining: 0 } to finish a long queue.
  *  Categorize: POST { action: "categorize", creatorId?: string } — transcript-aware
- *              format re-detection (run after the transcription worker). */
+ *              format re-detection (run after the transcription worker).
+ *  Match:      POST { action: "match-scripts" } — link each open assignment to
+ *              the post it produced, where the transcript match is unambiguous.
+ *              Idempotent; anything doubtful is left for /scripts/review. */
 export async function POST(request: NextRequest) {
   const denied = await authorizeJobRequest(request);
   if (denied) return denied;
@@ -38,6 +42,9 @@ export async function POST(request: NextRequest) {
     if (body.action === "categorize") {
       const result = await runFormatCategorization(createAdminClient(), body.creatorId);
       return NextResponse.json(result);
+    }
+    if (body.action === "match-scripts") {
+      return NextResponse.json(await matchScriptPosts(createAdminClient()));
     }
     if (body.action === "scrape-all") {
       return NextResponse.json(await scrapeAll(Boolean(body.force)));
