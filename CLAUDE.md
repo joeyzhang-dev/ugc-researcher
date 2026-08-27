@@ -46,13 +46,18 @@ What the fork means in practice:
   could not come across** — they live in `auth.users`, which is not reachable
   through PostgREST or the admin API. Everyone signs in via password reset the
   first time.
-- **Vercel and Fly still point at the old project.** Only `.env.local` was cut
-  over. Until `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and
-  `SUPABASE_SERVICE_ROLE_KEY` are updated on the Vercel project `bludgc` and on
-  both Fly apps (`bludgc-workers`, `bludgc-transcribe`), production reads and
-  writes the shared project while local development reads the fork. Flip all
-  three together — the Discord bot writing to one database while the web app
-  reads the other is the failure mode to avoid.
+- **Production was cut over on 2026-08-26.** `.env.local`, the Vercel project
+  `bludgc`, and both Fly apps (`bludgc-workers`, `bludgc-transcribe`) all point
+  at the standalone project. Vercel also gained `LAUNCHPOINT_API_KEY`, without
+  which the hourly cron's Launchpoint phase self-skips silently.
+  **Vercel env vars only take effect on a new build** — `NEXT_PUBLIC_*` are
+  baked in at build time — so changing them requires
+  `vercel redeploy <deployment-url> --target production`, which rebuilds the
+  existing deployment rather than shipping whatever branch is checked out.
+  If this ever has to be redone, flip all three targets together and do the
+  **workers first**: the writers moving first means new Discord messages land
+  in the new database, whereas moving the web app first would write them to the
+  old one and lose them.
 - Pre-fork values are preserved in `.env.shared-project.bak` (gitignored), so
   rolling back is a copy-paste.
 
