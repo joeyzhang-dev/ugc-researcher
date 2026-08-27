@@ -16,6 +16,7 @@ import { ResearchScoreChip, ResearchVideoPanel, type PanelSegment } from "@/comp
 import { ResearchVideoTile } from "@/components/research-video-tile";
 import { ALL_APPS } from "@/lib/workspace";
 import { getWorkspace } from "@/lib/workspace/server";
+import { loadViewCurves, videoSelect } from "@/lib/video-metrics";
 
 export const dynamic = "force-dynamic";
 // The add-creator action runs a full profile scrape inline.
@@ -131,6 +132,13 @@ export default async function ResearchPage({
   const sortHref = (key: SortKey, dir: SortDir) => hrefWith({ sort: key, dir });
 
   const supabase = await createClient();
+  // Falls back to the base column list when the Launchpoint migration has
+  // not been applied yet, so a lagging schema hides chips instead of 400ing
+  // the whole page.
+  const VIDEO_SELECT = await videoSelect(
+    supabase,
+    "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category"
+  );
   const workspace = await getWorkspace();
   const appFilter = workspace.current === ALL_APPS ? null : workspace.current;
 
@@ -140,7 +148,7 @@ export default async function ResearchPage({
       supabase
         .from("research_videos")
         .select(
-          "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category"
+          VIDEO_SELECT
         ),
       // Only the roster is scoped by app; skip the join entirely otherwise.
       isRoster
@@ -158,7 +166,12 @@ export default async function ResearchPage({
     (c) => !isRoster || (appFilter ? inWorkspace.has(c.id) : true)
   );
   const creatorById = new Map(creators.map((c) => [c.id, c]));
-  const allVideos = (videosData ?? []) as ResearchVideo[];
+  // Through `unknown`: the select list is built at runtime (the Launchpoint
+  // columns are only named when the schema has them), so supabase-js cannot
+  // infer a row type from it. The rows are ResearchVideo either way — the
+  // Launchpoint fields are simply absent before the migration, and every
+  // reader already treats them as nullable.
+  const allVideos = (videosData ?? []) as unknown as ResearchVideo[];
   const queuedCount = creators.filter((c) => c.scrape_queued_at != null).length;
 
   const byCreator = new Map<string, ResearchVideo[]>();
@@ -251,6 +264,9 @@ export default async function ResearchPage({
       text: s.text,
     });
   }
+  // Daily curves for the same visible set — only roster posts Launchpoint
+  // tracks have one, so this is usually a subset of `visibleIds`.
+  const curvesByVideo = await loadViewCurves(supabase, visibleIds);
 
   const allScores = pool.map(({ row }) => row.score).filter((n): n is number => n != null);
   const allLifts = pool.map(({ row }) => row.lift).filter((n): n is number => n != null);
@@ -705,7 +721,7 @@ export default async function ResearchPage({
           )}
         </div>
 
-        <ResearchVideoPanel segmentsByVideo={segmentsByVideo} />
+        <ResearchVideoPanel segmentsByVideo={segmentsByVideo} curvesByVideo={curvesByVideo} />
       </div>
     </>
   );

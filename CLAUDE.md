@@ -46,6 +46,10 @@ Rules for new migrations in this repo:
   writes the unambiguous links. `src/app/(app)/scripts/review/` is the queue for
   the rest.
 - `src/lib/jobs/research.ts` — profile scrape → upsert → thumbnail capture.
+- `src/lib/launchpoint.ts` + `src/lib/jobs/launchpoint.ts` — the Launchpoint
+  Public API client and its four-phase sync (see **Launchpoint** below).
+  `src/lib/retention.ts` holds the pure retention math (hold rate, skip rate,
+  CPM, day-one share), `src/components/retention-view.tsx` its presentation.
 - `src/app/api/jobs/research/route.ts` — CRON_SECRET- or admin-authorized
   scrape endpoint (no cron exists; scrapes are manual).
 - `worker/transcribe_worker.py` — local transcription (yt-dlp / Scrape Creators / stored
@@ -58,7 +62,9 @@ Rules for new migrations in this repo:
 - `worker/discord_pull_worker.py` — stdlib-only 24/7 Discord ingester
   (REST pull every 60s → normalize → attribute roles → idempotent upsert),
   plus subcommands: `discover` (creator channels are `<track-emoji><name>`,
-  e.g. `✝️jas` — `TRACK_EMOJI_NICHES` is the emoji→niche source of truth;
+  e.g. `✝️jas-alcantara` (first-last verbatim from Launchpoint since
+  2026-08-26; `✝️jas` and the `🤍anna🌸` disambiguator were the old form and
+  still parse) — `TRACK_EMOJI_NICHES` is the emoji→niche source of truth;
   categories are coach teams),
   `enrich` (creator discord ids, coach/launchpoint roles, re-attribution),
   `sync` (launchpoint `## Script N/M` messages → `research_scripts` +
@@ -184,6 +190,100 @@ not drift; it goes quiet once stable.
 Low-confidence leftovers are usually just creators who have not posted yet.
 Leave them: when they post, the strong match links itself.
 
+## Launchpoint
+
+`launchpointhq.com` is where the Folk creator program actually runs — contracts,
+payouts, and the review loop the `launchpoint` Discord bot narrates into each
+coaching channel. As of 2026-08-26 we also read its **Public API** (private
+preview; `LAUNCHPOINT_API_KEY`, header `x-api-key`, base
+`https://dashboard.launchpointhq.com/api/v1`, **100 requests/minute**,
+timestamps in epoch **milliseconds**, docs at `docs.launchpointhq.com/llms.txt`).
+
+Why it matters: creators authorize their own Instagram accounts to Launchpoint,
+so it holds **first-party** metrics no scrape can reach — `reach`, `saves`,
+`totalWatchTimeMs`, `avgWatchTimeMs`, `skipRate` — plus daily metric curves and
+what each post was paid. We already store the transcript of nearly every roster
+post; transcript + watch time is the pairing this whole research pool exists to
+study. Views say the algorithm pushed a reel, watch time says the script held
+the person who saw it.
+
+- **The join key is the Instagram shortcode.** Launchpoint stores clean
+  `instagram.com/reel/<code>/` URLs and `research_videos.shortcode` already
+  holds the same value, so no id-mapping table is needed and a post scraped
+  long before Launchpoint was connected still lines up. `shortcodeFromUrl`
+  fails closed: an unrecognized URL yields null and the post goes unmatched,
+  because a wrong shortcode would attach one creator's retention numbers to
+  another creator's post.
+- **Four phases, deliberately separate.** `creators` and `posts` are ~8 calls
+  total and finish in one tick. `insights` and `history` are **one call per
+  post** — ~1,500 Instagram posts is close to half an hour against a 300s
+  Vercel ceiling, so both walk `research_videos.launchpoint_synced_at`
+  oldest-first and stop at a time budget. **That column is the resume cursor**;
+  there is no queue table and a tick that dies mid-pass simply continues.
+  `RESYNC_AFTER_MS` (6h) is the floor that stops the cursor rotating forever.
+- **`launchpoint_synced_at` is stamped on every outcome, including an empty
+  one.** A post with no insights must not sit at the head of the queue blocking
+  everything behind it on every tick.
+- **Creator rows are created for Instagram only** (`CREATE_PLATFORMS`).
+  Launchpoint tracks 51 TikTok accounts for the same people; since
+  `research_creators` is keyed on (platform, handle), accepting them would add
+  a second row per creator, push all 51 into the scrape queue, and fill the
+  roster views with accounts that have no scripts or sends behind them. An
+  existing TikTok row still gets its `launchpoint_creator_id` stamped — only
+  creation is gated. A numeric "handle" (`27419857611005344`, from a
+  Facebook-linked account) is rejected too. Both are reported in `notCreated`
+  and shown in the /settings note, never dropped silently.
+- **A rename is reported, never merged.** Launchpoint tracks `lockinwithvick`
+  while the roster still says `vicklockedin`. A contractor id already bound to
+  one of our creators under a different handle is genuine ambiguity, so
+  `syncLaunchpointCreators` returns it in `possibleRenames` and does nothing —
+  same call `resolveScriptMatches` makes on a too-close pair. Auto-merging
+  would move one creator's posts onto another creator's row.
+- **Ingested posts land `transcript_status: 'pending'`**, which is the point:
+  the Fly transcription worker picks them up on its next 60s poll, so a post
+  Launchpoint knows about arrives complete without a scrape.
+- **Insights are Instagram-only.** TikTok answers HTTP 200 with
+  `status: "no_data", reason: "unsupported_platform"` — a successful empty
+  answer, not a failure.
+- **`posts.title` is a concept name but mostly noise** — 2,265 of 2,905 live
+  posts are the catch-all `Open-ended`. It corroborates a script match on ~22%
+  of posts and must never replace transcript matching.
+- **Retention thresholds are measured, not invented.** `holdRateBand` /
+  `skipRateBand` in `retention-view.tsx` are the quartiles of a 178-post sample
+  of the live corpus (2026-08-26): hold rate p25 0.26 / median 0.32 / p90 0.49;
+  skip rate p10 30 / median 42 / p75 49. Re-measure before changing them.
+- **Hold rate is not clamped at 100%.** Instagram counts a replay as continued
+  watch time, so a short loopable reel genuinely averages more than its own
+  duration; clamping would erase the best signal there is. `duration_seconds`
+  must be in any `research_videos` select that renders retention — hold rate
+  divides by it — which is what `LAUNCHPOINT_VIDEO_COLUMNS` exists to
+  guarantee. Splice it with a **template literal**, not `+`: supabase-js infers
+  the row type from the select string as a literal, and concatenation widens it
+  to `string` and silently degrades the query to `GenericStringError[]`.
+- Only two write routes exist upstream (`POST /posts/export`,
+  `POST /programs/{id}/invite`) and **neither is in the client** — an export
+  creates a file and an invite creates a shareable link; a sync job should do
+  neither on its own.
+- `/creators` and `/contracts` both answer `total: 0` on this account (pay is
+  `canvas_payscale` with `contractId: null`), which is why the creator identity
+  map comes from `/analytics/accounts` instead.
+
+**The pages tolerate a schema that has not caught up.** `videoSelect()` probes
+once per minute per process for `launchpoint_post_id` and drops the Launchpoint
+columns from the select when they are absent; `loadViewCurves()` answers `{}`
+if `research_video_metrics_daily` does not exist. This is not defensive
+padding — the integration was written against a database nobody could run DDL
+on, and a select naming a missing column is a hard PostgREST 400 that takes
+/research and /scripts down entirely. With the probe, an un-migrated database
+just hides the retention chips, and the pages light up on their own within a
+minute of the migration landing — no redeploy. The cost is that the select list
+is built at runtime, so supabase-js cannot infer a row type from it and the
+four call sites cast through `unknown`.
+
+Run it from /settings (browser-driven 45s slices, same shape as "Scrape all"),
+or `POST /api/jobs/research {"action":"launchpoint-sync"}`. Repeat until
+`{ remaining: 0 }`.
+
 ## Scheduled work
 
 `vercel.json` runs `/api/jobs/cron` hourly. Vercel Cron issues a **GET**,
@@ -198,8 +298,10 @@ routes authorize themselves. A cron route anywhere else gets 307'd to `/login`
 by the middleware and never runs — the request carries a bearer token, not a
 session cookie. `tests/routing.test.ts` pins this.
 
-The hourly tick also runs `matchScriptPosts`, but only when the scrape queue is
-empty (`remaining === 0`) so a mid-drain tick keeps its 300s budget. It runs on
+The hourly tick also runs `matchScriptPosts` and then `syncLaunchpoint`, but
+only when the scrape queue is empty (`remaining === 0`) so a mid-drain tick
+keeps its 300s budget. Launchpoint takes whatever is left of the tick and
+reports `remaining` on the same contract as the scrape. It runs on
 idle ticks on purpose: transcription is asynchronous on a separate Fly app, so
 tying matching to the 12-hourly scrape would leave a new post unlinked for half
 a day. `POST /api/jobs/research {"action":"match-scripts"}` runs it on demand.
@@ -215,6 +317,9 @@ safe against a 12-hour schedule.
 tracker's `.env.local`, plus `SUPABASE_ACCESS_TOKEN` for migrations. If a key
 is rotated, re-copy it from `~/Developer/trace-ugc-tracker/.env.local`.
 Scraping: `SCRAPECREATORS_API_KEY` (this repo only — the tracker doesn't use it).
+Launchpoint: `LAUNCHPOINT_API_KEY` (`lp_pk_…`, Dashboard → Settings → API).
+Server-only, and needed on Vercel too or the hourly cron's Launchpoint phase
+self-skips — silently, by design, so a missing key degrades rather than breaks.
 Discord: `DISCORD_BOT_TOKEN` (the mach ugc bot) + `DISCORD_GUILD_ID`; the
 `ONBOARD_*` / `CREATOR_ROLE_*` overrides default to the live Folk ids in
 `worker/discord_bot/config.py`.

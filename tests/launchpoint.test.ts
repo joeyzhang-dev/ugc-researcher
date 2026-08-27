@@ -1,0 +1,209 @@
+import { describe, expect, it } from "vitest";
+import {
+  isoFromEpochMillis,
+  normalizeAccount,
+  normalizeHistory,
+  normalizeInsights,
+  normalizePost,
+  shortcodeFromUrl,
+  toPlatform,
+} from "@/lib/launchpoint";
+
+describe("shortcodeFromUrl", () => {
+  // The entire Launchpoint ↔ research_videos join rests on this function.
+  it("parses the canonical reel URL Launchpoint stores", () => {
+    expect(shortcodeFromUrl("https://www.instagram.com/reel/DceXz3rTr9Q/")).toBe("DceXz3rTr9Q");
+  });
+
+  it("accepts the /p/ and /tv/ forms", () => {
+    expect(shortcodeFromUrl("https://instagram.com/p/ABC-123_x/")).toBe("ABC-123_x");
+    expect(shortcodeFromUrl("https://www.instagram.com/tv/XyZ/")).toBe("XyZ");
+  });
+
+  it("ignores query strings and trailing path", () => {
+    expect(shortcodeFromUrl("https://www.instagram.com/reel/DceXz3rTr9Q/?igsh=abc")).toBe(
+      "DceXz3rTr9Q"
+    );
+  });
+
+  // A wrong shortcode would attach one creator's retention numbers to another
+  // creator's post, so anything unrecognized must fail closed.
+  it("returns null for TikTok, YouTube and junk rather than guessing", () => {
+    expect(shortcodeFromUrl("https://www.tiktok.com/@psychorinn/video/7678181756532509983")).toBeNull();
+    expect(shortcodeFromUrl("https://youtube.com/shorts/abc")).toBeNull();
+    expect(shortcodeFromUrl("")).toBeNull();
+    expect(shortcodeFromUrl(null)).toBeNull();
+    expect(shortcodeFromUrl("not a url")).toBeNull();
+  });
+});
+
+describe("isoFromEpochMillis", () => {
+  it("converts Launchpoint's millisecond timestamps", () => {
+    expect(isoFromEpochMillis(1786916245000)).toBe("2026-08-16T21:37:25.000Z");
+  });
+
+  // Seconds-vs-milliseconds is the classic silent corruption: a seconds value
+  // interpreted as ms lands in 1970 and quietly poisons every date filter.
+  it("rejects a seconds-scale value instead of landing it in 1970", () => {
+    expect(isoFromEpochMillis(1786916245)).toBeNull();
+  });
+
+  it("handles missing values", () => {
+    expect(isoFromEpochMillis(null)).toBeNull();
+    expect(isoFromEpochMillis(0)).toBeNull();
+    expect(isoFromEpochMillis("nope")).toBeNull();
+  });
+});
+
+describe("normalizePost", () => {
+  it("normalizes a live Instagram post, deriving the join key from the URL", () => {
+    const post = normalizePost({
+      id: "b9208ba0-dee0-4722-baeb-ec11e0eb55e7",
+      creatorId: "crt_RYWFkFb6",
+      title: "Open-ended",
+      platform: "instagram",
+      url: "https://www.instagram.com/reel/DceXz3rTr9Q/",
+      thumbnail: "https://cdn.launchpointhq.com/x.jpeg",
+      views: 1351966,
+      likes: 39166,
+      comments: 549,
+      shares: 5565,
+      earnings: 0,
+      paid: false,
+      contractorName: "Liam Christianson",
+      uploadedAt: 1786916245000,
+    });
+    expect(post).toMatchObject({
+      id: "b9208ba0-dee0-4722-baeb-ec11e0eb55e7",
+      shortcode: "DceXz3rTr9Q",
+      platform: "instagram",
+      views: 1351966,
+      earnings: 0,
+      paid: false,
+      uploadedAt: "2026-08-16T21:37:25.000Z",
+    });
+  });
+
+  it("leaves shortcode null for a TikTok post", () => {
+    const post = normalizePost({
+      id: "x",
+      platform: "tiktok",
+      url: "https://www.tiktok.com/@psychorinn/video/7678181756532509983",
+      paid: true,
+    });
+    expect(post.shortcode).toBeNull();
+    expect(post.paid).toBe(true);
+  });
+
+  // `paid` drives money display; a missing field must read as unpaid, never as
+  // a truthy object.
+  it("treats a missing paid flag as false", () => {
+    expect(normalizePost({ id: "x", platform: "instagram" }).paid).toBe(false);
+  });
+});
+
+describe("normalizeInsights", () => {
+  it("unwraps the data envelope for an available Instagram post", () => {
+    const insights = normalizeInsights({
+      data: {
+        insights: {
+          status: "available",
+          reason: null,
+          updatedAt: 1787718273407,
+          views: 1351963,
+          reach: 1132304,
+          saves: 27796,
+          shares: 5565,
+          totalWatchTimeMs: 18817022779,
+          avgWatchTimeMs: 16682,
+          skipRate: 41,
+        },
+      },
+    });
+    expect(insights).toMatchObject({
+      available: true,
+      reach: 1132304,
+      saves: 27796,
+      avgWatchTimeMs: 16682,
+      skipRate: 41,
+      totalWatchTimeMs: 18817022779,
+    });
+  });
+
+  // TikTok answers 200 with no_data — a successful empty answer, not a failure.
+  // The sync must record it as "synced, nothing there" or the post sits at the
+  // head of the queue forever.
+  it("reads an unsupported-platform answer as unavailable, not an error", () => {
+    const insights = normalizeInsights({
+      data: { insights: { status: "no_data", reason: "unsupported_platform", views: null } },
+    });
+    expect(insights.available).toBe(false);
+    expect(insights.reason).toBe("unsupported_platform");
+    expect(insights.reach).toBeNull();
+  });
+
+  it("survives a malformed payload", () => {
+    expect(normalizeInsights({}).available).toBe(false);
+    expect(normalizeInsights({ data: null }).available).toBe(false);
+  });
+});
+
+describe("normalizeHistory", () => {
+  const payload = {
+    data: {
+      history: [
+        { date: "2026-08-17", views: 715218, viewsDelta: 715218, likes: 20000 },
+        { date: "2026-08-18", views: 1141156, viewsDelta: 425938, likes: 30000 },
+      ],
+    },
+  };
+
+  it("returns the daily curve in order", () => {
+    const rows = normalizeHistory(payload);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ date: "2026-08-17", views: 715218, viewsDelta: 715218 });
+  });
+
+  // A row with no usable date cannot be keyed or deduped. Inventing one from
+  // `timestamp` would stamp the fetch time, not the day being described.
+  it("drops rows with a missing or malformed date", () => {
+    expect(
+      normalizeHistory({ data: { history: [{ views: 1 }, { date: "17/08/2026", views: 2 }] } })
+    ).toEqual([]);
+  });
+
+  it("returns empty for a post with no history", () => {
+    expect(normalizeHistory({ data: { history: [] } })).toEqual([]);
+    expect(normalizeHistory({})).toEqual([]);
+  });
+});
+
+describe("normalizeAccount", () => {
+  it("lowercases and strips the handle so it joins to research_creators", () => {
+    const account = normalizeAccount({
+      handle: "@WisdomWJas",
+      platform: "instagram",
+      contractorId: "crt_5fsCV4",
+      contractorName: "Jas Alcantara",
+      totalPosts: 154,
+      totalViews: 5032075,
+      totalEarnings: 5185.54,
+      firstPostDate: 1781407195000,
+    });
+    expect(account.handle).toBe("wisdomwjas");
+    expect(account.totalEarnings).toBe(5185.54);
+    expect(account.firstPostDate).toBe("2026-06-14T03:19:55.000Z");
+  });
+});
+
+describe("toPlatform", () => {
+  // Launchpoint tracks five platforms; this app models two. Coercing a YouTube
+  // post onto an Instagram row would corrupt the creator's numbers.
+  it("maps the two we model and rejects the rest", () => {
+    expect(toPlatform("instagram")).toBe("instagram");
+    expect(toPlatform("tiktok")).toBe("tiktok");
+    expect(toPlatform("youtube")).toBeNull();
+    expect(toPlatform("facebook")).toBeNull();
+    expect(toPlatform("snapchat")).toBeNull();
+  });
+});

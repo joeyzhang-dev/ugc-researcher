@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { SendTarget } from "./send-bar";
+import { SEND_BLOCKER_LABEL, type SendTarget } from "@/lib/send-targets";
 
 const CHIP =
   "rounded-full px-2.5 py-1 text-[12px] font-medium ring-1 ring-inset transition";
@@ -9,8 +9,12 @@ const CHIP =
 /**
  * The niche-grouped creator chips shared by the script send bar and the
  * announcement bar: a niche chip (with its sendable count) toggles the whole
- * group, creator chips toggle one, creators without a linked channel stay
- * visible but un-pickable.
+ * group, creator chips toggle one, and anyone who cannot receive the batch
+ * stays visible but un-pickable with the reason on the chip.
+ *
+ * Nobody reachable is ever hidden. A creator onboarded in Discord but not yet
+ * linked to a handle used to be absent entirely — which is how a whole week's
+ * send missed the newest people with nothing on screen to notice.
  */
 export function CreatorPicker({
   targets,
@@ -32,10 +36,18 @@ export function CreatorPicker({
     return [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [targets]);
 
+  // Onboarded but unlinked is the actionable one — it means a real person in a
+  // real channel is about to be skipped, and one /link fixes it. Called out
+  // under the chips so it is read before Send, not discovered after.
+  const unlinked = useMemo(
+    () => targets.filter((t) => t.blocker === "unlinked-channel"),
+    [targets]
+  );
+
   return (
     <div className="space-y-2">
       {byNiche.map(([niche, members]) => {
-        const sendable = members.filter((m) => m.hasChannel);
+        const sendable = members.filter((m) => !m.blocker);
         const allIn = sendable.length > 0 && sendable.every((m) => picked.has(m.creatorId));
         return (
           <div key={niche} className="flex flex-wrap items-center gap-1.5">
@@ -55,7 +67,7 @@ export function CreatorPicker({
               </span>
             </button>
             {members.map((t) =>
-              t.hasChannel ? (
+              !t.blocker ? (
                 <button
                   key={t.creatorId}
                   type="button"
@@ -71,16 +83,32 @@ export function CreatorPicker({
               ) : (
                 <span
                   key={t.creatorId}
-                  title="No linked Discord channel — link it on the Discord page"
-                  className={`${CHIP} cursor-default text-neutral-300 ring-hairline`}
+                  title={SEND_BLOCKER_LABEL[t.blocker]}
+                  // Dashed for "onboarded, one step from sendable"; flat grey
+                  // for the chronic cases, so the fixable one stands out.
+                  className={`${CHIP} cursor-default ${
+                    t.blocker === "unlinked-channel"
+                      ? "border border-dashed border-neutral-300 text-neutral-400 ring-transparent"
+                      : "text-neutral-300 ring-hairline"
+                  }`}
                 >
-                  @{t.handle}
+                  {t.blocker === "unlinked-channel" ? t.handle : `@${t.handle}`}
                 </span>
               )
             )}
           </div>
         );
       })}
+
+      {unlinked.length > 0 && (
+        <p className="pt-0.5 text-[11px] leading-relaxed text-neutral-400">
+          {unlinked.length} newly onboarded{" "}
+          {unlinked.length === 1 ? "channel is" : "channels are"} not linked to a creator yet and
+          cannot be sent to: {unlinked.map((t) => t.handle).join(", ")}. Run{" "}
+          <code className="rounded bg-neutral-500/[0.08] px-1 py-px">/link</code> in their channel,
+          then reload.
+        </p>
+      )}
     </div>
   );
 }

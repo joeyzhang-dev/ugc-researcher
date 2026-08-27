@@ -18,6 +18,8 @@ import { ALL_APPS } from "@/lib/workspace";
 import { getWorkspace } from "@/lib/workspace/server";
 import { ScriptsExplorer, type ScriptRow } from "./scripts-explorer";
 import type { SendTarget } from "./send-bar";
+import { buildSendTargets, type SendTargetInput } from "@/lib/send-targets";
+import { loadViewCurves, videoSelect } from "@/lib/video-metrics";
 
 export const dynamic = "force-dynamic";
 // Server actions invoked from this page inherit this budget — a full-batch
@@ -44,6 +46,13 @@ export default async function ScriptsPage({
   const sentFilters = toArr(sent);
 
   const supabase = await createClient();
+  // Falls back to the base column list when the Launchpoint migration has
+  // not been applied yet, so a lagging schema hides chips instead of 400ing
+  // the whole page.
+  const VIDEO_SELECT = await videoSelect(
+    supabase,
+    "id, research_creator_id, url, shortcode, caption, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_text, format_category"
+  );
   const { apps, current, app } = await getWorkspace();
   const appFilter = current === ALL_APPS ? null : current;
 
@@ -73,11 +82,16 @@ export default async function ScriptsPage({
     ? await supabase
         .from("research_videos")
         .select(
-          "id, research_creator_id, url, shortcode, caption, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_text, format_category"
+          VIDEO_SELECT
         )
         .in("research_creator_id", creatorIds)
     : { data: [] };
-  const videos = (videosData ?? []) as ResearchVideo[];
+  // Through `unknown`: the select list is built at runtime (the Launchpoint
+  // columns are only named when the schema has them), so supabase-js cannot
+  // infer a row type from it. The rows are ResearchVideo either way — the
+  // Launchpoint fields are simply absent before the migration, and every
+  // reader already treats them as nullable.
+  const videos = (videosData ?? []) as unknown as ResearchVideo[];
   const videosByCreator = new Map<string, ResearchVideo[]>();
   for (const v of videos) {
     (videosByCreator.get(v.research_creator_id) ??
@@ -116,6 +130,9 @@ export default async function ScriptsPage({
     medianScore: p.medianScore,
     medianLift: p.medianLift,
     medianViews: p.medianViews,
+    medianHoldRate: p.retention.medianHoldRate,
+    medianSkipRate: p.retention.medianSkipRate,
+    retentionSample: p.retention.sampleSize,
     posts: p.posts,
     creators: p.creators,
     pending: p.pending,
@@ -150,34 +167,21 @@ export default async function ScriptsPage({
       : memberships.some((m) => m.app_id === appFilter && m.research_creator_id === c.id)
   );
 
-  // Send targets: every roster creator in scope, flagged with whether a
-  // Discord channel is linked (unlinked ones render un-pickable in the bar).
+  // Send targets. EVERY tracked channel is loaded, linked or not: a creator
+  // onboarded in Discord has a channel days before they have a handle to link,
+  // and building this list from research_creators alone left them out of the
+  // picker entirely — which is how a send missed the newest people.
   // Snowflake ids cast to text — they overflow JS numbers otherwise.
   const { data: channelsData } = await supabase
     .from("research_discord_channels")
-    .select("channel_id::text, research_creator_id, niche")
-    .eq("is_tracked", true)
-    .not("research_creator_id", "is", null);
-  const channelByCreator = new Map(
-    ((channelsData ?? []) as { channel_id: string; research_creator_id: string; niche: string | null }[]).map(
-      (c) => [c.research_creator_id, c]
-    )
-  );
-  const nicheOf = (creatorId: string) =>
-    memberships.find(
-      (m) => m.research_creator_id === creatorId && m.niche && (!appFilter || m.app_id === appFilter)
-    )?.niche ??
-    memberships.find((m) => m.research_creator_id === creatorId && m.niche)?.niche ??
-    channelByCreator.get(creatorId)?.niche ??
-    null;
-  const sendTargets: SendTarget[] = scopedCreators
-    .map((c) => ({
-      creatorId: c.id,
-      handle: c.handle,
-      niche: nicheOf(c.id),
-      hasChannel: channelByCreator.has(c.id),
-    }))
-    .sort((a, b) => a.handle.localeCompare(b.handle));
+    .select("channel_id::text, channel_name, research_creator_id, niche")
+    .eq("is_tracked", true);
+  const sendTargets: SendTarget[] = buildSendTargets({
+    appId: appFilter,
+    creators,
+    memberships,
+    channels: (channelsData ?? []) as SendTargetInput["channels"],
+  });
 
   return (
     <>

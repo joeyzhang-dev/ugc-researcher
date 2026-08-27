@@ -1,4 +1,5 @@
 import { computeLifts, median, type VideoLift } from "@/lib/research";
+import { summarizeRetention, type RetentionInput, type RetentionSummary } from "@/lib/retention";
 import type {
   ResearchScript,
   ResearchScriptAssignment,
@@ -17,6 +18,14 @@ import type {
  *
  * Medians throughout, for the same reason the rest of the app uses them: one
  * viral post must not make a mediocre script look great.
+ *
+ * Since the Launchpoint integration there is a second headline available:
+ * RETENTION. Lift still answers "did this script outperform the account it ran
+ * on", which is a question about distribution. Hold rate answers "did the
+ * words keep the person who saw it", which is a question about the writing —
+ * and it is the one a script rewrite can actually act on. Both are reported;
+ * neither replaces the other, and retention is only present for roster posts
+ * Launchpoint has synced.
  */
 
 export interface ScriptPerf {
@@ -34,6 +43,11 @@ export interface ScriptPerf {
   totalViews: number;
   /** Best post by lift. */
   best: VideoLift | null;
+  /** First-party retention across this script's posts. `sampleSize` is how
+   *  many of them actually carry Launchpoint insights — check it before
+   *  trusting a median, since a script with one synced post will happily
+   *  report one. */
+  retention: RetentionSummary;
   /** Every measurable post, best first. */
   rows: VideoLift[];
 }
@@ -70,6 +84,18 @@ export function summarizeScripts(
         .filter((r): r is VideoLift => !!r)
         .sort((a, b) => (b.lift ?? -1) - (a.lift ?? -1));
 
+      const retentionInputs: RetentionInput[] = rows.map((r) => ({
+        avgWatchTimeMs: r.video.avg_watch_time_ms,
+        totalWatchTimeMs: r.video.total_watch_time_ms,
+        durationSeconds: r.video.duration_seconds,
+        skipRate: r.video.skip_rate,
+        reach: r.video.reach,
+        views: r.video.view_count,
+        saves: r.video.saves,
+        shares: r.video.share_count,
+        earningsUsd: r.video.earnings_usd,
+      }));
+
       const lifts = rows.map((r) => r.lift).filter((n): n is number => n != null);
       const scores = rows.map((r) => r.score).filter((n): n is number => n != null);
       const views = rows.map((r) => r.video.view_count).filter((n): n is number => n != null);
@@ -85,6 +111,7 @@ export function summarizeScripts(
         medianViews: median(views),
         totalViews: views.reduce((s, n) => s + n, 0),
         best: rows.find((r) => r.lift != null) ?? null,
+        retention: summarizeRetention(retentionInputs),
         rows,
       };
     })

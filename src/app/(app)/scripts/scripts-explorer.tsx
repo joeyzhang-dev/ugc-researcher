@@ -4,7 +4,8 @@ import { Fragment, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ResearchScoreChip } from "@/components/research-panel";
 import { Segmented, StatusBadge, table, tableWrap, td, th, trHover } from "@/components/ui";
-import { formatCompact, formatDateUTC } from "@/lib/format";
+import { formatCompact, formatDateUTC, formatPercent } from "@/lib/format";
+import { HoldRateChip } from "@/components/retention-view";
 import { weekKeyUTC, weekLabel } from "./cal";
 import { assignScriptNumbers } from "./doc";
 import { ScriptsDocView } from "./scripts-doc-view";
@@ -95,6 +96,12 @@ export type ScriptRow = {
   medianScore: number | null;
   medianLift: number | null;
   medianViews: number | null;
+  /** Launchpoint retention across this script's posts. `retentionSample` is
+   *  how many posts actually carry insights — a median over 1 must not read
+   *  like a median over 20, so the UI dims anything under 3. */
+  medianHoldRate: number | null;
+  medianSkipRate: number | null;
+  retentionSample: number;
   posts: number;
   creators: number;
   pending: number;
@@ -531,6 +538,14 @@ export function ScriptsExplorer({
                     <span className="mt-auto flex items-center justify-between gap-2 text-[11px] tabular-nums text-neutral-500">
                       <span>
                         {fmtLift(r.medianLift)} · {formatCompact(r.medianViews)} views
+                        {r.medianHoldRate != null && (
+                          <span
+                            className="ml-1 text-neutral-400"
+                            title={`Average viewer held to ${formatPercent(r.medianHoldRate)}`}
+                          >
+                            · {formatPercent(r.medianHoldRate)} held
+                          </span>
+                        )}
                       </span>
                       <span className="shrink-0">
                         {r.posts}/{r.creators}
@@ -559,6 +574,9 @@ export function ScriptsExplorer({
                     <th className={th}>Script</th>
                     <th className={th}>Score</th>
                     <th className={th}>Lift</th>
+                    <th className={th} title="Median share of the video the average viewer watched, from Instagram's own metrics. The number a rewrite can move.">
+                      Held
+                    </th>
                     <th className={th}>Views</th>
                     <th className={th}>Ran by</th>
                   </tr>
@@ -676,6 +694,18 @@ export function ScriptsExplorer({
                                 <ResearchScoreChip score={r.medianScore} />
                               </td>
                               <td className={`${td} tabular-nums`}>{fmtLift(r.medianLift)}</td>
+                              <td className={td}>
+                                <span
+                                  className={r.retentionSample < 3 ? "opacity-45" : undefined}
+                                  title={
+                                    r.retentionSample === 0
+                                      ? "No Launchpoint insights for this script's posts yet"
+                                      : `Median across ${r.retentionSample} post${r.retentionSample === 1 ? "" : "s"}`
+                                  }
+                                >
+                                  <HoldRateChip holdRate={r.medianHoldRate} />
+                                </span>
+                              </td>
                               <td className={`${td} tabular-nums`}>{formatCompact(r.medianViews)}</td>
                               <td className={`${td} whitespace-nowrap tabular-nums`}>
                                 <span className="font-medium">{r.posts}</span>

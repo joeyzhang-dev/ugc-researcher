@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { runFormatCategorization, runResearchScrape } from "@/lib/jobs/research";
 import { scrapeAll } from "@/lib/jobs/scrape-all";
 import { matchScriptPosts } from "@/lib/jobs/match-scripts";
+import { syncLaunchpoint } from "@/lib/jobs/launchpoint";
 import { authorizeJobRequest } from "../authorize";
 
 export const maxDuration = 300;
@@ -19,7 +20,12 @@ export const dynamic = "force-dynamic";
  *              format re-detection (run after the transcription worker).
  *  Match:      POST { action: "match-scripts" } — link each open assignment to
  *              the post it produced, where the transcript match is unambiguous.
- *              Idempotent; anything doubtful is left for /scripts/review. */
+ *              Idempotent; anything doubtful is left for /scripts/review.
+ *  Launchpoint: POST { action: "launchpoint-sync", metadataOnly?: boolean,
+ *              budgetMs?: number } — pull creators, posts, first-party
+ *              Instagram insights and daily metric curves. Idempotent and
+ *              resumable; repeat until { remaining: 0 }. `metadataOnly` runs
+ *              just the two cheap phases. */
 export async function POST(request: NextRequest) {
   const denied = await authorizeJobRequest(request);
   if (denied) return denied;
@@ -31,6 +37,8 @@ export async function POST(request: NextRequest) {
     platform?: "instagram" | "tiktok";
     resultsLimit?: number;
     force?: boolean;
+    budgetMs?: number;
+    metadataOnly?: boolean;
   };
   try {
     body = await request.json();
@@ -45,6 +53,14 @@ export async function POST(request: NextRequest) {
     }
     if (body.action === "match-scripts") {
       return NextResponse.json(await matchScriptPosts(createAdminClient()));
+    }
+    if (body.action === "launchpoint-sync") {
+      return NextResponse.json(
+        await syncLaunchpoint(createAdminClient(), {
+          budgetMs: body.budgetMs,
+          metadataOnly: body.metadataOnly,
+        })
+      );
     }
     if (body.action === "scrape-all") {
       return NextResponse.json(await scrapeAll(Boolean(body.force)));

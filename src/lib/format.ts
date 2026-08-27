@@ -61,3 +61,30 @@ export function toDateInputValue(iso: string | null | undefined): string {
   if (!iso) return "";
   return new Date(iso).toISOString().slice(0, 10);
 }
+
+/** 0.556 → "56%". Deliberately not clamped: a hold rate above 100% is a real,
+ *  good outcome (viewers replayed), and hiding it would erase the signal. */
+export function formatPercent(n: number | null | undefined, digits = 0): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `${(n * 100).toFixed(digits)}%`;
+}
+
+/** Money. Sub-cent values (a $40 flat fee spread over a million views) keep
+ *  three decimals so a working CPM never rounds away to "$0.00". */
+export function formatUsd(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const digits = n !== 0 && Math.abs(n) < 0.01 ? 3 : 2;
+  return n.toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
+/** 16682 → "16.7s". Watch times are always seconds-scale on a reel. */
+export function formatWatchTime(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return "—";
+  const secs = ms / 1000;
+  return secs >= 60 ? `${Math.floor(secs / 60)}m ${Math.round(secs % 60)}s` : `${secs.toFixed(1)}s`;
+}

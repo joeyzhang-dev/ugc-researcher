@@ -29,6 +29,10 @@ import { ResearchVideoTile } from "@/components/research-video-tile";
 import { NicheCombobox } from "@/components/niche-combobox";
 import { AppSelect } from "@/components/app-select";
 import { getWorkspace } from "@/lib/workspace/server";
+import { loadViewCurves, videoSelect } from "@/lib/video-metrics";
+import { summarizeRetention } from "@/lib/retention";
+import { HoldRateChip, RetentionChip, skipRateBand } from "@/components/retention-view";
+import { formatPercent, formatUsd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +54,13 @@ export default async function ScriptDetailPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  // Falls back to the base column list when the Launchpoint migration has
+  // not been applied yet, so a lagging schema hides chips instead of 400ing
+  // the whole page.
+  const VIDEO_SELECT = await videoSelect(
+    supabase,
+    "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category"
+  );
   const { apps } = await getWorkspace();
 
   const [
@@ -90,11 +101,16 @@ export default async function ScriptDetailPage({
     ? await supabase
         .from("research_videos")
         .select(
-          "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category"
+          VIDEO_SELECT
         )
         .in("research_creator_id", assignedIds)
     : { data: [] };
-  const videos = (videosData ?? []) as ResearchVideo[];
+  // Through `unknown`: the select list is built at runtime (the Launchpoint
+  // columns are only named when the schema has them), so supabase-js cannot
+  // infer a row type from it. The rows are ResearchVideo either way — the
+  // Launchpoint fields are simply absent before the migration, and every
+  // reader already treats them as nullable.
+  const videos = (videosData ?? []) as unknown as ResearchVideo[];
 
   const byCreator = new Map<string, ResearchVideo[]>();
   for (const v of videos) {
@@ -165,6 +181,24 @@ export default async function ScriptDetailPage({
       text: s.text,
     });
   }
+
+  const curvesByVideo = await loadViewCurves(supabase, postedVideoIds);
+
+  // Retention across the posts this script actually produced — the question
+  // lift cannot answer: did the words hold the viewer?
+  const retention = summarizeRetention(
+    posted.map((r) => ({
+      avgWatchTimeMs: r.linked!.video.avg_watch_time_ms,
+      totalWatchTimeMs: r.linked!.video.total_watch_time_ms,
+      durationSeconds: r.linked!.video.duration_seconds,
+      skipRate: r.linked!.video.skip_rate,
+      reach: r.linked!.video.reach,
+      views: r.linked!.video.view_count,
+      saves: r.linked!.video.saves,
+      shares: r.linked!.video.share_count,
+      earningsUsd: r.linked!.video.earnings_usd,
+    }))
+  );
 
   const medianScore = median(
     posted.map((r) => r.linked!.score).filter((n): n is number => n != null)
@@ -239,6 +273,48 @@ export default async function ScriptDetailPage({
             {formatCompact(posted.reduce((s, r) => s + (r.linked!.video.view_count ?? 0), 0))}
           </span>
         </Stat>
+        {/* Retention only appears once Launchpoint has synced at least one of
+            this script's posts. Rendering empty cells would read as a broken
+            page rather than as "no first-party data for these posts". */}
+        {retention.sampleSize > 0 && (
+          <>
+            <Stat label={`Held (${retention.sampleSize})`}>
+              <span className="flex items-baseline gap-1.5">
+                <HoldRateChip holdRate={retention.medianHoldRate} />
+                {retention.medianSkipRate != null && (
+                  <RetentionChip
+                    value={`${retention.medianSkipRate.toFixed(0)}% skip`}
+                    band={skipRateBand(retention.medianSkipRate)}
+                  />
+                )}
+              </span>
+            </Stat>
+            <Stat label="Reach">
+              <span className="flex items-baseline gap-1.5">
+                <span className="text-lg font-semibold tabular-nums text-neutral-900">
+                  {formatCompact(retention.totalReach)}
+                </span>
+                {retention.medianSaveRate != null && (
+                  <span className="text-xs tabular-nums text-neutral-400">
+                    {formatPercent(retention.medianSaveRate, 1)} saved
+                  </span>
+                )}
+              </span>
+            </Stat>
+          </>
+        )}
+        {retention.totalEarningsUsd > 0 && (
+          <Stat label="Cost">
+            <span className="flex items-baseline gap-1.5">
+              <span className="text-lg font-semibold tabular-nums text-neutral-900">
+                {formatUsd(retention.totalEarningsUsd)}
+              </span>
+              <span className="text-xs tabular-nums text-neutral-400">
+                {formatUsd(retention.blendedCpmUsd)}/1k
+              </span>
+            </span>
+          </Stat>
+        )}
       </div>
 
       {/* minmax(0,…): a 1fr grid track's implicit min-width is its content, so a
@@ -542,7 +618,7 @@ export default async function ScriptDetailPage({
         </Card>
       </div>
 
-      <ResearchVideoPanel segmentsByVideo={segmentsByVideo} />
+      <ResearchVideoPanel segmentsByVideo={segmentsByVideo} curvesByVideo={curvesByVideo} />
     </>
   );
 }

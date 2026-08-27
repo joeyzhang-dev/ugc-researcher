@@ -10,6 +10,8 @@ import { saveScrapeSettings } from "../scrape-actions";
 import { SubmitButton } from "@/components/submit-button";
 import { ScrapeAllButton } from "@/components/scrape-all-button";
 import { ScheduleFields } from "@/components/schedule-fields";
+import { LaunchpointSync } from "@/components/launchpoint-sync";
+import { readLaunchpointStatus } from "../launchpoint-actions";
 import {
   Card, EmptyState, KpiCard, PageHeader, StatusBadge,
   inputClass, labelClass, table, tableWrap, td, th, trHover,
@@ -44,6 +46,7 @@ export default async function SettingsPage() {
 
   const next = nextRunAt(settings);
   const due = isRunDue(settings);
+  const launchpoint = await readLaunchpointStatus();
 
   const staleFirst = creators
     .filter((c) => settings.scrape_research || c.kind !== "research")
@@ -232,6 +235,15 @@ export default async function SettingsPage() {
             )}
           </Card>
         </div>
+      </div>
+
+      <div className="mt-5">
+        <Card
+          title="Launchpoint"
+          subtitle="First-party Instagram metrics — reach, saves, watch time and skip rate — plus daily view curves and payout cost. Runs on the hourly cron; this is the manual push."
+        >
+          <LaunchpointSync status={launchpoint} />
+        </Card>
       </div>
 
       <div className="mt-5">
