@@ -300,9 +300,22 @@ the person who saw it.
   `syncLaunchpointCreators` returns it in `possibleRenames` and does nothing —
   same call `resolveScriptMatches` makes on a too-close pair. Auto-merging
   would move one creator's posts onto another creator's row.
-- **Ingested posts land `transcript_status: 'pending'`**, which is the point:
-  the Fly transcription worker picks them up on its next 60s poll, so a post
-  Launchpoint knows about arrives complete without a scrape.
+- **Ingested posts are queued for transcription only if posted within
+  `TRANSCRIBE_WINDOW_DAYS` (30).** Recent ones land `transcript_status:
+  'pending'` and the Fly worker picks them up on its next 60s poll; older ones
+  land `'skipped'`. Transcription exists to match a post back to the script
+  that produced it, and scripts are handed out and posted within days — a
+  four-month-old reel has no open assignment waiting for it, so the transcript
+  answers nothing while costing a media fetch and a Whisper call. Skipped posts
+  keep everything that does not need audio: views, retention, curves, earnings.
+  An undated post is treated as out of window; guessing "recent" would queue an
+  unbounded tail. The backlog was reconciled to this rule on 2026-08-27
+  (187 pending + 33 stale failures → `skipped`).
+- **A `failed` transcript is usually a deleted post.** Checked live: the
+  failures return a clean 404 from Scrape Creators ("Post not found") with
+  credits to spare — the creator removed the reel and the media is simply gone.
+  A sample of 20 in-window pending posts found 19 still live, so this is a tail
+  phenomenon, not a pipeline fault. Do not chase it.
 - **Insights are Instagram-only.** TikTok answers HTTP 200 with
   `status: "no_data", reason: "unsupported_platform"` — a successful empty
   answer, not a failure.

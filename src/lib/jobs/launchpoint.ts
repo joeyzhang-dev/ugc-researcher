@@ -46,6 +46,27 @@ const RESYNC_AFTER_MS = 6 * 60 * 60 * 1000;
 const HISTORY_RESYNC_AFTER_MS = 20 * 60 * 60 * 1000;
 
 /**
+ * Only posts this recent are queued for transcription on ingest.
+ *
+ * Transcription is the most expensive thing this app does — a media fetch plus
+ * a Whisper call per video — and its whole purpose is matching a post back to
+ * the script that produced it. Scripts are handed out and posted within days,
+ * so a reel from four months ago has no open assignment waiting for it and the
+ * transcript answers nothing.
+ *
+ * Older posts keep everything that does not need the audio: view counts,
+ * retention, daily curves, earnings. They are marked 'skipped' rather than
+ * 'pending' so the worker never picks them up, and rather than left null so it
+ * is visible that the decision was deliberate.
+ *
+ * There is a second reason the old tail is not worth chasing: creators delete
+ * posts. A live check of the failures found them all returning 404 from
+ * Instagram — the media is simply gone, and the older the post the likelier
+ * that is.
+ */
+const TRANSCRIBE_WINDOW_DAYS = 30;
+
+/**
  * How many posts to have in flight at once during the drain phases.
  *
  * Each post costs two round trips — one Launchpoint read, one Supabase write —
@@ -161,6 +182,16 @@ async function drainConcurrently<T>(
     }
   });
   await Promise.all(runners);
+}
+
+/** Whether a post is recent enough to be worth transcribing. A post with no
+ *  upload date is treated as out of window: guessing "recent" would queue an
+ *  unbounded tail of unknown-age posts. */
+export function withinTranscribeWindow(uploadedAt: string | null, now = Date.now()): boolean {
+  if (!uploadedAt) return false;
+  const posted = new Date(uploadedAt).getTime();
+  if (Number.isNaN(posted)) return false;
+  return now - posted <= TRANSCRIBE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 }
 
 function chunk<T>(rows: T[], size: number): T[][] {
@@ -430,6 +461,8 @@ export async function syncLaunchpointSocials(
 export interface PostSyncResult {
   matched: number;
   inserted: number;
+  /** Of `inserted`, how many were old enough to skip transcription. */
+  insertedSkippedTranscription: number;
   /** Launchpoint posts whose creator we still cannot resolve. Normal on the
    *  first pass for anyone flagged as a rename candidate above. */
   unresolvedCreator: number;
@@ -457,6 +490,7 @@ export async function syncLaunchpointPosts(
   const result: PostSyncResult = {
     matched: 0,
     inserted: 0,
+    insertedSkippedTranscription: 0,
     unresolvedCreator: 0,
     unsupportedPlatform: 0,
   };
@@ -532,8 +566,9 @@ export async function syncLaunchpointPosts(
       comment_count: post.comments,
       share_count: post.shares,
       thumbnail_url: post.thumbnail,
-      // Hands the row to the Fly transcription worker on its next poll.
-      transcript_status: "pending",
+      // 'pending' hands the row to the Fly transcription worker on its next
+      // poll; 'skipped' keeps it out of the queue for good.
+      transcript_status: withinTranscribeWindow(post.uploadedAt) ? "pending" : "skipped",
     });
   }
 
@@ -545,13 +580,18 @@ export async function syncLaunchpointPosts(
     const { error } = await admin.from("research_videos").insert(batch);
     if (error) throw new Error(`inserting videos: ${error.message}`);
     result.inserted += batch.length;
+    result.insertedSkippedTranscription += batch.filter(
+      (r) => r.transcript_status === "skipped"
+    ).length;
   }
 
   await recordSync(
     admin,
     "posts",
     "succeeded",
-    `${result.matched} matched, ${result.inserted} ingested, ${result.unresolvedCreator} unresolved`
+    `${result.matched} matched, ${result.inserted} ingested ` +
+      `(${result.insertedSkippedTranscription} too old to transcribe), ` +
+      `${result.unresolvedCreator} unresolved`
   );
   return result;
 }

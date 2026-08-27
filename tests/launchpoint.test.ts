@@ -11,6 +11,7 @@ import {
   toPlatform,
   type LaunchpointAccount,
 } from "@/lib/launchpoint";
+import { withinTranscribeWindow } from "@/lib/jobs/launchpoint";
 
 describe("shortcodeFromUrl", () => {
   // The entire Launchpoint ↔ research_videos join rests on this function.
@@ -262,5 +263,30 @@ describe("profileUrl", () => {
   it("builds the canonical profile link per platform", () => {
     expect(profileUrl("instagram", "wisdomwjas")).toBe("https://www.instagram.com/wisdomwjas/");
     expect(profileUrl("tiktok", "wisdomwjas")).toBe("https://www.tiktok.com/@wisdomwjas");
+  });
+});
+
+describe("withinTranscribeWindow", () => {
+  const NOW = Date.parse("2026-08-27T00:00:00Z");
+  const daysAgo = (n: number) => new Date(NOW - n * 86_400_000).toISOString();
+
+  it("queues a recent post", () => {
+    expect(withinTranscribeWindow(daysAgo(3), NOW)).toBe(true);
+    expect(withinTranscribeWindow(daysAgo(29), NOW)).toBe(true);
+  });
+
+  // Transcription exists to match a post back to the script that produced it.
+  // Scripts are handed out and posted within days, so a four-month-old reel has
+  // no open assignment waiting for it and the transcript answers nothing.
+  it("skips anything past the window", () => {
+    expect(withinTranscribeWindow(daysAgo(31), NOW)).toBe(false);
+    expect(withinTranscribeWindow(daysAgo(200), NOW)).toBe(false);
+  });
+
+  // Guessing "recent" for an undated post would queue an unbounded tail of
+  // unknown-age media, which is the exact cost this window exists to avoid.
+  it("treats a missing or unparseable date as out of window", () => {
+    expect(withinTranscribeWindow(null, NOW)).toBe(false);
+    expect(withinTranscribeWindow("not a date", NOW)).toBe(false);
   });
 });
