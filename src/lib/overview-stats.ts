@@ -112,19 +112,33 @@ export interface StaleCreator {
 /** Creators quiet for more than this many days need a nudge. */
 export const STALE_AFTER_DAYS = 3;
 
-/** Who to nudge: never-posted first, then the biggest audiences first. */
+/**
+ * Who to nudge: never-posted first, then the biggest audiences first.
+ *
+ * `lastPostByCreator` is Launchpoint's per-account recency (creator id →
+ * last_post_at ISO), merged in as "most recent wins". It exists because the
+ * ingested videos only cover Instagram — a creator who posted on TikTok
+ * yesterday would otherwise be nudged for being quiet. Absent map or absent
+ * entry degrades to the video-derived answer.
+ */
 export function staleCreators(
   creators: ResearchCreator[],
   videosByCreator: Map<string, ResearchVideo[]>,
-  now: Date = new Date()
+  now: Date = new Date(),
+  lastPostByCreator?: Map<string, string>
 ): StaleCreator[] {
   const today = dayFloor(now);
   return creators
     .map((creator) => {
       const vids = (videosByCreator.get(creator.id) ?? []).filter((v) => v.posted_at != null);
-      const last = vids.length
+      let last = vids.length
         ? Math.max(...vids.map((v) => dayFloor(new Date(v.posted_at!))))
         : null;
+      const lp = lastPostByCreator?.get(creator.id);
+      if (lp != null) {
+        const lpDay = dayFloor(new Date(lp));
+        if (!Number.isNaN(lpDay)) last = last == null ? lpDay : Math.max(last, lpDay);
+      }
       return {
         creator,
         daysSince: last == null ? null : Math.round((today - last) / DAY_MS),

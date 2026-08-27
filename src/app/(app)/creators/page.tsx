@@ -88,12 +88,17 @@ export default async function OurCreatorsPage({
     { data: membershipsData },
     { data: campaignMembersData },
     { data: creatorsData },
+    { data: lpAccountsData },
   ] = await Promise.all([
     supabase.from("research_apps").select("*").order("created_at"),
     supabase.from("research_campaigns").select("*").order("created_at"),
     supabase.from("research_app_creators").select("*"),
     supabase.from("research_campaign_creators").select("*"),
     supabase.from("research_creators").select("*").eq("kind", "roster"),
+    supabase
+      .from("research_launchpoint_accounts")
+      .select("contractor_id, platform, last_post_at")
+      .not("last_post_at", "is", null),
   ]);
   const apps = (appsData ?? []) as ResearchApp[];
   const campaigns = (campaignsData ?? []) as ResearchCampaign[];
@@ -124,6 +129,21 @@ export default async function OurCreatorsPage({
 
   const creatorById = new Map(creators.map((c) => [c.id, c]));
   const campaignById = new Map(campaigns.map((c) => [c.id, c]));
+
+  // Launchpoint's freshest post per *person* (contractor), any platform. This
+  // is what makes "last post" honest for creators who post on TikTok — those
+  // posts are never ingested as videos, so the day strip can't see them.
+  const lpLastByContractor = new Map<string, { at: string; platform: string }>();
+  for (const a of (lpAccountsData ?? []) as {
+    contractor_id: string;
+    platform: string;
+    last_post_at: string;
+  }[]) {
+    const prev = lpLastByContractor.get(a.contractor_id);
+    if (!prev || a.last_post_at > prev.at) {
+      lpLastByContractor.set(a.contractor_id, { at: a.last_post_at, platform: a.platform });
+    }
+  }
   const videosByCreator = new Map<string, ResearchVideo[]>();
   for (const v of videos) {
     (videosByCreator.get(v.research_creator_id) ??
@@ -171,7 +191,10 @@ export default async function OurCreatorsPage({
       const available = campaigns.filter(
         (cp) => cp.app_id === m.app_id && !joinedIds.has(cp.id)
       );
-      return { m, c, app, stats, videoCount: creatorVideos.length, joined, available };
+      const lpLast = c.launchpoint_creator_id
+        ? (lpLastByContractor.get(c.launchpoint_creator_id) ?? null)
+        : null;
+      return { m, c, app, stats, videoCount: creatorVideos.length, joined, available, lpLast };
     })
     .sort((a, b) => {
       const value = (r: (typeof rows)[number]): string | number | null => {
@@ -365,7 +388,7 @@ export default async function OurCreatorsPage({
                             )}
                           </div>
                         )}
-                        {group.groupRows.map(({ m, c, stats, videoCount, joined, available }) => (
+                        {group.groupRows.map(({ m, c, stats, videoCount, joined, available, lpLast }) => (
                           <details key={m.id} className="group/row">
                             <summary
                               className={`${GRID} cursor-pointer select-none list-none py-3 pr-1 transition-colors hover:bg-neutral-900/[0.03] [&::-webkit-details-marker]:hidden`}
@@ -434,6 +457,14 @@ export default async function OurCreatorsPage({
                                 <RowFact label="Followers" value={formatCompact(c.follower_count)} />
                                 <RowFact label="Videos" value={String(videoCount)} />
                                 <RowFact label="Last scraped" value={formatDate(c.last_scraped_at)} />
+                                <RowFact
+                                  label="Last post"
+                                  value={
+                                    lpLast
+                                      ? `${formatDate(lpLast.at)} · ${lpLast.platform}`
+                                      : "—"
+                                  }
+                                />
                                 <form action={setNiche} className="flex items-center gap-1">
                                   <input type="hidden" name="membershipId" value={m.id} />
                                   <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-400">

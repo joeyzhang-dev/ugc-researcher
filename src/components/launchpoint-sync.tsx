@@ -20,6 +20,9 @@ function Spinner({ className = "" }: { className?: string }) {
 
 const PHASE_LABELS: Record<string, string> = {
   creators: "Creators",
+  socials: "Socials",
+  discord: "Discord links",
+  accounts: "Account stats",
   posts: "Posts",
   insights: "Retention",
   history: "Daily curves",
@@ -161,10 +164,10 @@ export function LaunchpointSync({ status }: { status: LaunchpointStatus }) {
         </p>
       </div>
 
-      {/* Per-phase state. Four rows because the phases fail and finish
+      {/* Per-phase state. One row per phase because they fail and finish
           independently — one line saying "partial" would hide which half. */}
       <dl className="divide-y divide-hairline rounded-xl bg-surface-muted ring-1 ring-hairline">
-        {(["creators", "posts", "insights", "history"] as const).map((phase) => {
+        {(["creators", "socials", "discord", "accounts", "posts", "insights", "history"] as const).map((phase) => {
           const row = status.phases.find((p) => p.phase === phase);
           return (
             <div key={phase} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">

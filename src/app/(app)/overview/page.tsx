@@ -69,16 +69,24 @@ export default async function OverviewPage({
   const workspace = await getWorkspace();
   const appFilter = workspace.current === ALL_APPS ? null : workspace.current;
 
-  const [{ data: creatorsData }, { data: videosData }, { data: membershipsData }] =
-    await Promise.all([
-      supabase.from("research_creators").select("*").eq("kind", "roster"),
-      supabase
-        .from("research_videos")
-        .select(
-          "id, research_creator_id, url, shortcode, caption, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, format_category"
-        ),
-      supabase.from("research_app_creators").select("*"),
-    ]);
+  const [
+    { data: creatorsData },
+    { data: videosData },
+    { data: membershipsData },
+    { data: lpAccountsData },
+  ] = await Promise.all([
+    supabase.from("research_creators").select("*").eq("kind", "roster"),
+    supabase
+      .from("research_videos")
+      .select(
+        "id, research_creator_id, url, shortcode, caption, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, format_category"
+      ),
+    supabase.from("research_app_creators").select("*"),
+    supabase
+      .from("research_launchpoint_accounts")
+      .select("contractor_id, last_post_at")
+      .not("last_post_at", "is", null),
+  ]);
 
   const memberships = (membershipsData ?? []) as ResearchAppCreator[];
   const inWorkspace = new Set(
@@ -120,8 +128,27 @@ export default async function OverviewPage({
     .sort((a, b) => b.view_count! - a.view_count!)
     .slice(0, 5);
 
-  const attention = staleCreators(creators, videosByCreator).slice(0, 6);
-  const staleTotal = staleCreators(creators, videosByCreator).length;
+  // Launchpoint recency, keyed to the *person*: a contractor's accounts span
+  // platforms (TikTok included, whose posts we never ingest), so the freshest
+  // last_post_at across all of them is what "still posting" means. Joined via
+  // launchpoint_creator_id rather than the per-handle link so a TikTok-only
+  // post still vouches for the Instagram roster row.
+  const lastPostByContractor = new Map<string, string>();
+  for (const a of (lpAccountsData ?? []) as { contractor_id: string; last_post_at: string }[]) {
+    const prev = lastPostByContractor.get(a.contractor_id);
+    if (!prev || a.last_post_at > prev) lastPostByContractor.set(a.contractor_id, a.last_post_at);
+  }
+  const lastPostByCreator = new Map<string, string>();
+  for (const c of creators) {
+    const last = c.launchpoint_creator_id
+      ? lastPostByContractor.get(c.launchpoint_creator_id)
+      : undefined;
+    if (last) lastPostByCreator.set(c.id, last);
+  }
+
+  const stale = staleCreators(creators, videosByCreator, new Date(), lastPostByCreator);
+  const attention = stale.slice(0, 6);
+  const staleTotal = stale.length;
 
   const creatorTotals = creators
     .map((c) => {

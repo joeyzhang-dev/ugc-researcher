@@ -97,6 +97,32 @@ describe("staleCreators", () => {
     expect(rows[1].totalViews).toBe(900);
     expect(rows[0].daysSince).toBeNull();
   });
+
+  // Launchpoint sees platforms whose posts we never ingest (TikTok), so its
+  // per-person recency must be able to vouch for a creator the videos call
+  // quiet — and a video-derived date must survive a STALER Launchpoint one.
+  it("lets a fresher Launchpoint last-post date clear a creator", () => {
+    const rows = staleCreators(
+      [
+        creator({ id: "tiktoker", handle: "tiktoker" }),
+        creator({ id: "quiet", handle: "quiet" }),
+        creator({ id: "never", handle: "never" }),
+      ],
+      new Map([
+        ["tiktoker", [video({ posted_at: onDay(10), view_count: 100 })]],
+        ["quiet", [video({ posted_at: onDay(4), view_count: 50 })]],
+        ["never", []],
+      ]),
+      NOW,
+      new Map([
+        ["tiktoker", onDay(1)], // posted on TikTok yesterday — not stale
+        ["quiet", onDay(9)], // older than their videos — must not regress
+        ["never", onDay(2)], // Launchpoint is their only signal
+      ])
+    );
+    expect(rows.map((r) => r.creator.id)).toEqual(["quiet"]);
+    expect(rows[0].daysSince).toBe(4);
+  });
 });
 
 describe("consistencyLabel", () => {
