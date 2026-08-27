@@ -345,6 +345,16 @@ the person who saw it.
   `syncLaunchpointCreators` returns it in `possibleRenames` and does nothing —
   same call `resolveScriptMatches` makes on a too-close pair. Auto-merging
   would move one creator's posts onto another creator's row.
+  **Two signals feed this**, and the second exists because the first missed a
+  real case: a contractor id already bound to one of our creators, *and* a
+  Launchpoint contractor whose real name matches an existing creator's
+  `display_name` under a different handle. Noah-andre Terry renamed from
+  `@dresdistrict` to `@morrismotivatesyou`; the old row carried no contractor
+  id, so id-matching saw nothing and the sync created a second row for the same
+  person — his Discord channel still points at the old one. Name-matching
+  catches that. **The duplicate itself is still unmerged** — merging two
+  creator rows moves videos, assignments and memberships and needs a human
+  decision about which handle survives.
 - **Ingested posts are queued for transcription only if posted within
   `TRANSCRIBE_WINDOW_DAYS` (30).** Recent ones land `transcript_status:
   'pending'` and the Fly worker picks them up on its next 60s poll; older ones
