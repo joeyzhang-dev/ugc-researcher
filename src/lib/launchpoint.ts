@@ -299,6 +299,16 @@ export interface LaunchpointAccount {
   totalEarnings: number | null;
   firstPostDate: string | null;
   lastPostDate: string | null;
+  totalLikes: number | null;
+  totalComments: number | null;
+  totalShares: number | null;
+  /** Percent, as Launchpoint computes it (interactions / views × 100). */
+  engagementRate: number | null;
+  averageViewsPerPost: number | null;
+  /** Dollars per 1,000 views; null until money is paid. */
+  cpm: number | null;
+  paidPosts: number | null;
+  unpaidPosts: number | null;
 }
 
 type Json = Record<string, unknown>;
@@ -428,6 +438,14 @@ export function normalizeAccount(raw: Json): LaunchpointAccount {
     totalEarnings: num(raw["totalEarnings"]),
     firstPostDate: isoFromEpochMillis(raw["firstPostDate"]),
     lastPostDate: isoFromEpochMillis(raw["lastPostDate"]),
+    totalLikes: int(raw["totalLikes"]),
+    totalComments: int(raw["totalComments"]),
+    totalShares: int(raw["totalShares"]),
+    engagementRate: num(raw["engagementRate"]),
+    averageViewsPerPost: int(raw["averageViewsPerPost"]),
+    cpm: num(raw["cpm"]),
+    paidPosts: int(raw["paidPosts"]),
+    unpaidPosts: int(raw["unpaidPosts"]),
   };
 }
 

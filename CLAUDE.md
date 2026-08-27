@@ -311,13 +311,25 @@ the person who saw it.
   fails closed: an unrecognized URL yields null and the post goes unmatched,
   because a wrong shortcode would attach one creator's retention numbers to
   another creator's post.
-- **Four phases, deliberately separate.** `creators` and `posts` are ~8 calls
-  total and finish in one tick. `insights` and `history` are **one call per
+- **Six phases, deliberately separate.** `creators`, `socials`, `accounts` and
+  `posts` are ~8 calls total (the first three share one accounts fetch) and
+  finish in one tick. `insights` and `history` are **one call per
   post** — ~1,500 Instagram posts is close to half an hour against a 300s
   Vercel ceiling, so both walk `research_videos.launchpoint_synced_at`
   oldest-first and stop at a time budget. **That column is the resume cursor**;
   there is no queue table and a tick that dies mid-pass simply continues.
   `RESYNC_AFTER_MS` (6h) is the floor that stops the cursor rotating forever.
+- **`accounts` persists the per-handle activity picture** into
+  `research_launchpoint_accounts` (last post date, totals, engagement rate,
+  earnings, cpm — one row per platform+handle, upserted). `last_post_at` is
+  what makes "who's posting, who isn't" honest: ingested videos are Instagram
+  only, so a creator active on TikTok would otherwise read as quiet. /overview
+  and /creators join it to the *person* via `contractor_id` ↔
+  `launchpoint_creator_id`, NOT via the per-handle `research_creator_id` link —
+  a TikTok account resolves to no creator row by design. The phase is
+  **non-fatal in the orchestrator** (caught, reported as `{failed}`): on a
+  Vercel deploy the code arrives before anyone applies the migration, and a
+  missing relation must not take down the phases behind it.
 - **Each drain phase has its own cursor, and both are stamped on every
   outcome — empty included.** Insights use `launchpoint_synced_at`, curves use
   `launchpoint_history_synced_at`. Separate because the phases cost very

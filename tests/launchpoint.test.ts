@@ -199,6 +199,32 @@ describe("normalizeAccount", () => {
     expect(account.totalEarnings).toBe(5185.54);
     expect(account.firstPostDate).toBe("2026-06-14T03:19:55.000Z");
   });
+
+  // The accounts phase persists the whole activity picture, and absent fields
+  // must stay null — a missing engagementRate is "unknown", not 0%.
+  it("carries the activity stats and leaves absent ones null", () => {
+    const account = normalizeAccount({
+      handle: "amrinrants",
+      platform: "instagram",
+      contractorId: "crt_9",
+      lastPostDate: 1787717101000,
+      totalLikes: 120_000,
+      engagementRate: 8.4,
+      averageViewsPerPost: 22_000,
+      cpm: 1.25,
+      paidPosts: 40,
+      unpaidPosts: 19,
+    });
+    expect(account.lastPostDate).toBe("2026-08-26T04:05:01.000Z");
+    expect(account.totalLikes).toBe(120_000);
+    expect(account.engagementRate).toBe(8.4);
+    expect(account.averageViewsPerPost).toBe(22_000);
+    expect(account.cpm).toBe(1.25);
+    expect(account.paidPosts).toBe(40);
+    expect(account.unpaidPosts).toBe(19);
+    expect(account.totalComments).toBeNull();
+    expect(account.totalShares).toBeNull();
+  });
 });
 
 describe("toPlatform", () => {
@@ -225,6 +251,14 @@ describe("pickPrimaryAccount", () => {
     firstPostDate: null,
     lastPostDate: null,
     isGhostHandle: false,
+    totalLikes: null,
+    totalComments: null,
+    totalShares: null,
+    engagementRate: null,
+    averageViewsPerPost: null,
+    cpm: null,
+    paidPosts: null,
+    unpaidPosts: null,
     ...over,
   });
 

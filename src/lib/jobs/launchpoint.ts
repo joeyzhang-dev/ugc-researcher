@@ -1,15 +1,18 @@
 /**
  * Launchpoint → research_* sync.
  *
- * Four phases, deliberately separate because their costs differ by two orders
+ * Seven phases, deliberately separate because their costs differ by two orders
  * of magnitude:
  *
  *   creators   ~2 calls    handle → contractor id, and the missing-creator report
+ *   socials    0 calls     per-person platform links (shares the accounts fetch)
+ *   discord    0 calls     Discord channel → creator links (shares the accounts fetch)
+ *   accounts   0 calls     per-handle activity stats (shares the accounts fetch)
  *   posts      ~6 calls    bulk metrics, earnings, and any post we never scraped
  *   insights   1 per post  first-party IG retention — the expensive one
  *   history    1 per post  daily curves — the other expensive one
  *
- * The first two finish inside one tick. The last two cannot: ~1,500 Instagram
+ * The cheap ones finish inside one tick. The last two cannot: ~1,500 Instagram
  * posts at the key's 100 requests/minute is close to half an hour, against a
  * 300-second Vercel ceiling. So both walk `launchpoint_synced_at nulls first`
  * and stop at a time budget, which makes the cursor the table itself — no
@@ -114,7 +117,7 @@ const CREATE_PLATFORMS: readonly Platform[] = ["instagram"];
  */
 const isUsableHandle = (handle: string) => handle.length > 0 && !/^\d+$/.test(handle);
 
-type Phase = "creators" | "posts" | "insights" | "history" | "socials" | "discord";
+type Phase = "creators" | "posts" | "insights" | "history" | "socials" | "discord" | "accounts";
 
 interface Budget {
   startedAt: number;
@@ -601,6 +604,105 @@ export async function syncLaunchpointDiscordLinks(
 }
 
 // ===========================================================================
+// Phase 1d — account stats
+// ===========================================================================
+
+export interface AccountStatsSyncResult {
+  written: number;
+  /** Of `written`, how many resolved to a research_creators row. TikTok rows
+   *  stay unresolved by design — the creator phase creates Instagram only. */
+  linked: number;
+}
+
+/**
+ * Persist the rest of the /analytics/accounts payload — the per-handle
+ * activity picture the creator/socials phases throw away: last post date,
+ * totals, engagement rate, earnings, cpm.
+ *
+ * This is the "who's posting, who isn't" source of truth. The overview's
+ * stale-creator card otherwise sees only ingested posts, which means Instagram
+ * only — a creator active on TikTok all week reads as quiet. `last_post_at`
+ * here is Launchpoint's own recency per handle, every platform included, and
+ * it costs nothing: the accounts fetch already happens each tick.
+ *
+ * Upsert on (platform, handle). Accounts Launchpoint stops returning simply
+ * stop advancing `synced_at`; nothing is deleted.
+ */
+export async function syncLaunchpointAccountStats(
+  admin: SupabaseClient,
+  accounts?: LaunchpointAccount[]
+): Promise<AccountStatsSyncResult> {
+  const all = accounts ?? (await fetchAllAccounts());
+
+  const creators = await readAllRows<{ id: string; handle: string; platform: string }>(
+    admin,
+    "research_creators",
+    "id, handle, platform"
+  );
+  const creatorByKey = new Map<string, string>();
+  for (const c of creators) {
+    creatorByKey.set(`${c.platform}:${c.handle.toLowerCase().replace(/^@/, "")}`, c.id);
+  }
+
+  const now = new Date().toISOString();
+  const seen = new Set<string>();
+  const rows: Record<string, unknown>[] = [];
+  const result: AccountStatsSyncResult = { written: 0, linked: 0 };
+
+  for (const account of all) {
+    const platform = toPlatform(account.platform);
+    if (!platform || !account.handle || !account.contractorId) continue;
+    // The API can answer one handle twice (once per program); the upsert would
+    // hit the same (platform, handle) row twice in one statement and Postgres
+    // rejects that. First one wins.
+    const key = `${platform}:${account.handle}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const creatorId = creatorByKey.get(key) ?? null;
+    if (creatorId) result.linked++;
+    rows.push({
+      platform,
+      handle: account.handle,
+      research_creator_id: creatorId,
+      contractor_id: account.contractorId,
+      contractor_name: account.contractorName,
+      is_ghost_handle: account.isGhostHandle,
+      total_posts: account.totalPosts,
+      total_views: account.totalViews,
+      total_likes: account.totalLikes,
+      total_comments: account.totalComments,
+      total_shares: account.totalShares,
+      engagement_rate: account.engagementRate,
+      average_views_per_post: account.averageViewsPerPost,
+      total_earnings: account.totalEarnings,
+      cpm: account.cpm,
+      paid_posts: account.paidPosts,
+      unpaid_posts: account.unpaidPosts,
+      first_post_at: account.firstPostDate,
+      last_post_at: account.lastPostDate,
+      synced_at: now,
+    });
+  }
+
+  for (const batch of chunk(rows, WRITE_CHUNK)) {
+    const { error } = await admin
+      .from("research_launchpoint_accounts")
+      .upsert(batch, { onConflict: "platform,handle" });
+    if (error) throw new Error(`writing account stats: ${error.message}`);
+    result.written += batch.length;
+  }
+
+  await recordSync(
+    admin,
+    "accounts",
+    "succeeded",
+    `${result.written} accounts, ${result.linked} linked to creators`
+  );
+  return result;
+}
+
+// ===========================================================================
 // Phase 2 — posts
 // ===========================================================================
 
@@ -944,6 +1046,7 @@ export interface LaunchpointSyncResult {
   creators?: CreatorSyncResult;
   socials?: SocialSyncResult;
   discord?: DiscordLinkResult;
+  accounts?: AccountStatsSyncResult | { failed: string };
   posts?: PostSyncResult;
   insights?: DrainResult;
   history?: DrainResult;
@@ -975,9 +1078,28 @@ export async function syncLaunchpoint(
   const creators = await syncLaunchpointCreators(admin, accounts);
   const socials = await syncLaunchpointSocials(admin, accounts);
   const discord = await syncLaunchpointDiscordLinks(admin, accounts);
+  // Non-fatal: the accounts table ships one migration behind the code on a
+  // Vercel deploy (git push deploys instantly; the migration waits for a
+  // holder of the Management API token). A missing relation here must not
+  // take down the post/insights/history phases behind it — and its recordSync
+  // can't run either, because the 'accounts' phase value arrives in the same
+  // migration as the table.
+  let accountStats: AccountStatsSyncResult | { failed: string };
+  try {
+    accountStats = await syncLaunchpointAccountStats(admin, accounts);
+  } catch (e) {
+    accountStats = { failed: e instanceof Error ? e.message : String(e) };
+  }
   const posts = await syncLaunchpointPosts(admin);
   if (opts.metadataOnly) {
-    return { creators, socials, discord, posts, remaining: await countDue(admin) };
+    return {
+      creators,
+      socials,
+      discord,
+      accounts: accountStats,
+      posts,
+      remaining: await countDue(admin),
+    };
   }
 
   const left = () => Math.max(0, budgetMs - (Date.now() - startedAt));
@@ -990,6 +1112,7 @@ export async function syncLaunchpoint(
     creators,
     socials,
     discord,
+    accounts: accountStats,
     posts,
     insights,
     history,

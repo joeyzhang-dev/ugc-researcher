@@ -134,7 +134,14 @@ export interface ResearchVideoDailyMetric {
   created_at: string;
 }
 
-export type LaunchpointSyncPhase = "creators" | "posts" | "insights" | "history";
+export type LaunchpointSyncPhase =
+  | "creators"
+  | "socials"
+  | "discord"
+  | "accounts"
+  | "posts"
+  | "insights"
+  | "history";
 
 /** Per-phase bookkeeping for the Launchpoint sync. */
 export interface ResearchLaunchpointSync {
@@ -142,6 +149,36 @@ export interface ResearchLaunchpointSync {
   last_run_at: string | null;
   last_status: "succeeded" | "partial" | "failed" | null;
   last_detail: string | null;
+  updated_at: string;
+}
+
+/** One tracked handle from Launchpoint's /analytics/accounts — the per-account
+ *  activity snapshot (last post, totals, earnings), refreshed each sync tick.
+ *  `research_creator_id` is null for handles we hold no creator row for (all
+ *  of TikTok, by design). */
+export interface ResearchLaunchpointAccount {
+  id: string;
+  platform: Platform;
+  handle: string;
+  research_creator_id: string | null;
+  contractor_id: string;
+  contractor_name: string | null;
+  is_ghost_handle: boolean;
+  total_posts: number | null;
+  total_views: number | null;
+  total_likes: number | null;
+  total_comments: number | null;
+  total_shares: number | null;
+  engagement_rate: number | null;
+  average_views_per_post: number | null;
+  total_earnings: number | null;
+  cpm: number | null;
+  paid_posts: number | null;
+  unpaid_posts: number | null;
+  first_post_at: string | null;
+  last_post_at: string | null;
+  synced_at: string;
+  created_at: string;
   updated_at: string;
 }
 
