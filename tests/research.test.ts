@@ -51,6 +51,7 @@ function vid(
     earnings_usd: null,
     paid: null,
     launchpoint_synced_at: null,
+    launchpoint_history_synced_at: null,
     raw_metadata: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",

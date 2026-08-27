@@ -5,13 +5,56 @@ outside creators: Scrape Creators profile scrapes → view-lift math → format 
 local transcription. See **Hosting** below for what runs where — the Next.js
 app and the two Discord workers are deployed; transcription stays local.
 
-## Database — shared with trace-ugc-tracker (important)
+## Database — standalone since 2026-08-26 (was shared with trace-ugc-tracker)
 
-This app points at the **same Supabase project** as
-`~/Developer/trace-ugc-tracker`. The research tables (`research_creators`,
-`research_videos`, `research_video_segments`) and their data live there, and
-RLS depends on the tracker's `profiles` table + `is_staff()` / `is_admin()`
-helpers. Sign-in uses the same staff accounts.
+This app now has its **own Supabase project**: `yvbvcblqjlfhhvatijng`
+(`bludgc-research`, us-east-1), under the `joey@nozomio.com` org.
+
+It used to share `~/Developer/trace-ugc-tracker`'s project
+(`zaoqousjswryyvxdnfha`). That ended when dashboard access to the shared
+project was lost — no account reachable from here could run DDL on it, and a
+blocked migration meant the app and its schema could no longer move together.
+The research tables were forked into the new project on 2026-08-26.
+
+What the fork means in practice:
+
+- **The two databases diverge from 2026-08-26.** The tracker keeps its copy of
+  `research_creators` / `research_videos` / `research_video_segments` and will
+  not see anything written here. Nothing syncs them back.
+- **`00000000000000_standalone_bootstrap.sql`** supplies what the tracker used
+  to: `profiles`, `handle_new_user`, `is_staff()`, `is_admin()`,
+  `set_updated_at()`. Those four are the *only* things the research schema
+  ever borrowed — verified against every `references public.*` in this repo —
+  so none of the tracker's own tables were recreated.
+- **`0001_research.sql` is now applied, not reference-only.** Applying it to a
+  dedicated database is exactly what it was kept for. It still must never be
+  applied to the shared project.
+- **Existing media still lives on the OLD project.** `thumbnails` and `videos`
+  are public buckets there, so every stored `thumbnail_url` / `video_url` keeps
+  resolving from `zaoqousjswryyvxdnfha` — 11.1GB that would not have fit in the
+  new project's 1GB Free-tier storage. If the old project is ever paused or
+  deleted, existing media 404s; `HoverVideo` guards on `src &&` so rows degrade
+  to their thumbnail, and a re-scrape re-uploads into the new project.
+  **Empty `thumbnails` and `videos` buckets were created on the new project**
+  (both public, matching the old config) because a fork copies tables and not
+  storage — without them the first scrape or inspo-media upload fails on a
+  missing bucket rather than merely lacking a file. Those two are the only
+  buckets this repo touches; `receipts`, `creator-contracts` and
+  `warmup-proofs` are the tracker's and were deliberately left behind.
+- **All 18 auth users were recreated with their original UUIDs**, and their
+  profile roles restored (4 admin, 1 viewer, 13 creator). **Password hashes
+  could not come across** — they live in `auth.users`, which is not reachable
+  through PostgREST or the admin API. Everyone signs in via password reset the
+  first time.
+- **Vercel and Fly still point at the old project.** Only `.env.local` was cut
+  over. Until `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and
+  `SUPABASE_SERVICE_ROLE_KEY` are updated on the Vercel project `bludgc` and on
+  both Fly apps (`bludgc-workers`, `bludgc-transcribe`), production reads and
+  writes the shared project while local development reads the fork. Flip all
+  three together — the Discord bot writing to one database while the web app
+  reads the other is the failure mode to avoid.
+- Pre-fork values are preserved in `.env.shared-project.bak` (gitignored), so
+  rolling back is a copy-paste.
 
 Schema changes are self-serve — never ask Joey to paste SQL into the dashboard:
 
@@ -24,14 +67,18 @@ Schema changes are self-serve — never ask Joey to paste SQL into the dashboard
 
 Rules for new migrations in this repo:
 
-- Name them `YYYYMMDDHHMMSS_description.sql` (timestamp version). The tracker
-  owns the short sequence (0001–0044+) in the shared
-  `schema_migrations` table; short numbers here would collide with its next
-  migration. The apply script enforces this.
-- `0001_research.sql` is a reference mirror of the tracker's already-applied
-  `0027_research.sql`. Never apply it; only needed if a dedicated database is
-  ever created (which would also need `profiles` + the staff helper functions
-  first).
+- Name them `YYYYMMDDHHMMSS_description.sql` (timestamp version). The apply
+  script enforces this. The rule outlived the shared database it was written
+  for — the tracker owned the short sequence (0001–0044+) and a short number
+  here would have collided with its next migration — but keep it: the two
+  histories still share filenames on disk, and `0001_research.sql` /
+  `00000000000000_standalone_bootstrap.sql` are the only short-numbered files
+  that legitimately exist here.
+- `0001_research.sql` mirrors the tracker's `0027_research.sql`. It is applied
+  on the standalone project (that is what it was kept for) and must never be
+  applied to the shared one. A fresh project is bootstrapped by applying, in
+  order: `00000000000000_standalone_bootstrap.sql`, `0001_research.sql`, then
+  every `2026*.sql` in filename order.
 - Keep every applied migration committed in `supabase/migrations/` so the
   schema history stays reconstructible.
 
@@ -221,9 +268,18 @@ the person who saw it.
   oldest-first and stop at a time budget. **That column is the resume cursor**;
   there is no queue table and a tick that dies mid-pass simply continues.
   `RESYNC_AFTER_MS` (6h) is the floor that stops the cursor rotating forever.
-- **`launchpoint_synced_at` is stamped on every outcome, including an empty
-  one.** A post with no insights must not sit at the head of the queue blocking
-  everything behind it on every tick.
+- **Each drain phase has its own cursor, and both are stamped on every
+  outcome — empty included.** Insights use `launchpoint_synced_at`, curves use
+  `launchpoint_history_synced_at`. Separate because the phases cost very
+  different amounts and must run at different rates without resetting each
+  other. Stamping only on success would leave a post Launchpoint has nothing
+  for parked at the head of the queue forever.
+- **A cursor, not a content check.** The history phase first decided a post was
+  done if it had a metrics row *dated today*. That does not converge:
+  Launchpoint's latest snapshot for a quiet post can be days old, so it never
+  earns a today-dated row and is re-fetched on every pass, indefinitely. The
+  live tell was `remaining` going **up** between passes (911 → 932). If a phase
+  ever stops going quiet, suspect the freshness test before the queue.
 - **Creator rows are created for Instagram only** (`CREATE_PLATFORMS`).
   Launchpoint tracks 51 TikTok accounts for the same people; since
   `research_creators` is keyed on (platform, handle), accepting them would add
@@ -260,6 +316,18 @@ the person who saw it.
   guarantee. Splice it with a **template literal**, not `+`: supabase-js infers
   the row type from the select string as a literal, and concatenation widens it
   to `string` and silently degrades the query to `GenericStringError[]`.
+- **Three things make the drain phases actually finish.** (1) Every table read
+  in the job pages with `readAllRows` — PostgREST silently caps a select at
+  `db-max-rows` (1,000), and an unpaged read of `research_videos` left every
+  video past the first 1,000 invisible, so their posts looked new, were
+  re-inserted, and collided on `research_videos_url_key`. (2) A 429 sleeps for
+  the server's `x-ratelimit-reset`, not the generic backoff — a per-minute
+  window does not care about a 1-second curve, and honouring it took the live
+  failure rate from ~14% to ~0. (3) Posts are drained `DRAIN_CONCURRENCY` at a
+  time: each costs two round trips, which serially ran at ~18 posts/minute
+  against a key allowed 90, so the limit was latency, not the rate limit.
+  Concurrency is safe because `pace()` is one rolling window shared per API
+  key, not per caller.
 - Only two write routes exist upstream (`POST /posts/export`,
   `POST /programs/{id}/invite`) and **neither is in the client** — an export
   creates a file and an invite creates a shareable link; a sync job should do
@@ -313,9 +381,11 @@ safe against a 12-hour schedule.
 
 ## Env
 
-`.env.local` (gitignored) carries the same Supabase keys as the
-tracker's `.env.local`, plus `SUPABASE_ACCESS_TOKEN` for migrations. If a key
-is rotated, re-copy it from `~/Developer/trace-ugc-tracker/.env.local`.
+`.env.local` (gitignored) carries the **standalone** project's Supabase keys
+(`yvbvcblqjlfhhvatijng`) plus `SUPABASE_ACCESS_TOKEN` for migrations and
+`SUPABASE_DB_PASSWORD`. These are no longer the tracker's keys — do not
+re-copy from `~/Developer/trace-ugc-tracker/.env.local`, which still points at
+the shared project. Pre-fork values are in `.env.shared-project.bak`.
 Scraping: `SCRAPECREATORS_API_KEY` (this repo only — the tracker doesn't use it).
 Launchpoint: `LAUNCHPOINT_API_KEY` (`lp_pk_…`, Dashboard → Settings → API).
 Server-only, and needed on Vercel too or the hourly cron's Launchpoint phase

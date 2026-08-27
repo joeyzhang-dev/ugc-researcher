@@ -42,6 +42,7 @@ function video(id: string, day: number, views: number, transcript?: string): Res
     earnings_usd: null,
     paid: null,
     launchpoint_synced_at: null,
+    launchpoint_history_synced_at: null,
     raw_metadata: null,
     scrape_queued_at: null,
     created_at: new Date().toISOString(),

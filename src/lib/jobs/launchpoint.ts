@@ -39,6 +39,25 @@ const DEFAULT_BUDGET_MS = 200_000;
  *  the whole corpus, burning the rate limit on numbers that have not moved. */
 const RESYNC_AFTER_MS = 6 * 60 * 60 * 1000;
 
+/** Curves move once a day at most, so they are re-pulled far less often than
+ *  insights. */
+const HISTORY_RESYNC_AFTER_MS = 20 * 60 * 60 * 1000;
+
+/**
+ * How many posts to have in flight at once during the drain phases.
+ *
+ * Each post costs two round trips — one Launchpoint read, one Supabase write —
+ * and serially that came out at roughly 18 posts/minute against a key allowed
+ * 90. The limit was latency, not the rate limit. Overlapping the waits lets the
+ * pacer become the constraint again, which is the whole point of having one.
+ *
+ * Safe because `pace()` in the client is a single shared rolling window keyed
+ * to the API key, not the caller: six workers cannot collectively exceed the
+ * per-minute ceiling any more than one could. Kept modest so a burst of
+ * failures stays legible and Supabase is not hammered in parallel.
+ */
+const DRAIN_CONCURRENCY = 6;
+
 /** Batch size for PostgREST writes. Large enough to keep the round trips down,
  *  small enough that one bad row fails a small batch. */
 const WRITE_CHUNK = 200;
@@ -77,6 +96,70 @@ interface Budget {
 }
 
 const expired = (b: Budget) => Date.now() - b.startedAt > b.budgetMs;
+
+/**
+ * Read every row of a table, a page at a time.
+ *
+ * PostgREST caps a select at the project's `db-max-rows` (1,000 by default),
+ * silently — it returns a short list, not an error. `syncLaunchpointPosts`
+ * builds its shortcode → video map from research_videos, which is already past
+ * 2,000 rows, so an unpaged read left every video after the first 1,000
+ * invisible: those posts looked new, got re-inserted, and collided on
+ * research_videos_url_key. A dry run against in-memory rows cannot catch this;
+ * only a real read can.
+ */
+type RowFilter =
+  | { kind: "notNull"; column: string }
+  | { kind: "eq"; column: string; value: string }
+  | { kind: "nullOrOlderThan"; column: string; cutoff: string };
+
+async function readAllRows<T>(
+  admin: SupabaseClient,
+  table: string,
+  columns: string,
+  filters: RowFilter[] = []
+): Promise<T[]> {
+  const PAGE = 1000;
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    // Rebuilt per page: a PostgrestFilterBuilder is single-use.
+    let query = admin.from(table).select(columns);
+    for (const f of filters) {
+      if (f.kind === "notNull") query = query.not(f.column, "is", null);
+      else if (f.kind === "eq") query = query.eq(f.column, f.value);
+      else query = query.or(`${f.column}.is.null,${f.column}.lt.${f.cutoff}`);
+    }
+    const { data, error } = await query.range(from, from + PAGE - 1);
+    if (error) throw new Error(`reading ${table}: ${error.message}`);
+    const batch = (data ?? []) as T[];
+    out.push(...batch);
+    if (batch.length < PAGE) return out;
+  }
+}
+
+/**
+ * Run `worker` over `items` with a bounded number in flight, stopping early
+ * when `shouldStop` goes true. Workers pull from a shared cursor rather than
+ * being handed fixed slices, so one slow post cannot leave a worker idle while
+ * others still have a queue.
+ */
+async function drainConcurrently<T>(
+  items: T[],
+  concurrency: number,
+  shouldStop: () => boolean,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    for (;;) {
+      if (shouldStop()) return;
+      const index = cursor++;
+      if (index >= items.length) return;
+      await worker(items[index]);
+    }
+  });
+  await Promise.all(runners);
+}
 
 function chunk<T>(rows: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -134,14 +217,22 @@ export async function syncLaunchpointCreators(
 ): Promise<CreatorSyncResult> {
   const all = accounts ?? (await fetchAllAccounts());
 
-  const { data: existing, error } = await admin
-    .from("research_creators")
-    .select("id, handle, platform, kind, launchpoint_creator_id");
-  if (error) throw new Error(`reading research_creators: ${error.message}`);
+  type CreatorRow = {
+    id: string;
+    handle: string;
+    platform: string;
+    kind: string;
+    launchpoint_creator_id: string | null;
+  };
+  const existing = await readAllRows<CreatorRow>(
+    admin,
+    "research_creators",
+    "id, handle, platform, kind, launchpoint_creator_id"
+  );
 
-  const byKey = new Map<string, (typeof existing)[number]>();
-  const byContractor = new Map<string, (typeof existing)[number][]>();
-  for (const row of existing ?? []) {
+  const byKey = new Map<string, CreatorRow>();
+  const byContractor = new Map<string, CreatorRow[]>();
+  for (const row of existing) {
     byKey.set(`${row.platform}:${row.handle.toLowerCase().replace(/^@/, "")}`, row);
     if (row.launchpoint_creator_id) {
       const list = byContractor.get(row.launchpoint_creator_id) ?? [];
@@ -277,23 +368,26 @@ export async function syncLaunchpointPosts(
     unsupportedPlatform: 0,
   };
 
-  const { data: creators, error: cErr } = await admin
-    .from("research_creators")
-    .select("id, platform, launchpoint_creator_id")
-    .not("launchpoint_creator_id", "is", null);
-  if (cErr) throw new Error(`reading creators: ${cErr.message}`);
+  const creators = await readAllRows<{
+    id: string;
+    platform: string;
+    launchpoint_creator_id: string | null;
+  }>(admin, "research_creators", "id, platform, launchpoint_creator_id", [
+    { kind: "notNull", column: "launchpoint_creator_id" },
+  ]);
   const creatorByContractor = new Map<string, string>();
-  for (const c of creators ?? []) {
+  for (const c of creators) {
     creatorByContractor.set(`${c.launchpoint_creator_id}:${c.platform}`, c.id);
   }
 
-  const { data: videos, error: vErr } = await admin
-    .from("research_videos")
-    .select("id, shortcode")
-    .not("shortcode", "is", null);
-  if (vErr) throw new Error(`reading videos: ${vErr.message}`);
+  const videos = await readAllRows<{ id: string; shortcode: string | null }>(
+    admin,
+    "research_videos",
+    "id, shortcode",
+    [{ kind: "notNull", column: "shortcode" }]
+  );
   const videoByShortcode = new Map<string, string>();
-  for (const v of videos ?? []) if (v.shortcode) videoByShortcode.set(v.shortcode, v.id);
+  for (const v of videos) if (v.shortcode) videoByShortcode.set(v.shortcode, v.id);
 
   const updates: { id: string; patch: Record<string, unknown> }[] = [];
   const inserts: Record<string, unknown>[] = [];
@@ -380,6 +474,10 @@ export interface DrainResult {
    *  its own metrics. */
   empty: number;
   failed: number;
+  /** Why the failures failed, deduped. A bare count is undiagnosable — the
+   *  first live backfill reported "33 failed" with no way to tell a rate limit
+   *  from a broken row. */
+  errors: string[];
   /** Rows still stale when the budget ran out. 0 means the phase is caught up. */
   remaining: number;
 }
@@ -422,13 +520,12 @@ export async function syncLaunchpointInsights(
   budgetMs = DEFAULT_BUDGET_MS
 ): Promise<DrainResult> {
   const budget: Budget = { startedAt: Date.now(), budgetMs };
-  const result: DrainResult = { processed: 0, empty: 0, failed: 0, remaining: 0 };
+  const result: DrainResult = { processed: 0, empty: 0, failed: 0, errors: [], remaining: 0 };
 
   // 400 is roughly what a 200-second budget can spend at 100 req/min.
   const queue = await dueForSync(admin, 500);
 
-  for (const row of queue) {
-    if (expired(budget)) break;
+  await drainConcurrently(queue, DRAIN_CONCURRENCY, () => expired(budget), async (row) => {
     try {
       const insights = await fetchPostInsights(row.launchpoint_post_id as string);
       const patch: Record<string, unknown> = { launchpoint_synced_at: new Date().toISOString() };
@@ -450,10 +547,14 @@ export async function syncLaunchpointInsights(
       }
       const { error } = await admin.from("research_videos").update(patch).eq("id", row.id);
       if (error) throw new Error(error.message);
-    } catch {
+    } catch (e) {
       result.failed++;
+      const message = e instanceof Error ? e.message : String(e);
+      if (result.errors.length < 5 && !result.errors.includes(message)) {
+        result.errors.push(message);
+      }
     }
-  }
+  });
 
   result.remaining = await countDue(admin);
   await recordSync(
@@ -479,34 +580,35 @@ export async function syncLaunchpointHistory(
   budgetMs = DEFAULT_BUDGET_MS
 ): Promise<DrainResult> {
   const budget: Budget = { startedAt: Date.now(), budgetMs };
-  const result: DrainResult = { processed: 0, empty: 0, failed: 0, remaining: 0 };
+  const result: DrainResult = { processed: 0, empty: 0, failed: 0, errors: [], remaining: 0 };
 
-  const { data: candidates, error } = await admin
-    .from("research_videos")
-    .select("id, launchpoint_post_id")
-    .not("launchpoint_post_id", "is", null)
-    .limit(4000);
-  if (error) throw new Error(`reading history candidates: ${error.message}`);
+  // Cursor is `launchpoint_history_synced_at`, NOT "has a row dated today".
+  // The latter does not converge: Launchpoint's most recent snapshot for a
+  // quiet post can be days old, so it never earns a today-dated row, is never
+  // considered fresh, and is re-fetched every pass forever. A live backfill
+  // showed `remaining` going UP between passes, which is the tell.
+  const cutoff = new Date(Date.now() - HISTORY_RESYNC_AFTER_MS).toISOString();
+  const queue = await readAllRows<{ id: string; launchpoint_post_id: string | null }>(
+    admin,
+    "research_videos",
+    "id, launchpoint_post_id",
+    [
+      { kind: "notNull", column: "launchpoint_post_id" },
+      { kind: "nullOrOlderThan", column: "launchpoint_history_synced_at", cutoff },
+    ]
+  );
 
-  // A post whose curve already reaches today needs nothing. One query for the
-  // whole set beats a per-post existence check.
-  const today = new Date().toISOString().slice(0, 10);
-  const { data: fresh, error: fErr } = await admin
-    .from("research_video_metrics_daily")
-    .select("research_video_id")
-    .eq("date", today);
-  if (fErr) throw new Error(`reading fresh curves: ${fErr.message}`);
-  const upToDate = new Set((fresh ?? []).map((r) => r.research_video_id));
-
-  const queue = (candidates ?? []).filter((c) => !upToDate.has(c.id));
-
-  for (const row of queue) {
-    if (expired(budget)) break;
+  await drainConcurrently(queue, DRAIN_CONCURRENCY, () => expired(budget), async (row) => {
     try {
       const history = await fetchPostHistory(row.launchpoint_post_id as string);
+      // Stamp on every outcome, empty included, or a post Launchpoint holds no
+      // history for sits at the head of the queue blocking everything behind
+      // it on every tick — same rule the insights phase follows.
+      const stamp = { launchpoint_history_synced_at: new Date().toISOString() };
       if (history.length === 0) {
         result.empty++;
-        continue;
+        await admin.from("research_videos").update(stamp).eq("id", row.id);
+        return;
       }
       const rows = history.map((h) => ({
         research_video_id: row.id,
@@ -526,13 +628,25 @@ export async function syncLaunchpointHistory(
         .from("research_video_metrics_daily")
         .upsert(rows, { onConflict: "research_video_id,date" });
       if (uErr) throw new Error(uErr.message);
+      const { error: sErr } = await admin.from("research_videos").update(stamp).eq("id", row.id);
+      if (sErr) throw new Error(sErr.message);
       result.processed++;
-    } catch {
+    } catch (e) {
       result.failed++;
+      const message = e instanceof Error ? e.message : String(e);
+      if (result.errors.length < 5 && !result.errors.includes(message)) {
+        result.errors.push(message);
+      }
     }
-  }
+  });
 
-  result.remaining = Math.max(0, queue.length - result.processed - result.empty - result.failed);
+  // A real count, not a per-pass leftover estimate: re-read how many rows are
+  // still stale so `remaining` means the same thing it does for insights.
+  const stillDue = await readAllRows<{ id: string }>(admin, "research_videos", "id", [
+    { kind: "notNull", column: "launchpoint_post_id" },
+    { kind: "nullOrOlderThan", column: "launchpoint_history_synced_at", cutoff },
+  ]);
+  result.remaining = stillDue.length;
   await recordSync(
     admin,
     "history",

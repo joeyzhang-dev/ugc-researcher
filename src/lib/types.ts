@@ -101,7 +101,12 @@ export interface ResearchVideo {
   skip_rate: number | null;
   earnings_usd: number | null;
   paid: boolean | null;
+  /** Insights cursor — last first-party metrics pull. */
   launchpoint_synced_at: string | null;
+  /** Daily-curve cursor. Deliberately separate from launchpoint_synced_at:
+   *  the two phases cost very different amounts and must be able to run at
+   *  different rates without either resetting the other's progress. */
+  launchpoint_history_synced_at: string | null;
   raw_metadata: unknown;
   created_at: string;
   updated_at: string;

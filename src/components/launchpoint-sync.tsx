@@ -69,6 +69,10 @@ export function LaunchpointSync({ status }: { status: LaunchpointStatus }) {
         }
         setDone((n) => n + (step.insights?.processed ?? 0) + (step.history?.processed ?? 0));
         setRemaining(step.remaining);
+        // Failures are self-healing (the row stays stale and is retried), but
+        // they must not be invisible while that happens.
+        const reasons = [...(step.insights?.errors ?? []), ...(step.history?.errors ?? [])];
+        setNote(reasons.length ? `Retrying past: ${reasons[0]}` : null);
         if (step.remaining === 0) break;
       }
     } catch (e) {

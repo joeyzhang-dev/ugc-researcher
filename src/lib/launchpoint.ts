@@ -35,10 +35,9 @@ const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = 1_000;
 
-/** Standard keys get 100 requests/minute, partner keys 400. Pacing at 100 is
- *  the safe floor; a 429 is handled separately in case the ceiling is lower
- *  than advertised for a given route. */
-const REQUESTS_PER_MINUTE = 100;
+/** Leave this many requests unspent in each window as headroom for retries
+ *  and for anything else using the same key. */
+const RATE_LIMIT_RESERVE = 5;
 
 /** Guard against a `totalPages` that never terminates. At 500 posts a page
  *  this covers 25k posts — an order of magnitude past the live corpus. */
@@ -46,8 +45,19 @@ const MAX_PAGES = 50;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** A failure worth retrying: Launchpoint broke, or the socket did. */
-class TransientLaunchpointError extends Error {}
+/** A failure worth retrying: Launchpoint broke, the socket did, or we were
+ *  rate limited. `retryAfterMs` carries the server's own reset hint — a 429
+ *  against a per-MINUTE window needs to wait out that window, not the 1–2s a
+ *  generic backoff would use, or the retries burn out and the post is recorded
+ *  as failed while nothing is actually wrong with it. */
+class TransientLaunchpointError extends Error {
+  constructor(
+    message: string,
+    readonly retryAfterMs?: number
+  ) {
+    super(message);
+  }
+}
 
 /** Thrown when the key is rejected outright (401/402/403). Retrying cannot fix
  *  a key problem, and a sync that keeps hammering a disabled key just burns
@@ -65,28 +75,89 @@ export function hasLaunchpointKey(): boolean {
 }
 
 /**
- * Client-side pacing.
+ * Rate limiting, driven by the server's own accounting.
  *
- * The sync walks thousands of single-post endpoints, so it will hit the
- * per-minute ceiling long before it hits any time budget. Rather than react to
- * 429s, hold a rolling window of send times and wait out the oldest one when
- * the window is full — the same request count, minus the wasted round trips
- * and the retry storm.
+ * The first implementation kept a local rolling 60-second window and paced
+ * against the documented 100/minute. That is wrong, and the live backfill
+ * proved it: `x-ratelimit-reset` comes back as an **absolute Unix timestamp**
+ * that is identical across concurrent calls, which means Launchpoint uses a
+ * FIXED window, not a rolling one. A rolling pacer happily sends 90 requests
+ * in the last half of one fixed window and 90 more in the first half of the
+ * next — 180 inside a single server window — and every request past the
+ * hundredth 429s.
  *
- * Module-level because the limit is per API key, not per caller: two jobs in
- * one process share the key and must share the window.
+ * So don't model the limit at all: read `x-ratelimit-remaining` and
+ * `x-ratelimit-reset` off every response and hold when the window is spent.
+ * The server is the only thing that knows the truth, and it tells us on each
+ * call.
+ *
+ * Module-level because the limit is per API key, not per caller: concurrent
+ * workers share the key and must share the budget.
  */
-const sendTimes: number[] = [];
+let remainingInWindow: number | null = null;
+let windowResetAtMs = 0;
+/** Serializes the hold so concurrent workers don't all sleep independently
+ *  and then stampede the moment the window opens. */
+let holdUntil: Promise<void> | null = null;
+
+/** Parse a header that must be present to count.
+ *
+ *  `Number(null)` is 0, not NaN, so a *missing* header would otherwise parse
+ *  as a perfectly finite zero — and zero remaining means "window spent", which
+ *  would make the client hold indefinitely against a server that simply never
+ *  sent the header. Absence has to stay absence. */
+function headerNumber(headers: Headers, name: string): number | null {
+  const raw = headers.get(name);
+  if (raw == null || raw.trim() === "") return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+function noteRateLimitHeaders(headers: Headers): void {
+  const remaining = headerNumber(headers, "x-ratelimit-remaining");
+  const reset = headerNumber(headers, "x-ratelimit-reset");
+  if (remaining != null) remainingInWindow = remaining;
+  // Absolute epoch seconds. Values below a sane floor are a different unit and
+  // are ignored rather than guessed at.
+  if (reset != null && reset > 1_000_000_000) windowResetAtMs = reset * 1000;
+}
+
+/** Test seam: the limiter's parsed view of the server's window. */
+export function __rateLimitState(): { remaining: number | null; resetAtMs: number } {
+  return { remaining: remainingInWindow, resetAtMs: windowResetAtMs };
+}
+
+/** Test seam: forget the window (each test starts from a clean slate). */
+export function __resetRateLimitState(): void {
+  remainingInWindow = null;
+  windowResetAtMs = 0;
+  holdUntil = null;
+}
+
+/** Test seam: feed the limiter a response's headers directly. */
+export function __noteRateLimitHeaders(headers: Headers): void {
+  noteRateLimitHeaders(headers);
+}
 
 async function pace(): Promise<void> {
-  const now = Date.now();
-  while (sendTimes.length > 0 && now - sendTimes[0] > 60_000) sendTimes.shift();
-  if (sendTimes.length >= REQUESTS_PER_MINUTE) {
-    const waitMs = 60_000 - (now - sendTimes[0]) + 50;
-    await sleep(waitMs);
-    return pace();
+  if (holdUntil) await holdUntil;
+  if (remainingInWindow == null || remainingInWindow > RATE_LIMIT_RESERVE) {
+    if (remainingInWindow != null) remainingInWindow--;
+    return;
   }
-  sendTimes.push(Date.now());
+  const waitMs = windowResetAtMs - Date.now();
+  if (waitMs <= 0) {
+    // Window already rolled over; the next response will refresh the counters.
+    remainingInWindow = null;
+    return;
+  }
+  if (!holdUntil) {
+    holdUntil = sleep(Math.min(waitMs + 250, 65_000)).then(() => {
+      remainingInWindow = null;
+      holdUntil = null;
+    });
+  }
+  await holdUntil;
 }
 
 /** GET a Launchpoint endpoint. Transient failures (5xx, network blips, 429)
@@ -110,13 +181,16 @@ async function lpGet<T>(
         cache: "no-store",
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
+      noteRateLimitHeaders(res.headers);
 
       if (res.status === 429) {
         // Trust the server's own reset hint over our rolling window — the key
         // may be shared with another process we cannot see.
-        const reset = Number(res.headers.get("x-ratelimit-reset"));
-        const waitMs = Number.isFinite(reset) && reset > 0 ? Math.min(reset * 1000, 60_000) : 15_000;
-        throw new TransientLaunchpointError(`rate limited; retry in ${waitMs}ms`);
+        // reset is an absolute epoch-seconds timestamp, so the wait is the
+        // distance to it — NOT the value itself, which would be ~56 years.
+        const untilReset = windowResetAtMs - Date.now();
+        const waitMs = untilReset > 0 ? Math.min(untilReset + 250, 65_000) : 5_000;
+        throw new TransientLaunchpointError(`rate limited; window resets in ${Math.round(waitMs / 1000)}s`, waitMs);
       }
       if (res.status === 401 || res.status === 402 || res.status === 403) {
         const body = await res.text().catch(() => "");
@@ -135,7 +209,10 @@ async function lpGet<T>(
       const networkError = (e as { name?: string })?.name === "TypeError";
       const retryable = networkError || e instanceof TransientLaunchpointError;
       if (retryable && attempt < MAX_ATTEMPTS - 1) {
-        await sleep(RETRY_BACKOFF_MS * (attempt + 1));
+        // Honour the server's own reset hint when it gave one; a rate-limit
+        // window does not care about our backoff curve.
+        const hinted = e instanceof TransientLaunchpointError ? e.retryAfterMs : undefined;
+        await sleep(hinted ?? RETRY_BACKOFF_MS * (attempt + 1));
         continue;
       }
       throw e;
