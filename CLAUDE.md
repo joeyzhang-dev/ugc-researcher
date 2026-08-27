@@ -463,6 +463,15 @@ Scraping: `SCRAPECREATORS_API_KEY` (this repo only — the tracker doesn't use i
 Launchpoint: `LAUNCHPOINT_API_KEY` (`lp_pk_…`, Dashboard → Settings → API).
 Server-only, and needed on Vercel too or the hourly cron's Launchpoint phase
 self-skips — silently, by design, so a missing key degrades rather than breaks.
+Admin sign-in: `ADMIN_LOGIN_EMAIL` + `ADMIN_PASSWORD` power the "Sign in as
+admin" button on /login — one shared secret, no email typed. The password is
+compared constant-time, then the server mints a **real** Supabase session for
+`ADMIN_LOGIN_EMAIL` by generating a single-use link and redeeming it, so RLS,
+`is_staff()` and the MFA gate all behave exactly as for a normal sign-in.
+`ADMIN_PASSWORD` must be >= 24 chars or the button refuses to render: a shared
+secret has no account to lock out and a server action has no natural rate limit
+on serverless, so length is the only guard that holds. The trade is no
+per-person attribution — every use is recorded as `ADMIN_LOGIN_EMAIL`.
 Discord: `DISCORD_BOT_TOKEN` (the mach ugc bot) + `DISCORD_GUILD_ID`; the
 `ONBOARD_*` / `CREATOR_ROLE_*` overrides default to the live Folk ids in
 `worker/discord_bot/config.py`.

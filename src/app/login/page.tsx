@@ -1,4 +1,4 @@
-import { signIn } from "./actions";
+import { adminPasswordLoginEnabled, signIn, signInAsAdmin } from "./actions";
 import { buttonClass, inputClass, labelClass } from "@/components/ui";
 
 export default async function LoginPage({
@@ -7,6 +7,9 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
+  // Rendered only when configured, so an unconfigured deployment never shows a
+  // control that cannot work.
+  const adminLogin = await adminPasswordLoginEnabled();
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas p-6">
@@ -84,6 +87,41 @@ export default async function LoginPage({
                 Sign in
               </button>
             </form>
+
+            {adminLogin && (
+              <>
+                <div className="my-5 flex items-center gap-3" aria-hidden>
+                  <span className="h-px flex-1 bg-hairline" />
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+                    or
+                  </span>
+                  <span className="h-px flex-1 bg-hairline" />
+                </div>
+
+                <form action={signInAsAdmin} className="space-y-3">
+                  <div>
+                    <label htmlFor="adminPassword" className={labelClass}>
+                      Admin password
+                    </label>
+                    <input
+                      id="adminPassword"
+                      name="password"
+                      type="password"
+                      required
+                      autoComplete="off"
+                      placeholder="••••••••••••"
+                      className={inputClass}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="inline-flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium text-neutral-700 ring-1 ring-inset ring-hairline transition hover:bg-neutral-900/[0.03] hover:text-neutral-900 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                  >
+                    Sign in as admin
+                  </button>
+                </form>
+              </>
+            )}
           </div>
         </div>
 
