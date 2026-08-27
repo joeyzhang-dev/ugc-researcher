@@ -5,8 +5,11 @@ import {
   normalizeHistory,
   normalizeInsights,
   normalizePost,
+  pickPrimaryAccount,
+  profileUrl,
   shortcodeFromUrl,
   toPlatform,
+  type LaunchpointAccount,
 } from "@/lib/launchpoint";
 
 describe("shortcodeFromUrl", () => {
@@ -205,5 +208,59 @@ describe("toPlatform", () => {
     expect(toPlatform("youtube")).toBeNull();
     expect(toPlatform("facebook")).toBeNull();
     expect(toPlatform("snapchat")).toBeNull();
+  });
+});
+
+describe("pickPrimaryAccount", () => {
+  const acct = (over: Partial<LaunchpointAccount>): LaunchpointAccount => ({
+    handle: "x",
+    platform: "instagram",
+    contractorId: "crt_1",
+    contractorName: "Someone",
+    totalPosts: 0,
+    totalViews: 0,
+    totalEarnings: 0,
+    firstPostDate: null,
+    lastPostDate: null,
+    isGhostHandle: false,
+    ...over,
+  });
+
+  // research_creator_socials allows one row per (creator, platform), and the
+  // live data really does hold two Instagram accounts for one person — an old
+  // handle beside the working one. "Where they actually post" is the answer.
+  it("prefers the account with more posts", () => {
+    const winner = pickPrimaryAccount([
+      acct({ handle: "notamrinn", totalPosts: 1 }),
+      acct({ handle: "amrinrants", totalPosts: 59 }),
+    ]);
+    expect(winner?.handle).toBe("amrinrants");
+  });
+
+  it("ranks a real handle above a ghost even when the ghost has more posts", () => {
+    const winner = pickPrimaryAccount([
+      acct({ handle: "ghost", totalPosts: 500, isGhostHandle: true }),
+      acct({ handle: "real", totalPosts: 3 }),
+    ]);
+    expect(winner?.handle).toBe("real");
+  });
+
+  it("falls back to views when post counts tie", () => {
+    const winner = pickPrimaryAccount([
+      acct({ handle: "quiet", totalPosts: 5, totalViews: 100 }),
+      acct({ handle: "loud", totalPosts: 5, totalViews: 90_000 }),
+    ]);
+    expect(winner?.handle).toBe("loud");
+  });
+
+  it("returns null for an empty set", () => {
+    expect(pickPrimaryAccount([])).toBeNull();
+  });
+});
+
+describe("profileUrl", () => {
+  it("builds the canonical profile link per platform", () => {
+    expect(profileUrl("instagram", "wisdomwjas")).toBe("https://www.instagram.com/wisdomwjas/");
+    expect(profileUrl("tiktok", "wisdomwjas")).toBe("https://www.tiktok.com/@wisdomwjas");
   });
 });

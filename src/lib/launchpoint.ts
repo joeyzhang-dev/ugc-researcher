@@ -292,6 +292,10 @@ export interface LaunchpointAccount {
   contractorName: string | null;
   totalPosts: number | null;
   totalViews: number | null;
+  /** Launchpoint's placeholder for an account it tracks but cannot verify.
+   *  None exist on the live program today, but a ghost handle must never win
+   *  the primary slot over a real one. */
+  isGhostHandle: boolean;
   totalEarnings: number | null;
   firstPostDate: string | null;
   lastPostDate: string | null;
@@ -420,10 +424,39 @@ export function normalizeAccount(raw: Json): LaunchpointAccount {
     contractorName: str(raw["contractorName"]),
     totalPosts: int(raw["totalPosts"]),
     totalViews: int(raw["totalViews"]),
+    isGhostHandle: raw["isGhostHandle"] === true,
     totalEarnings: num(raw["totalEarnings"]),
     firstPostDate: isoFromEpochMillis(raw["firstPostDate"]),
     lastPostDate: isoFromEpochMillis(raw["lastPostDate"]),
   };
+}
+
+/**
+ * The account that should represent a creator on one platform.
+ *
+ * A contractor can hold several accounts on the same platform — the live data
+ * has Amrin on both `@amrinrants` (59 posts) and `@notamrinn` (1 post), an old
+ * handle beside the working one. research_creator_socials allows exactly one
+ * row per (creator, platform), so something has to choose, and "the account
+ * they actually post from" is the only useful answer: rank real handles above
+ * ghosts, then by post count, then by views.
+ *
+ * Pure and exported so the choice is testable without a database.
+ */
+export function pickPrimaryAccount(accounts: LaunchpointAccount[]): LaunchpointAccount | null {
+  const ranked = [...accounts].sort((a, b) => {
+    if (a.isGhostHandle !== b.isGhostHandle) return a.isGhostHandle ? 1 : -1;
+    if ((b.totalPosts ?? 0) !== (a.totalPosts ?? 0)) return (b.totalPosts ?? 0) - (a.totalPosts ?? 0);
+    return (b.totalViews ?? 0) - (a.totalViews ?? 0);
+  });
+  return ranked[0] ?? null;
+}
+
+/** Public profile URL for a tracked account. */
+export function profileUrl(platform: Platform, handle: string): string {
+  return platform === "instagram"
+    ? `https://www.instagram.com/${handle}/`
+    : `https://www.tiktok.com/@${handle}`;
 }
 
 /** Launchpoint tracks five platforms; we model two. Anything else is skipped

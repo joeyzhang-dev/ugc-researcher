@@ -22,6 +22,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Platform } from "@/lib/types";
 import {
   fetchAllAccounts,
+  pickPrimaryAccount,
+  profileUrl,
   fetchAllPosts,
   fetchPostHistory,
   fetchPostInsights,
@@ -88,7 +90,7 @@ const CREATE_PLATFORMS: readonly Platform[] = ["instagram"];
  */
 const isUsableHandle = (handle: string) => handle.length > 0 && !/^\d+$/.test(handle);
 
-type Phase = "creators" | "posts" | "insights" | "history";
+type Phase = "creators" | "posts" | "insights" | "history" | "socials";
 
 interface Budget {
   startedAt: number;
@@ -326,6 +328,97 @@ export async function syncLaunchpointCreators(
     "succeeded",
     `${result.linked} linked, ${result.created} created, ${result.possibleRenames.length} rename candidates, ` +
       `${result.notCreated.length} not created`
+  );
+  return result;
+}
+
+// ===========================================================================
+// Phase 1b — socials
+// ===========================================================================
+
+export interface SocialSyncResult {
+  written: number;
+  /** Contractors Launchpoint tracks accounts for that we have no creator row
+   *  for — normal for anyone not on the roster. */
+  unmatched: number;
+}
+
+/**
+ * Record every platform account Launchpoint knows for each creator.
+ *
+ * This is the only route by which the app learns a creator's TikTok handle.
+ * research_creators is keyed on (platform, handle) and the creator phase
+ * deliberately creates Instagram rows only, so a creator's TikTok presence is
+ * otherwise invisible here even though Launchpoint has tracked it all along.
+ *
+ * Socials are written against the *person*, not one platform row: every
+ * research_creators row sharing a launchpoint_creator_id gets the full set, so
+ * an Instagram creator row carries their TikTok link too. That is what makes
+ * the table useful for "where else does this creator post".
+ */
+export async function syncLaunchpointSocials(
+  admin: SupabaseClient,
+  accounts?: LaunchpointAccount[]
+): Promise<SocialSyncResult> {
+  const all = accounts ?? (await fetchAllAccounts());
+
+  const creators = await readAllRows<{ id: string; launchpoint_creator_id: string | null }>(
+    admin,
+    "research_creators",
+    "id, launchpoint_creator_id",
+    [{ kind: "notNull", column: "launchpoint_creator_id" }]
+  );
+  const creatorsByContractor = new Map<string, string[]>();
+  for (const c of creators) {
+    const key = c.launchpoint_creator_id as string;
+    creatorsByContractor.set(key, [...(creatorsByContractor.get(key) ?? []), c.id]);
+  }
+
+  // contractor -> platform -> accounts
+  const grouped = new Map<string, Map<Platform, LaunchpointAccount[]>>();
+  for (const account of all) {
+    const platform = toPlatform(account.platform);
+    if (!platform || !account.contractorId || !account.handle) continue;
+    const byPlatform = grouped.get(account.contractorId) ?? new Map<Platform, LaunchpointAccount[]>();
+    byPlatform.set(platform, [...(byPlatform.get(platform) ?? []), account]);
+    grouped.set(account.contractorId, byPlatform);
+  }
+
+  const rows: Record<string, unknown>[] = [];
+  const result: SocialSyncResult = { written: 0, unmatched: 0 };
+
+  for (const [contractorId, byPlatform] of grouped) {
+    const creatorIds = creatorsByContractor.get(contractorId);
+    if (!creatorIds || creatorIds.length === 0) {
+      result.unmatched++;
+      continue;
+    }
+    for (const [platform, candidates] of byPlatform) {
+      const primary = pickPrimaryAccount(candidates);
+      if (!primary) continue;
+      for (const creatorId of creatorIds) {
+        rows.push({
+          research_creator_id: creatorId,
+          platform,
+          url: profileUrl(platform, primary.handle),
+        });
+      }
+    }
+  }
+
+  for (const batch of chunk(rows, WRITE_CHUNK)) {
+    const { error } = await admin
+      .from("research_creator_socials")
+      .upsert(batch, { onConflict: "research_creator_id,platform" });
+    if (error) throw new Error(`writing socials: ${error.message}`);
+    result.written += batch.length;
+  }
+
+  await recordSync(
+    admin,
+    "socials",
+    "succeeded",
+    `${result.written} social links, ${result.unmatched} contractors not on the roster`
   );
   return result;
 }
@@ -663,6 +756,7 @@ export async function syncLaunchpointHistory(
 export interface LaunchpointSyncResult {
   skipped?: string;
   creators?: CreatorSyncResult;
+  socials?: SocialSyncResult;
   posts?: PostSyncResult;
   insights?: DrainResult;
   history?: DrainResult;
@@ -688,10 +782,14 @@ export async function syncLaunchpoint(
   const budgetMs = opts.budgetMs ?? DEFAULT_BUDGET_MS;
   const startedAt = Date.now();
 
-  const creators = await syncLaunchpointCreators(admin);
+  // One accounts fetch, shared: the creator and socials phases read the same
+  // endpoint and there is no reason to pay for it twice.
+  const accounts = await fetchAllAccounts();
+  const creators = await syncLaunchpointCreators(admin, accounts);
+  const socials = await syncLaunchpointSocials(admin, accounts);
   const posts = await syncLaunchpointPosts(admin);
   if (opts.metadataOnly) {
-    return { creators, posts, remaining: await countDue(admin) };
+    return { creators, socials, posts, remaining: await countDue(admin) };
   }
 
   const left = () => Math.max(0, budgetMs - (Date.now() - startedAt));
@@ -702,6 +800,7 @@ export async function syncLaunchpoint(
 
   return {
     creators,
+    socials,
     posts,
     insights,
     history,
