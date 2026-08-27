@@ -267,6 +267,26 @@ not drift; it goes quiet once stable.
 Low-confidence leftovers are usually just creators who have not posted yet.
 Leave them: when they post, the strong match links itself.
 
+**Before tuning the scorer, check whether the transcript exists.** Measured
+2026-08-27 against 415 confirmed links, plain containment ranked the true video
+first 413 times with a median margin of 0.517 over the runner-up — it is not
+the bottleneck. Of 879 open assignments, 683 had a best available score of 0.17
+against a median of 0.86 for true pairs; that gap is a script that was never
+posted, not a scoring failure, and no amount of IDF or n-grams will close it.
+(Caveat worth keeping: most confirmed links were themselves made by
+containment, so that 413 is partly self-fulfilling.)
+
+What *was* the bottleneck: 42 untranscribed posts stood between 170 open
+assignments and a match. `requeueMatchCandidates` runs at the top of
+`matchScriptPosts` and flips exactly those rows back to `pending` — a video
+belonging to the assignment's creator, unclaimed, untranscribed, and posted
+within `MATCH_DATE_RADIUS_DAYS` of the send. It is the deliberate exception to
+`TRANSCRIBE_WINDOW_DAYS`: an old reel's transcript answers nothing in general,
+but if it is the likely output of an assignment still waiting, it is the only
+thing that can close it. Transcripts arrive asynchronously, so the pass that
+requeues is never the pass that matches — which is why this runs on a schedule
+rather than once.
+
 ## Launchpoint
 
 `launchpointhq.com` is where the Folk creator program actually runs — contracts,
