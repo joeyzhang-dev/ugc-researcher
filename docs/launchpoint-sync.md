@@ -11,6 +11,36 @@ who's posting who isn't, how scripts performed."
 
 ---
 
+## 2026-08-28 — Script matching: diagnosis of the 883 open assignments
+
+Before building anything for "how scripts performed", we measured what
+actually stands between the current 33% match coverage (428 of 1,311
+assignments linked) and better. Ran the repo's own scorer over every open
+assignment. Result — **the pipeline is fine; the gap is real behavior**:
+
+| Count | Bucket | Meaning |
+| --- | --- | --- |
+| 441 (50%) | Transcribed posts exist in the window, **none resembles the script** (<0.25) | Creator got the script and posted something else — the honest "script wasn't used" signal |
+| 171 (19%) | Creator posted **nothing** in the window | Genuinely didn't deliver |
+| 147 (17%) | Sitting in **/scripts/review** (92 low-confidence, 48 contested, 7 backdated) | The only human-actionable backlog — each needs one click |
+| 124 (14%) | Every window post **already claimed** by another script | Over-assignment: more scripts handed out than posts made |
+| 0 | Blocked on transcription | The requeue mechanism works — nothing is stuck in the queue |
+
+Read: **~70% of handed-out scripts never became a post.** That is not a
+matching bug, it's the delivery-rate picture Joey has been checking Instagram
+by hand to see — just at the script level.
+
+**Cheapest coverage win available today:** click through the 147 pairs in
+`/scripts/review`. No code needed.
+
+**Proposed next build — "Script delivery":** per-creator "scripts received →
+posts delivered" on the roster, per-script "closed vs went stale" on the
+script page, and (product decision needed) an auto-`Expired` status for
+assignments older than N days with no post, so the open count stops growing
+forever.
+
+---
+
 ## 2026-08-28 — "Who's posting, who isn't" (branch `launchpoint-account-stats`)
 
 ### What was added
