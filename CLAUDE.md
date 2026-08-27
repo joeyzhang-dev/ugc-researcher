@@ -224,8 +224,33 @@ partial unique index means one video can back only one assignment, so resolving
 each assignment independently lets whichever runs first claim a video the next
 one wanted more.
 
+Since 2026-08-27 the score is also **date-aware**. `dateProximity` compares an
+assignment's `sent_at` (falling back to `assigned_at`) against the video's
+`posted_at`: full credit inside `MATCH_DATE_RADIUS_DAYS` (21), decaying to a
+0.2 floor after, and **0 for a post that predates its own script** — a script
+cannot have produced a video that already existed when it was written. `rank =
+score * (1 - W + W * proximity)` with `MATCH_DATE_WEIGHT` 0.35.
+
+Three rules keep this from becoming a new way to guess wrong:
+
+- **Confidence is still judged on the words alone.** `MATCH_AUTO_MIN` gates on
+  the raw text score, so good timing can never promote a weak textual match.
+  Date only reorders candidates and widens margins between rivals the words
+  could not separate — which is exactly the 0.97-vs-0.91 case the margin
+  exists for.
+- **A missing date is neutral (proximity 1), never a penalty.** Absent data is
+  not evidence against a pair, and penalising it would silently punish every
+  assignment made before send tracking existed.
+- **`posted-before-send` goes to review, never to auto-link**, and has its own
+  section on /scripts/review — a reason with no home on that page would make
+  the resolver's decision vanish from the only queue that can settle it.
+
+On the live queue this scored 173 pairs: 27 auto-link, 47 contested, 92
+low-confidence, and **7 caught as posted-before-send** — pairings the old
+matcher had no way to see were impossible. Timing moved the score on 62 of them.
+
 A pair is linked automatically only when it is BOTH strong (`MATCH_AUTO_MIN`,
-0.5) AND beats its nearest rival by `MATCH_AUTO_MARGIN` (0.12). The margin is
+0.5) AND beats its nearest rival by `MATCH_AUTO_MARGIN` (0.12) **on rank**. The margin is
 the whole safety story — the original design kept linking manual precisely
 because two near-identical scripts would otherwise get silently swapped, and
 that is real here: a live pair scored 0.97 and 0.91 for the same post. Anything

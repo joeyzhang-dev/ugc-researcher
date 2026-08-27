@@ -229,6 +229,14 @@ export interface ResearchScriptAssignment {
   notes: string | null;
   assigned_at: string;
   posted_at: string | null;
+  /* --- send tracking (20260818001500_assignment_sends) --------------------
+     The assignment row IS the send record. `sent_at` is when the script
+     actually reached the creator, which is what post timing should be
+     measured against — `assigned_at` is only when the row was created and can
+     predate the send by days. */
+  discord_channel_id: string | null;
+  discord_message_id: string | null;
+  sent_at: string | null;
 }
 
 /* --- Discord (research_discord_*) ------------------------------------------

@@ -69,6 +69,9 @@ export default async function MatchReviewPage({
 
   const contested = items.filter((i) => i.match.reason === "contested");
   const weak = items.filter((i) => i.match.reason === "low-confidence");
+  // Every reason needs a home on this page, or a match the resolver deliberately
+  // held back would vanish from the only queue that can settle it.
+  const backdated = items.filter((i) => i.match.reason === "posted-before-send");
 
   return (
     <div className="space-y-6">
@@ -97,6 +100,14 @@ export default async function MatchReviewPage({
         items={contested}
         liftById={liftById}
         empty="Nothing contested — every remaining match is unambiguous."
+      />
+
+      <Section
+        title="Posted before the script went out"
+        note="The wording matches, but this post already existed when the script was sent — so the script cannot have produced it. Usually a recycled script or a stale assignment. Confirm only if you know the history."
+        items={backdated}
+        liftById={liftById}
+        empty="Nothing backdated."
       />
 
       <Section

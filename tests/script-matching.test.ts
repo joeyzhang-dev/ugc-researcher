@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveScriptMatches } from "@/lib/scripts";
+import { dateProximity, resolveScriptMatches } from "@/lib/scripts";
 import type { ResearchScript, ResearchScriptAssignment, ResearchVideo } from "@/lib/types";
 
 function script(id: string, hook: string, body: string): ResearchScript {
@@ -9,17 +9,29 @@ function script(id: string, hook: string, body: string): ResearchScript {
   } as unknown as ResearchScript;
 }
 
-function asg(id: string, scriptId: string, creatorId: string): ResearchScriptAssignment {
+function asg(
+  id: string,
+  scriptId: string,
+  creatorId: string,
+  sentAt: string | null = null
+): ResearchScriptAssignment {
   return {
     id, script_id: scriptId, research_creator_id: creatorId, research_video_id: null,
     status: "Assigned", notes: null, assigned_at: "2026-08-01T00:00:00Z", posted_at: null,
+    discord_channel_id: null, discord_message_id: null, sent_at: sentAt,
   };
 }
 
-function vid(id: string, creatorId: string, transcript: string | null): ResearchVideo {
+function vid(
+  id: string,
+  creatorId: string,
+  transcript: string | null,
+  postedAt: string | null = null
+): ResearchVideo {
   return {
     id, research_creator_id: creatorId, url: `https://x/${id}`, shortcode: id,
     transcript_text: transcript, transcript_status: transcript ? "transcribed" : "pending",
+    posted_at: postedAt,
   } as unknown as ResearchVideo;
 }
 
@@ -94,5 +106,96 @@ describe("resolveScriptMatches", () => {
     const out = resolveScriptMatches([s], [linked], [v], new Set(["v9"]));
     expect(out.confirm).toHaveLength(0);
     expect(out.review).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Date proximity
+// ---------------------------------------------------------------------------
+
+describe("dateProximity", () => {
+  const sent = "2026-08-01T00:00:00Z";
+  const plus = (days: number) =>
+    new Date(Date.parse(sent) + days * 86_400_000).toISOString();
+
+  it("gives full credit inside the radius", () => {
+    expect(dateProximity(sent, plus(0))).toBe(1);
+    expect(dateProximity(sent, plus(20))).toBe(1);
+  });
+
+  it("decays past the radius but never to nothing — a late post is unlikely, not impossible", () => {
+    const near = dateProximity(sent, plus(30));
+    const far = dateProximity(sent, plus(80));
+    expect(near).toBeGreaterThan(far);
+    expect(far).toBeGreaterThanOrEqual(0.2);
+  });
+
+  // A script cannot have produced a video that already existed when it was
+  // written. One day of slack absorbs timezone skew and same-day sends.
+  it("zeroes a post that predates its own script", () => {
+    expect(dateProximity(sent, plus(-5))).toBe(0);
+    expect(dateProximity(sent, plus(-0.5))).toBe(1);
+  });
+
+  // Absent data is not evidence against a pair. Penalising it would quietly
+  // punish every assignment sent before send tracking existed.
+  it("stays neutral when either date is missing", () => {
+    expect(dateProximity(null, plus(3))).toBe(1);
+    expect(dateProximity(sent, null)).toBe(1);
+    expect(dateProximity("nonsense", plus(3))).toBe(1);
+  });
+});
+
+describe("resolveScriptMatches with timing", () => {
+  const WORDS =
+    "morning routine peak male twenties edition cold shower journal gym protein sunlight";
+
+  // The case the margin was built for: two scripts the words cannot separate.
+  // Before timing this went to review; now the one actually sent near the post
+  // wins outright.
+  it("breaks a textual tie in favour of the script sent near the post", () => {
+    const scripts = [script("s1", "A", WORDS), script("s2", "B", WORDS)];
+    const assignments = [
+      asg("a1", "s1", "c1", "2026-08-01T00:00:00Z"), // 2 days before the post
+      asg("a2", "s2", "c1", "2026-05-01T00:00:00Z"), // three months earlier
+    ];
+    const videos = [vid("v1", "c1", WORDS, "2026-08-03T00:00:00Z")];
+
+    const { confirm, review } = resolveScriptMatches(scripts, assignments, videos, new Set());
+    expect(confirm).toHaveLength(1);
+    expect(confirm[0].assignmentId).toBe("a1");
+    expect(review).toHaveLength(0);
+  });
+
+  // Timing must never manufacture confidence the words do not support.
+  it("still refuses a weak textual match no matter how good the timing", () => {
+    const scripts = [script("s1", "A", "completely unrelated wording about taxes")];
+    const assignments = [asg("a1", "s1", "c1", "2026-08-01T00:00:00Z")];
+    const videos = [vid("v1", "c1", WORDS, "2026-08-01T06:00:00Z")];
+
+    const { confirm } = resolveScriptMatches(scripts, assignments, videos, new Set());
+    expect(confirm).toHaveLength(0);
+  });
+
+  it("sends a post that predates its script to review rather than linking it", () => {
+    const scripts = [script("s1", "A", WORDS)];
+    const assignments = [asg("a1", "s1", "c1", "2026-08-01T00:00:00Z")];
+    const videos = [vid("v1", "c1", WORDS, "2026-06-01T00:00:00Z")];
+
+    const { confirm, review } = resolveScriptMatches(scripts, assignments, videos, new Set());
+    expect(confirm).toHaveLength(0);
+    expect(review[0].reason).toBe("posted-before-send");
+  });
+
+  // Everything sent before send tracking existed has a null sent_at, and must
+  // behave exactly as it did before this feature.
+  it("is unchanged when timing data is absent", () => {
+    const scripts = [script("s1", "A", WORDS)];
+    const assignments = [asg("a1", "s1", "c1", null)];
+    const videos = [vid("v1", "c1", WORDS, null)];
+
+    const { confirm } = resolveScriptMatches(scripts, assignments, videos, new Set());
+    expect(confirm).toHaveLength(1);
+    expect(confirm[0].proximity).toBe(1);
   });
 });

@@ -53,11 +53,25 @@ _NON_SLUG = re.compile(r"[^a-z0-9]+")
 
 @dataclass(frozen=True)
 class WelcomeLinks:
-    """Channel ids referenced by the onboarding welcome message."""
+    """Channel ids and custom-emoji ids referenced by the welcome message.
+
+    Ids, not names: Discord only renders a channel as a clickable link from
+    ``<#id>``. A literal ``#some-channel`` is inert text, and a custom emoji
+    written ``:tt:`` renders as nothing at all outside the app's own composer —
+    both have to carry the numeric id to survive.
+    """
 
     post_tracking: int
     warmup: int
     folk_access: int
+    setup_ig_dms: int
+    demos: int
+    demo_maker: int
+    folk_domains: int
+    trial_reel_tool: int
+    folk_branding: int
+    emoji_tiktok: int
+    emoji_instagram: int
 
 
 @dataclass(frozen=True)
@@ -222,11 +236,32 @@ def resolve_category(niche: str, category_names: Iterable[str]) -> tuple[Optiona
 
 
 def build_welcome_message(user_id: int, links: WelcomeLinks) -> str:
-    """Render the welcome post, using ``<#id>`` so channels render as links."""
+    """Render the welcome post.
+
+    Every channel goes in as ``<#id>`` and every custom emoji as ``<:name:id>``
+    so they resolve to real links and images in the posted message. Written as
+    a plain f-string rather than an embed because Discord does not render
+    markdown headings (``##``) inside embed bodies, and the headings are what
+    give this its shape.
+    """
+    tt = f"<:tt:{links.emoji_tiktok}>"
+    ig = f"<:ig:{links.emoji_instagram}>"
     return (
         f"welcome <@{user_id}>! this is your channel — post your content and questions here.\n\n"
-        f"**Launchpoint setup:** <#{links.post_tracking}>\n"
-        f"**Account warmup:** <#{links.warmup}> <#{links.folk_access}>"
+        "## today\n"
+        f"- **create {tt}{ig} accounts:** wisdomwjoey, joeyprays, lockedwjoey, "
+        "dialedinjoey etc. *(depends on your niche)*\n"
+        f"- **setup tracking & payouts:** link accounts and join our <#{links.post_tracking}>\n"
+        f"- **start warmup process:** <#{links.warmup}>\n"
+        "    + send screenshots of time management as proof\n"
+        f"- **<#{links.setup_ig_dms}> automation:** with your creator link\n"
+        "- **start filming scripts:** we want to hit the ground running with posts\n\n"
+        "## *Other Important Information*\n"
+        f"- Demos: <#{links.demos}> & <#{links.demo_maker}> or create your own in Folk\n"
+        f"- Take a look at these: <#{links.folk_domains}> <#{links.trial_reel_tool}> "
+        f"<#{links.folk_branding}>\n"
+        "- **Payouts:** *$40 Base + $1/CPM | 1,000 view threshold / 1mill view cap | "
+        "14 days video mature | Payouts bi-weekly*"
     )
 
 

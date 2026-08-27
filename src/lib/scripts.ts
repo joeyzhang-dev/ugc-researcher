@@ -220,16 +220,82 @@ export const MATCH_AUTO_MIN = 0.5;
  */
 export const MATCH_AUTO_MARGIN = 0.12;
 
+/**
+ * Date proximity.
+ *
+ * A script is handed over and, if it gets used, posted within days. Containment
+ * alone cannot tell two near-identical scripts apart — the live corpus has a
+ * pair scoring 0.97 and 0.91 on the same post — but *when* each was sent
+ * usually can. Full credit inside the radius, decaying after; a post that
+ * predates its own script is demoted hard, because a script cannot have
+ * produced a video that already existed when it was written.
+ *
+ * Deliberately a modifier, never a source of confidence: `MATCH_AUTO_MIN`
+ * still gates on the TEXT score alone, so no pair is ever auto-linked because
+ * its timing looked good. Date only reorders candidates and widens margins
+ * between rivals that the words could not separate.
+ */
+export const MATCH_DATE_RADIUS_DAYS = 21;
+
+/** How much proximity is allowed to move a pair's ranking. At 0.35 a
+ *  worst-case date costs a third of the score — enough to break a tie, not
+ *  enough to bury a strong textual match under a weak one. */
+export const MATCH_DATE_WEIGHT = 0.35;
+
+/** Posts can lag a send, but a post *before* it cannot be its output. A day of
+ *  slack absorbs timezone skew and same-day sends. */
+const PRE_SEND_GRACE_MS = 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * 0–1 closeness between when a script went out and when a post appeared.
+ *
+ * Returns 1 when either date is missing: absent data is not evidence against a
+ * pair, and penalising it would quietly punish every assignment sent before
+ * send tracking existed.
+ */
+export function dateProximity(
+  sentAt: string | null,
+  postedAt: string | null,
+  radiusDays = MATCH_DATE_RADIUS_DAYS
+): number {
+  if (!sentAt || !postedAt) return 1;
+  const sent = new Date(sentAt).getTime();
+  const posted = new Date(postedAt).getTime();
+  if (Number.isNaN(sent) || Number.isNaN(posted)) return 1;
+
+  const lag = posted - sent;
+  if (lag < -PRE_SEND_GRACE_MS) return 0;
+  if (lag <= radiusDays * DAY_MS) return 1;
+
+  // Linear decay from the radius out to three times it, floored rather than
+  // zeroed: a late post is unlikely, not impossible.
+  const overshoot = lag - radiusDays * DAY_MS;
+  const span = 2 * radiusDays * DAY_MS;
+  return Math.max(0.2, 1 - overshoot / span);
+}
+
+/** Text score adjusted for timing — the value pairs are ranked and compared by. */
+export function rankScore(textScore: number, proximity: number): number {
+  return textScore * (1 - MATCH_DATE_WEIGHT + MATCH_DATE_WEIGHT * proximity);
+}
+
 /** Why a pair needs eyes on it rather than being linked outright. */
-export type MatchReviewReason = "contested" | "low-confidence";
+export type MatchReviewReason = "contested" | "low-confidence" | "posted-before-send";
 
 export interface ResolvedMatch {
   assignmentId: string;
   scriptId: string;
   creatorId: string;
   videoId: string;
+  /** Text containment alone — what the reviewer sees, and the only thing the
+   *  auto-link confidence gate looks at. */
   score: number;
-  /** Best score any rival pair reached for this video or this assignment. */
+  /** 0–1 timing closeness between the send and the post. */
+  proximity: number;
+  /** `score` adjusted for timing. Pairs are ordered and compared by this. */
+  rank: number;
+  /** Best rank any rival pair reached for this video or this assignment. */
   runnerUp: number;
   reason?: MatchReviewReason;
 }
@@ -345,21 +411,29 @@ export function resolveScriptMatches(
       }
       const score = scoreTokens(toks, have);
       if (score < MATCH_REVIEW_MIN) continue;
+      // sent_at is when the creator actually received it; assigned_at is when
+      // the row was created, which can predate the send by days.
+      const proximity = dateProximity(a.sent_at ?? a.assigned_at, v.posted_at);
+      const rank = rankScore(score, proximity);
       pairs.push({
         assignmentId: a.id,
         scriptId: s.id,
         creatorId: a.research_creator_id,
         videoId: v.id,
         score,
+        proximity,
+        rank,
         runnerUp: 0,
       });
-      note(bestForVideo, runnerUpForVideo, v.id, score);
-      note(bestForAssignment, runnerUpForAssignment, a.id, score);
+      // Rivalry is judged on rank: two scripts the words cannot separate are
+      // separated here by which one was actually sent near the post.
+      note(bestForVideo, runnerUpForVideo, v.id, rank);
+      note(bestForAssignment, runnerUpForAssignment, a.id, rank);
     }
   }
 
   // Settle best-first so the strongest claim on a contested video wins.
-  pairs.sort((x, y) => y.score - x.score || x.videoId.localeCompare(y.videoId));
+  pairs.sort((x, y) => y.rank - x.rank || x.videoId.localeCompare(y.videoId));
 
   const confirm: ResolvedMatch[] = [];
   const review: ResolvedMatch[] = [];
@@ -379,8 +453,14 @@ export function resolveScriptMatches(
     const resolved: ResolvedMatch = { ...p, runnerUp: rival };
 
     if (p.score < MATCH_AUTO_MIN) {
+      // Confidence is still judged on the words alone. Good timing must never
+      // promote a weak textual match.
       review.push({ ...resolved, reason: "low-confidence" });
-    } else if (p.score - rival < MATCH_AUTO_MARGIN) {
+    } else if (p.proximity === 0) {
+      // The post predates its own script. Almost always a stale assignment or
+      // a recycled script, never a real link — but a human should say so.
+      review.push({ ...resolved, reason: "posted-before-send" });
+    } else if (p.rank - rival < MATCH_AUTO_MARGIN) {
       review.push({ ...resolved, reason: "contested" });
     } else {
       confirm.push(resolved);

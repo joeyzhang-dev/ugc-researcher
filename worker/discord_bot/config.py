@@ -20,6 +20,17 @@ DEFAULT_CREATOR_ROLE_ID = 1507900545359282308  # Folk Creator
 DEFAULT_POST_TRACKING_CHANNEL_ID = 1508703255490859079  # 📊・set-up-post-tracking
 DEFAULT_WARMUP_CHANNEL_ID = 1508636037214371861  # 🍳・how-to-warm-up
 DEFAULT_FOLK_ACCESS_CHANNEL_ID = 1509268689021833306  # get-folk-access
+DEFAULT_SETUP_IG_DMS_CHANNEL_ID = 1525942188759060580  # 🧙‍♂️・setup-ig-dms
+DEFAULT_DEMOS_CHANNEL_ID = 1525297913352163349  # 🎬・demos
+DEFAULT_DEMO_MAKER_CHANNEL_ID = 1516893403785203744  # 📲・demo-maker
+DEFAULT_FOLK_DOMAINS_CHANNEL_ID = 1509712115756306442  # 😂・folk-domains
+DEFAULT_TRIAL_REEL_TOOL_CHANNEL_ID = 1522112489540554842  # 🙏・trial-reel-tool
+DEFAULT_FOLK_BRANDING_CHANNEL_ID = 1527396634617581719  # folk-branding
+
+# Custom guild emoji. Resolved from the live guild rather than typed as :tt:,
+# which renders as literal text for anyone whose client cannot resolve the name.
+DEFAULT_TIKTOK_EMOJI_ID = 1542405352363008060  # :tt:
+DEFAULT_INSTAGRAM_EMOJI_ID = 1542405235635388517  # :ig:
 DEFAULT_LAUNCHPOINT_BOT_ID = 1516872874512613446  # Launchpoint automation bot
 DEFAULT_NICHE_ROLE_ID_PAIRS: tuple[tuple[int, int], ...] = (
     (1512236272742043698, 1531750777062822002),  # Creators: 🌸 Girly Finance -> Finance Girls Niche
@@ -71,6 +82,14 @@ class BotConfig:
             post_tracking=DEFAULT_POST_TRACKING_CHANNEL_ID,
             warmup=DEFAULT_WARMUP_CHANNEL_ID,
             folk_access=DEFAULT_FOLK_ACCESS_CHANNEL_ID,
+            setup_ig_dms=DEFAULT_SETUP_IG_DMS_CHANNEL_ID,
+            demos=DEFAULT_DEMOS_CHANNEL_ID,
+            demo_maker=DEFAULT_DEMO_MAKER_CHANNEL_ID,
+            folk_domains=DEFAULT_FOLK_DOMAINS_CHANNEL_ID,
+            trial_reel_tool=DEFAULT_TRIAL_REEL_TOOL_CHANNEL_ID,
+            folk_branding=DEFAULT_FOLK_BRANDING_CHANNEL_ID,
+            emoji_tiktok=DEFAULT_TIKTOK_EMOJI_ID,
+            emoji_instagram=DEFAULT_INSTAGRAM_EMOJI_ID,
         )
     )
 
@@ -119,5 +138,13 @@ def load_bot_config() -> BotConfig:
             post_tracking=_env_int("ONBOARD_POST_TRACKING_CHANNEL_ID", DEFAULT_POST_TRACKING_CHANNEL_ID),
             warmup=_env_int("ONBOARD_WARMUP_CHANNEL_ID", DEFAULT_WARMUP_CHANNEL_ID),
             folk_access=_env_int("ONBOARD_FOLK_ACCESS_CHANNEL_ID", DEFAULT_FOLK_ACCESS_CHANNEL_ID),
+            setup_ig_dms=_env_int("ONBOARD_SETUP_IG_DMS_CHANNEL_ID", DEFAULT_SETUP_IG_DMS_CHANNEL_ID),
+            demos=_env_int("ONBOARD_DEMOS_CHANNEL_ID", DEFAULT_DEMOS_CHANNEL_ID),
+            demo_maker=_env_int("ONBOARD_DEMO_MAKER_CHANNEL_ID", DEFAULT_DEMO_MAKER_CHANNEL_ID),
+            folk_domains=_env_int("ONBOARD_FOLK_DOMAINS_CHANNEL_ID", DEFAULT_FOLK_DOMAINS_CHANNEL_ID),
+            trial_reel_tool=_env_int("ONBOARD_TRIAL_REEL_TOOL_CHANNEL_ID", DEFAULT_TRIAL_REEL_TOOL_CHANNEL_ID),
+            folk_branding=_env_int("ONBOARD_FOLK_BRANDING_CHANNEL_ID", DEFAULT_FOLK_BRANDING_CHANNEL_ID),
+            emoji_tiktok=_env_int("ONBOARD_TIKTOK_EMOJI_ID", DEFAULT_TIKTOK_EMOJI_ID),
+            emoji_instagram=_env_int("ONBOARD_INSTAGRAM_EMOJI_ID", DEFAULT_INSTAGRAM_EMOJI_ID),
         ),
     )
