@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { discordConfigured, postChannelMessage } from "@/lib/discord";
 import { buildScriptPage, testSendContent, type SendableScript } from "@/lib/discord-send";
 import { resolveInspoVideoUrl } from "@/lib/inspo-media";
+import { isChannelTarget } from "@/lib/send-targets";
 import { assignScriptNumbers } from "./doc";
 import type { ResearchScript } from "@/lib/types";
 
@@ -103,7 +104,17 @@ export async function sendScripts(input: {
     return { results: [], error: "DISCORD_BOT_TOKEN is not set in .env.local — add it (same token the worker bot uses) and retry." };
   }
   const scriptIds = [...new Set(input.scriptIds)].filter(Boolean);
-  const creatorIds = [...new Set(input.creatorIds)].filter(Boolean);
+  const picked = [...new Set(input.creatorIds)].filter(Boolean);
+  // A `channel:` target is a Discord channel with no creator row behind it —
+  // the picker renders those un-pickable, and an assignment cannot reference
+  // one, so refuse rather than let the pseudo-id reach a uuid column.
+  const creatorIds = picked.filter((id) => !isChannelTarget(id));
+  if (creatorIds.length !== picked.length) {
+    return {
+      results: [],
+      error: "Some picked channels aren't linked to a creator yet — run /link in their channel first.",
+    };
+  }
   if (!scriptIds.length || !creatorIds.length) {
     return { results: [], error: "Pick at least one script and one creator." };
   }

@@ -3,16 +3,10 @@
 import { useState, useTransition } from "react";
 import { CreatorPicker } from "./creator-picker";
 import { sendScripts, sendScriptsTest, type SendReport } from "./send-actions";
+import type { SendTarget } from "@/lib/send-targets";
 
-/** One roster creator the bar can target. Creators without a linked Discord
- *  channel stay visible but un-pickable, so "why isn't X listed" never
- *  needs investigating — the answer is on screen. */
-export type SendTarget = {
-  creatorId: string;
-  handle: string;
-  niche: string | null;
-  hasChannel: boolean;
-};
+// Re-exported for the pages that already import the type from here.
+export type { SendTarget };
 
 /**
  * The sender: appears once scripts are selected, floats over the bottom of
@@ -42,7 +36,7 @@ export function SendBar({
   // A niche chip selects its sendable creators; clicking again clears them.
   const toggleNiche = (members: SendTarget[]) =>
     setPicked((prev) => {
-      const sendable = members.filter((m) => m.hasChannel).map((m) => m.creatorId);
+      const sendable = members.filter((m) => !m.blocker).map((m) => m.creatorId);
       const allIn = sendable.length > 0 && sendable.every((id) => prev.has(id));
       const next = new Set(prev);
       for (const id of sendable) (allIn ? next.delete(id) : next.add(id));

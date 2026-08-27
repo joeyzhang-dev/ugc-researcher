@@ -31,7 +31,7 @@ export function AnnounceBar({
     });
   const toggleNiche = (members: SendTarget[]) =>
     setPicked((prev) => {
-      const sendable = members.filter((m) => m.hasChannel).map((m) => m.creatorId);
+      const sendable = members.filter((m) => !m.blocker).map((m) => m.creatorId);
       const allIn = sendable.length > 0 && sendable.every((id) => prev.has(id));
       const next = new Set(prev);
       for (const id of sendable) (allIn ? next.delete(id) : next.add(id));

@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { discordConfigured, postChannelMessage } from "@/lib/discord";
 import type { SendReport } from "./send-actions";
+import { isChannelTarget } from "@/lib/send-targets";
 
 /** Discord's message cap is 2000; leave headroom for the 📣 and the mention. */
 const MAX_ANNOUNCEMENT_CHARS = 1800;
@@ -33,7 +34,15 @@ export async function sendAnnouncement(input: {
   if (message.length > MAX_ANNOUNCEMENT_CHARS) {
     return { results: [], error: `Announcements cap at ${MAX_ANNOUNCEMENT_CHARS} characters (this one is ${message.length}).` };
   }
-  const creatorIds = [...new Set(input.creatorIds)].filter(Boolean);
+  const picked = [...new Set(input.creatorIds)].filter(Boolean);
+  // Same guard as the script send: a bare channel is not a creator.
+  const creatorIds = picked.filter((id) => !isChannelTarget(id));
+  if (creatorIds.length !== picked.length) {
+    return {
+      results: [],
+      error: "Some picked channels aren't linked to a creator yet — run /link in their channel first.",
+    };
+  }
   if (!creatorIds.length) return { results: [], error: "Pick at least one creator." };
 
   const db = createAdminClient();

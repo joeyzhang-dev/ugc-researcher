@@ -4,6 +4,7 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react
 import type { VideoLift } from "@/lib/research";
 import { FormatTag, ResearchScoreChip, scoreBand, type ScoreBand } from "./research-score";
 import { formatCompact, formatDate } from "@/lib/format";
+import { RetentionStats, ViewCurve, type CurvePoint } from "./retention-view";
 
 /**
  * Detail-panel selection for the Research page — same tiny external-store
@@ -145,11 +146,18 @@ function fmtTimestamp(secs: number | null): string {
 }
 
 /** Right-hand panel for the selected research video: playable video, score,
- *  lift breakdown, counts, hashtags, transcript. Nothing until selection. */
+ *  lift breakdown, counts, retention, daily curve, hashtags, transcript.
+ *  Nothing until selection.
+ *
+ *  `curvesByVideo` is optional because only Launchpoint-tracked roster posts
+ *  have one — an outside creator we scrape has no daily history, and the
+ *  section simply does not render. */
 export function ResearchVideoPanel({
   segmentsByVideo,
+  curvesByVideo = {},
 }: {
   segmentsByVideo: Record<string, PanelSegment[]>;
+  curvesByVideo?: Record<string, CurvePoint[]>;
 }) {
   const row = useSelectedRow();
   if (!row) return null;
@@ -234,6 +242,23 @@ export function ResearchVideoPanel({
               <Stat label="Shares" value={formatCompact(v.share_count)} />
             </dl>
 
+            {/* First-party retention — only for Launchpoint-tracked posts. */}
+            <RetentionStats
+              input={{
+                avgWatchTimeMs: v.avg_watch_time_ms,
+                totalWatchTimeMs: v.total_watch_time_ms,
+                durationSeconds: v.duration_seconds,
+                skipRate: v.skip_rate,
+                reach: v.reach,
+                views: v.view_count,
+                saves: v.saves,
+                shares: v.share_count,
+                earningsUsd: v.earnings_usd,
+              }}
+            />
+
+            <ViewCurve points={curvesByVideo[v.id] ?? []} />
+
             {/* Lift breakdown */}
             <div className="rounded-xl bg-surface-muted p-3 ring-1 ring-hairline">
               <p className="mb-2 text-xs font-semibold text-neutral-700">Lift vs creator baseline</p>
@@ -313,3 +338,4 @@ export function ResearchVideoPanel({
 
 // Re-exported so existing import sites keep resolving from either module.
 export { FormatTag, ResearchScoreChip, scoreBand, type ScoreBand };
+export type { CurvePoint };

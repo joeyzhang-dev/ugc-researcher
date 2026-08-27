@@ -38,6 +38,10 @@ export interface ResearchCreator {
    *  `discord_user_id::text` in the query if the exact id ever matters here. */
   discord_user_id: number | null;
   discord_username: string | null;
+  /** Launchpoint contractor id (crt_...), stamped by the Launchpoint sync.
+   *  Shared across a person's platform rows — one contractor, one id, one row
+   *  here per platform+handle. */
+  launchpoint_creator_id: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -79,8 +83,65 @@ export interface ResearchVideo {
   /** Provenance of the AI category, e.g. "copilot-cli/claude-opus-4.8". */
   format_llm_model: string | null;
   format_categorized_at: string | null;
+  /* --- Launchpoint first-party metrics ------------------------------------
+     Filled by the Launchpoint sync, not by a scrape. These come from inside
+     the creator's own Instagram account, which is why they exist at all: no
+     public scrape can see reach, saves, watch time or skip rate. Null on
+     every outside-creator video and on anything not yet synced. */
+  launchpoint_post_id: string | null;
+  /** Launchpoint's concept name. Mostly the catch-all "Open-ended" — weak
+   *  corroboration for a script match, never a substitute for one. */
+  launchpoint_title: string | null;
+  /** Unique accounts reached. Always <= view_count, which counts replays. */
+  reach: number | null;
+  saves: number | null;
+  avg_watch_time_ms: number | null;
+  total_watch_time_ms: number | null;
+  /** Percent who skipped, 0-100. Lower is better. */
+  skip_rate: number | null;
+  earnings_usd: number | null;
+  paid: boolean | null;
+  /** Insights cursor — last first-party metrics pull. */
+  launchpoint_synced_at: string | null;
+  /** Daily-curve cursor. Deliberately separate from launchpoint_synced_at:
+   *  the two phases cost very different amounts and must be able to run at
+   *  different rates without either resetting the other's progress. */
+  launchpoint_history_synced_at: string | null;
   raw_metadata: unknown;
   created_at: string;
+  updated_at: string;
+}
+
+/** One daily snapshot of a post's metrics, mirrored from Launchpoint.
+ *  research_videos holds a single overwritten view_count; this is the curve. */
+export interface ResearchVideoDailyMetric {
+  id: string;
+  research_video_id: string;
+  /** YYYY-MM-DD, the calendar day Launchpoint stamped. */
+  date: string;
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  shares: number | null;
+  bookmarks: number | null;
+  /** Upstream's own day-over-day deltas. Stored rather than derived so a gap
+   *  in the series cannot turn into a fabricated jump. */
+  views_delta: number | null;
+  likes_delta: number | null;
+  comments_delta: number | null;
+  shares_delta: number | null;
+  bookmarks_delta: number | null;
+  created_at: string;
+}
+
+export type LaunchpointSyncPhase = "creators" | "posts" | "insights" | "history";
+
+/** Per-phase bookkeeping for the Launchpoint sync. */
+export interface ResearchLaunchpointSync {
+  phase: LaunchpointSyncPhase;
+  last_run_at: string | null;
+  last_status: "succeeded" | "partial" | "failed" | null;
+  last_detail: string | null;
   updated_at: string;
 }
 
@@ -168,6 +229,14 @@ export interface ResearchScriptAssignment {
   notes: string | null;
   assigned_at: string;
   posted_at: string | null;
+  /* --- send tracking (20260818001500_assignment_sends) --------------------
+     The assignment row IS the send record. `sent_at` is when the script
+     actually reached the creator, which is what post timing should be
+     measured against — `assigned_at` is only when the row was created and can
+     predate the send by days. */
+  discord_channel_id: string | null;
+  discord_message_id: string | null;
+  sent_at: string | null;
 }
 
 /* --- Discord (research_discord_*) ------------------------------------------

@@ -18,6 +18,7 @@ import { formatCompact, formatDate } from "@/lib/format";
 import { parseDays, withinWindow, RangePicker } from "@/components/range-picker";
 import { Thumb } from "@/components/hover-video";
 import { ResearchVideoTile } from "@/components/research-video-tile";
+import { loadViewCurves, videoSelect } from "@/lib/video-metrics";
 import {
   FormatTag,
   ResearchScoreChip,
@@ -58,6 +59,13 @@ export default async function ResearchCreatorPage({
   const days = parseDays(daysParam);
   const isGrid = view === "grid";
   const supabase = await createClient();
+  // Falls back to the base column list when the Launchpoint migration has
+  // not been applied yet, so a lagging schema hides chips instead of 400ing
+  // the whole page.
+  const VIDEO_SELECT = await videoSelect(
+    supabase,
+    "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category, format_llm_status, format_llm_reasoning, format_llm_model, format_categorized_at, error_message"
+  );
 
   const hrefWith = (overrides: {
     format?: string | null;
@@ -81,7 +89,7 @@ export default async function ResearchCreatorPage({
     supabase
       .from("research_videos")
       .select(
-        "id, research_creator_id, url, shortcode, caption, hashtags, posted_at, view_count, like_count, comment_count, share_count, thumbnail_url, video_url, transcript_status, transcript_method, transcript_text, format_category, format_llm_status, format_llm_reasoning, format_llm_model, format_categorized_at, error_message"
+        VIDEO_SELECT
       )
       .eq("research_creator_id", id),
   ]);
@@ -90,7 +98,12 @@ export default async function ResearchCreatorPage({
 
   // Recency filter: every metric below (lift, KPIs, format rollup, list) is
   // computed on just the videos posted within the selected window.
-  const videos = withinWindow((videosData ?? []) as ResearchVideo[], days);
+  // Through `unknown`: the select list is built at runtime (the Launchpoint
+  // columns are only named when the schema has them), so supabase-js cannot
+  // infer a row type from it. The rows are ResearchVideo either way — the
+  // Launchpoint fields are simply absent before the migration, and every
+  // reader already treats them as nullable.
+  const videos = withinWindow((videosData ?? []) as unknown as ResearchVideo[], days);
 
   // Timestamped transcript lines for the panel (WhisperX segments).
   const { data: segmentsData } = await supabase
@@ -106,6 +119,7 @@ export default async function ResearchCreatorPage({
       text: s.text,
     });
   }
+  const curvesByVideo = await loadViewCurves(supabase, videos.map((v) => v.id));
   const summary = summarizeCreator(videos);
   const transcribed = videos.filter((v) => v.transcript_status === "transcribed").length;
   const failedTranscripts = videos.filter((v) => v.transcript_status === "failed").length;
@@ -503,7 +517,7 @@ export default async function ResearchCreatorPage({
       </Card>
       </div>
 
-      <ResearchVideoPanel segmentsByVideo={segmentsByVideo} />
+      <ResearchVideoPanel segmentsByVideo={segmentsByVideo} curvesByVideo={curvesByVideo} />
       </div>
     </>
   );
