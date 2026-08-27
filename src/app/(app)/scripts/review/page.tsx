@@ -123,10 +123,31 @@ export default async function MatchReviewPage({
 
 type Item = {
   match: { assignmentId: string; score: number; runnerUp: number };
-  script: { id: string; hook: string | null; title: string };
+  script: { id: string; hook: string | null; body: string | null; title: string };
   creator?: { handle: string; avatar_url?: string | null };
   candidates: { video: ResearchVideo; score: number }[];
 };
+
+/** The judging is a read: does this transcript say that script? Both sides
+ *  fold out in place, because sending the reviewer to two other pages to
+ *  answer a yes/no question is how a 147-deep queue got here. */
+function FoldedText({ summary, text }: { summary: string; text: string }) {
+  return (
+    <details className="group/fold">
+      <summary className="cursor-pointer select-none text-[11px] font-medium text-neutral-400 transition-colors hover:text-neutral-900">
+        {summary}
+      </summary>
+      <p className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-surface-sunken p-2 text-[11px] leading-relaxed text-neutral-600 ring-1 ring-hairline">
+        {text}
+      </p>
+    </details>
+  );
+}
+
+const shortDate = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : "no date";
 
 function Section({
   title,
@@ -160,6 +181,12 @@ function Section({
               >
                 {i.script.hook || i.script.title}
               </Link>
+              <div className="mt-1.5">
+                <FoldedText
+                  summary="Read the script"
+                  text={[i.script.hook, i.script.body].filter(Boolean).join("\n\n") || "(empty)"}
+                />
+              </div>
 
               <div className="mt-2.5 grid gap-x-2 [grid-template-columns:repeat(auto-fill,minmax(110px,1fr))]">
                 {i.candidates.map((c) => {
@@ -185,6 +212,12 @@ function Section({
                           </button>
                         </form>
                       </span>
+                      <div className="px-1 pb-1">
+                        <FoldedText
+                          summary={`Transcript · ${shortDate(c.video.posted_at)}`}
+                          text={c.video.transcript_text ?? "(no transcript)"}
+                        />
+                      </div>
                     </div>
                   );
                 })}
