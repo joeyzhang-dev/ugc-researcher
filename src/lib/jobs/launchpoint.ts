@@ -20,8 +20,11 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Platform } from "@/lib/types";
+import { creatorNameFromChannel } from "@/lib/discord-channels";
 import {
   fetchAllAccounts,
+  fetchAllContractors,
+  nameKey,
   pickPrimaryAccount,
   profileUrl,
   fetchAllPosts,
@@ -111,7 +114,7 @@ const CREATE_PLATFORMS: readonly Platform[] = ["instagram"];
  */
 const isUsableHandle = (handle: string) => handle.length > 0 && !/^\d+$/.test(handle);
 
-type Phase = "creators" | "posts" | "insights" | "history" | "socials";
+type Phase = "creators" | "posts" | "insights" | "history" | "socials" | "discord";
 
 interface Budget {
   startedAt: number;
@@ -255,17 +258,26 @@ export async function syncLaunchpointCreators(
     handle: string;
     platform: string;
     kind: string;
+    display_name: string | null;
     launchpoint_creator_id: string | null;
   };
   const existing = await readAllRows<CreatorRow>(
     admin,
     "research_creators",
-    "id, handle, platform, kind, launchpoint_creator_id"
+    "id, handle, platform, kind, display_name, launchpoint_creator_id"
   );
 
   const byKey = new Map<string, CreatorRow>();
   const byContractor = new Map<string, CreatorRow[]>();
+  // Real name -> our rows. This is what catches a handle rename on a creator
+  // who never had a contractor id to compare against — the case that let
+  // Noah-andre Terry end up as two rows (@dresdistrict and
+  // @morrismotivatesyou) with his Discord channel still pointing at the old
+  // one. Contractor-id matching alone cannot see it.
+  const byDisplayName = new Map<string, CreatorRow[]>();
   for (const row of existing) {
+    const nameK = nameKey(row.display_name);
+    if (nameK) byDisplayName.set(nameK, [...(byDisplayName.get(nameK) ?? []), row]);
     byKey.set(`${row.platform}:${row.handle.toLowerCase().replace(/^@/, "")}`, row);
     if (row.launchpoint_creator_id) {
       const list = byContractor.get(row.launchpoint_creator_id) ?? [];
@@ -317,6 +329,21 @@ export async function syncLaunchpointCreators(
       result.possibleRenames.push({
         launchpointHandle: account.handle,
         existingHandle: sameContractor[0].handle,
+        contractorId: account.contractorId,
+      });
+      continue;
+    }
+    // Second, weaker signal: we already hold a row for someone with this
+    // person's real name under a different handle. Still only reported —
+    // two creators can share a name — but reported is the whole point, since
+    // creating the row silently is what produces a split identity.
+    const sameName = (byDisplayName.get(nameKey(account.contractorName)) ?? []).filter(
+      (r) => r.platform === platform && !r.launchpoint_creator_id
+    );
+    if (sameName.length > 0) {
+      result.possibleRenames.push({
+        launchpointHandle: account.handle,
+        existingHandle: sameName[0].handle,
         contractorId: account.contractorId,
       });
       continue;
@@ -450,6 +477,125 @@ export async function syncLaunchpointSocials(
     "socials",
     "succeeded",
     `${result.written} social links, ${result.unmatched} contractors not on the roster`
+  );
+  return result;
+}
+
+// ===========================================================================
+// Phase 1c — Discord channel links
+// ===========================================================================
+
+export interface DiscordLinkResult {
+  linked: number;
+  /** Channels whose name matches more than one contractor, or a contractor we
+   *  hold no creator row for. Reported, never guessed at. */
+  ambiguous: { channel: string; reason: string }[];
+  /** Channels Launchpoint has never heard of — archived, junk, or a creator
+   *  who was never put under contract. */
+  unknown: string[];
+}
+
+/**
+ * Decide which contractor a Discord channel belongs to.
+ *
+ * Exact, unique, normalized-name match only. A channel whose derived name hits
+ * two contractors is returned as ambiguous rather than linked: the cost of a
+ * wrong link is one creator's posts, scripts and payouts attributed to another
+ * person, which is far worse than a channel staying unlinked for a day.
+ *
+ * Pure, so the matching rule can be tested without Discord or Launchpoint.
+ */
+export function matchChannelToContractor(
+  channelName: string,
+  contractors: { contractorId: string; name: string; key: string }[]
+): { contractorId: string } | { ambiguous: string } | null {
+  const key = nameKey(creatorNameFromChannel(channelName));
+  if (!key) return null;
+  const hits = contractors.filter((c) => c.key === key);
+  if (hits.length === 1) return { contractorId: hits[0].contractorId };
+  if (hits.length > 1) {
+    return { ambiguous: `matches ${hits.length} contractors: ${hits.map((h) => h.name).join(", ")}` };
+  }
+  return null;
+}
+
+/**
+ * Link tracked Discord channels to creators using Launchpoint as the registry.
+ *
+ * Replaces hand-maintenance, it does not fight it: the pull worker's `discover`
+ * explicitly preserves any link already in the database ("a human link must
+ * survive re-discovery"), so whatever this writes is respected on the next
+ * 15-minute pass rather than overwritten.
+ *
+ * Only ever fills a blank. An existing link — set here, by /link, or by hand in
+ * the UI — is never rewritten, because a person who corrected a bad match
+ * should not have to correct it again every hour.
+ */
+export async function syncLaunchpointDiscordLinks(
+  admin: SupabaseClient,
+  accounts?: LaunchpointAccount[]
+): Promise<DiscordLinkResult> {
+  const contractors = await fetchAllContractors(accounts);
+  const result: DiscordLinkResult = { linked: 0, ambiguous: [], unknown: [] };
+
+  const channels = await readAllRows<{
+    channel_id: string;
+    channel_name: string;
+    research_creator_id: string | null;
+    niche: string | null;
+  }>(admin, "research_discord_channels", "channel_id, channel_name, research_creator_id, niche");
+
+  const creators = await readAllRows<{
+    id: string;
+    platform: string;
+    launchpoint_creator_id: string | null;
+  }>(admin, "research_creators", "id, platform, launchpoint_creator_id", [
+    { kind: "notNull", column: "launchpoint_creator_id" },
+  ]);
+  // Instagram row wins: it is the one the whole app is keyed on.
+  const creatorByContractor = new Map<string, string>();
+  for (const c of creators) {
+    const key = c.launchpoint_creator_id as string;
+    if (c.platform === "instagram" || !creatorByContractor.has(key)) {
+      creatorByContractor.set(key, c.id);
+    }
+  }
+
+  for (const channel of channels) {
+    // A niche is what distinguishes a creator channel from a coach or dormant
+    // one — same discriminator the send picker uses.
+    if (channel.research_creator_id || !channel.niche) continue;
+
+    const match = matchChannelToContractor(channel.channel_name, contractors);
+    if (match === null) {
+      result.unknown.push(channel.channel_name);
+      continue;
+    }
+    if ("ambiguous" in match) {
+      result.ambiguous.push({ channel: channel.channel_name, reason: match.ambiguous });
+      continue;
+    }
+    const creatorId = creatorByContractor.get(match.contractorId);
+    if (!creatorId) {
+      result.ambiguous.push({
+        channel: channel.channel_name,
+        reason: "known to Launchpoint but no creator row yet — they have not linked an account",
+      });
+      continue;
+    }
+    const { error } = await admin
+      .from("research_discord_channels")
+      .update({ research_creator_id: creatorId })
+      .eq("channel_id", channel.channel_id);
+    if (error) throw new Error(`linking ${channel.channel_name}: ${error.message}`);
+    result.linked++;
+  }
+
+  await recordSync(
+    admin,
+    "discord",
+    "succeeded",
+    `${result.linked} channels linked, ${result.ambiguous.length} ambiguous, ${result.unknown.length} unknown to Launchpoint`
   );
   return result;
 }
@@ -797,6 +943,7 @@ export interface LaunchpointSyncResult {
   skipped?: string;
   creators?: CreatorSyncResult;
   socials?: SocialSyncResult;
+  discord?: DiscordLinkResult;
   posts?: PostSyncResult;
   insights?: DrainResult;
   history?: DrainResult;
@@ -827,9 +974,10 @@ export async function syncLaunchpoint(
   const accounts = await fetchAllAccounts();
   const creators = await syncLaunchpointCreators(admin, accounts);
   const socials = await syncLaunchpointSocials(admin, accounts);
+  const discord = await syncLaunchpointDiscordLinks(admin, accounts);
   const posts = await syncLaunchpointPosts(admin);
   if (opts.metadataOnly) {
-    return { creators, socials, posts, remaining: await countDue(admin) };
+    return { creators, socials, discord, posts, remaining: await countDue(admin) };
   }
 
   const left = () => Math.max(0, budgetMs - (Date.now() - startedAt));
@@ -841,6 +989,7 @@ export async function syncLaunchpoint(
   return {
     creators,
     socials,
+    discord,
     posts,
     insights,
     history,

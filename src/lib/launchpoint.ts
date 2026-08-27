@@ -459,6 +459,34 @@ export function profileUrl(platform: Platform, handle: string): string {
     : `https://www.tiktok.com/@${handle}`;
 }
 
+/**
+ * Everyone Launchpoint knows by name, with their contractor id.
+ *
+ * Merged from two endpoints on purpose. `/analytics/accounts` only covers
+ * creators who have linked a social account, which excludes exactly the people
+ * this is most useful for — someone onboarded but not yet posting.
+ * `/pay-structures` covers anyone under contract, posting or not. Jacob Libiran
+ * and Jarrod Feld exist only in the second.
+ */
+export interface LaunchpointContractor {
+  contractorId: string;
+  name: string;
+  /** Comparison key: lowercase letters only, so "Jas Alcantara",
+   *  "jas-alcantara" and "JasAlcantara" all collapse together. */
+  key: string;
+}
+
+/** Normalize a person's name for comparison. Strips accents and every
+ *  non-letter, which is what makes a Discord channel slug comparable to a
+ *  human-typed full name. */
+export function nameKey(value: string | null | undefined): string {
+  return (value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+}
+
 /** Launchpoint tracks five platforms; we model two. Anything else is skipped
  *  rather than coerced, so a YouTube post never lands on an Instagram row. */
 export function toPlatform(launchpointPlatform: string): Platform | null {
@@ -503,6 +531,32 @@ export async function fetchAllPosts(): Promise<LaunchpointPost[]> {
 /** Every tracked social account — the handle → contractor identity map. */
 export async function fetchAllAccounts(): Promise<LaunchpointAccount[]> {
   return fetchAllPages("/analytics/accounts", normalizeAccount, 100);
+}
+
+interface PayStructureRow {
+  creatorId?: unknown;
+  creatorName?: unknown;
+}
+
+/** Every contractor Launchpoint can name, deduped by id. */
+export async function fetchAllContractors(
+  accounts?: LaunchpointAccount[]
+): Promise<LaunchpointContractor[]> {
+  const [accts, pays] = await Promise.all([
+    accounts ? Promise.resolve(accounts) : fetchAllAccounts(),
+    fetchAllPages<PayStructureRow>("/pay-structures", (raw) => raw as PayStructureRow, 100),
+  ]);
+
+  const byId = new Map<string, LaunchpointContractor>();
+  const add = (id: string | null, name: string | null) => {
+    if (!id || !name) return;
+    const key = nameKey(name);
+    if (!key || byId.has(id)) return;
+    byId.set(id, { contractorId: id, name, key });
+  };
+  for (const a of accts) add(a.contractorId, a.contractorName);
+  for (const p of pays) add(str(p.creatorId), str(p.creatorName));
+  return [...byId.values()];
 }
 
 export async function fetchPostInsights(postId: string): Promise<LaunchpointInsights> {

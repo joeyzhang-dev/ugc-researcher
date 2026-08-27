@@ -5,13 +5,14 @@ import {
   normalizeHistory,
   normalizeInsights,
   normalizePost,
+  nameKey,
   pickPrimaryAccount,
   profileUrl,
   shortcodeFromUrl,
   toPlatform,
   type LaunchpointAccount,
 } from "@/lib/launchpoint";
-import { withinTranscribeWindow } from "@/lib/jobs/launchpoint";
+import { matchChannelToContractor, withinTranscribeWindow } from "@/lib/jobs/launchpoint";
 
 describe("shortcodeFromUrl", () => {
   // The entire Launchpoint ↔ research_videos join rests on this function.
@@ -288,5 +289,50 @@ describe("withinTranscribeWindow", () => {
   it("treats a missing or unparseable date as out of window", () => {
     expect(withinTranscribeWindow(null, NOW)).toBe(false);
     expect(withinTranscribeWindow("not a date", NOW)).toBe(false);
+  });
+});
+
+describe("matchChannelToContractor", () => {
+  const c = (name: string, id: string) => ({ contractorId: id, name, key: nameKey(name) });
+  const roster = [c("Jas Alcantara", "crt_jas"), c("Jacob Libiran", "crt_jacob")];
+
+  // The whole point: a channel is named <track-emoji><first>-<last>, which is
+  // Launchpoint's contractorName. That equivalence is what lets the link be
+  // computed instead of hand-typed into VERIFIED_HANDLES.
+  it("matches an emoji-prefixed channel to its contractor", () => {
+    expect(matchChannelToContractor("✝️jas-alcantara", roster)).toEqual({ contractorId: "crt_jas" });
+    expect(matchChannelToContractor("🌱jacob-libiran", roster)).toEqual({ contractorId: "crt_jacob" });
+  });
+
+  it("handles the legacy coaching- prefix", () => {
+    expect(matchChannelToContractor("coaching-jas-alcantara", roster)).toEqual({
+      contractorId: "crt_jas",
+    });
+  });
+
+  // A wrong link attributes one creator's posts, scripts and payouts to another
+  // person. Staying unlinked for a day is the cheaper failure by far.
+  it("refuses to guess when two contractors share a name", () => {
+    const twins = [c("Anna Florek", "crt_a"), c("Anna Florek", "crt_b")];
+    const out = matchChannelToContractor("🤍anna-florek", twins);
+    expect(out).toHaveProperty("ambiguous");
+  });
+
+  it("returns null for a channel Launchpoint has never heard of", () => {
+    expect(matchChannelToContractor("🌱tittywiggles", roster)).toBeNull();
+    expect(matchChannelToContractor("🌱archived-terai", roster)).toBeNull();
+  });
+});
+
+describe("nameKey", () => {
+  it("collapses punctuation, case and accents so slugs compare to real names", () => {
+    expect(nameKey("Jas Alcantara")).toBe("jasalcantara");
+    expect(nameKey("jas-alcantara")).toBe("jasalcantara");
+    expect(nameKey("Anastasiía  Krasnopérova")).toBe(nameKey("anastasiia-krasnoperova"));
+  });
+
+  it("is empty for nothing usable", () => {
+    expect(nameKey(null)).toBe("");
+    expect(nameKey("🌱")).toBe("");
   });
 });
