@@ -26,17 +26,17 @@ import {
   Avatar, AvatarStack, Card, DiscordIcon, EmptyState, PageHeader, PlatformIcon, StatusBadge,
   inputClass, labelClass, secondaryButtonClass, tableWrap,
 } from "@/components/ui";
-import { formatCompact, formatDate } from "@/lib/format";
+import { formatCompact, formatDate, formatUsd } from "@/lib/format";
 import { parseDays, RangePicker } from "@/components/range-picker";
 import { compareValues, parseSort, SortHeader, type SortDir } from "@/components/sort-header";
 import { ScrapeAllButton } from "@/components/scrape-all-button";
 
-const SORT_KEYS = ["creator", "last7", "avg", "views", "eng"] as const;
+const SORT_KEYS = ["creator", "last7", "avg", "views", "eng", "cpm"] as const;
 type SortKey = (typeof SORT_KEYS)[number];
 
 /** Shared column recipe for the roster grid — header and rows must agree. */
 const GRID =
-  "grid grid-cols-[minmax(230px,1.5fr)_250px_minmax(110px,0.8fr)_minmax(110px,0.8fr)_minmax(110px,0.8fr)] items-center gap-x-3";
+  "grid grid-cols-[minmax(230px,1.5fr)_250px_minmax(110px,0.8fr)_minmax(110px,0.8fr)_minmax(110px,0.8fr)_minmax(120px,0.8fr)] items-center gap-x-3";
 
 /** Sentinel app id for roster creators that belong to no app yet. Not a real
  *  app row — it only exists to give them a band to render in. */
@@ -97,8 +97,7 @@ export default async function OurCreatorsPage({
     supabase.from("research_creators").select("*").eq("kind", "roster"),
     supabase
       .from("research_launchpoint_accounts")
-      .select("contractor_id, platform, last_post_at")
-      .not("last_post_at", "is", null),
+      .select("contractor_id, platform, last_post_at, total_views, total_earnings, paid_posts"),
   ]);
   const apps = (appsData ?? []) as ResearchApp[];
   const campaigns = (campaignsData ?? []) as ResearchCampaign[];
@@ -134,15 +133,30 @@ export default async function OurCreatorsPage({
   // is what makes "last post" honest for creators who post on TikTok — those
   // posts are never ingested as videos, so the day strip can't see them.
   const lpLastByContractor = new Map<string, { at: string; platform: string }>();
+  // What Launchpoint has paid each person, summed over every account they hold
+  // (IG + TikTok). CPM is recomputed from the sums rather than averaging the
+  // per-account `cpm` Launchpoint reports: a ratio of ratios would let a
+  // one-post TikTok account weigh as much as a 27-post Instagram one.
+  const lpPayByContractor = new Map<string, { earnings: number; views: number; paidPosts: number }>();
   for (const a of (lpAccountsData ?? []) as {
     contractor_id: string;
     platform: string;
-    last_post_at: string;
+    last_post_at: string | null;
+    total_views: number | null;
+    total_earnings: number | null;
+    paid_posts: number | null;
   }[]) {
-    const prev = lpLastByContractor.get(a.contractor_id);
-    if (!prev || a.last_post_at > prev.at) {
-      lpLastByContractor.set(a.contractor_id, { at: a.last_post_at, platform: a.platform });
+    if (a.last_post_at) {
+      const prev = lpLastByContractor.get(a.contractor_id);
+      if (!prev || a.last_post_at > prev.at) {
+        lpLastByContractor.set(a.contractor_id, { at: a.last_post_at, platform: a.platform });
+      }
     }
+    const pay = lpPayByContractor.get(a.contractor_id) ?? { earnings: 0, views: 0, paidPosts: 0 };
+    pay.earnings += a.total_earnings ?? 0;
+    pay.views += a.total_views ?? 0;
+    pay.paidPosts += a.paid_posts ?? 0;
+    lpPayByContractor.set(a.contractor_id, pay);
   }
   const videosByCreator = new Map<string, ResearchVideo[]>();
   for (const v of videos) {
@@ -194,7 +208,18 @@ export default async function OurCreatorsPage({
       const lpLast = c.launchpoint_creator_id
         ? (lpLastByContractor.get(c.launchpoint_creator_id) ?? null)
         : null;
-      return { m, c, app, stats, videoCount: creatorVideos.length, joined, available, lpLast };
+      const lpPay = c.launchpoint_creator_id
+        ? (lpPayByContractor.get(c.launchpoint_creator_id) ?? null)
+        : null;
+      // Null until money has actually been paid — $0 earnings is "not paid
+      // yet", which must not render (or sort) as a free creator.
+      const cpm =
+        lpPay && lpPay.earnings > 0 && lpPay.views > 0
+          ? (lpPay.earnings * 1000) / lpPay.views
+          : null;
+      return {
+        m, c, app, stats, videoCount: creatorVideos.length, joined, available, lpLast, lpPay, cpm,
+      };
     })
     .sort((a, b) => {
       const value = (r: (typeof rows)[number]): string | number | null => {
@@ -203,6 +228,7 @@ export default async function OurCreatorsPage({
           case "avg": return r.stats.avgViews;
           case "views": return r.stats.views;
           case "eng": return r.stats.engPct;
+          case "cpm": return r.cpm;
           default: return r.c.handle;
         }
       };
@@ -330,7 +356,7 @@ export default async function OurCreatorsPage({
             <EmptyState message="No roster creators yet — add one above (pick the app they promote and tag their niche)." />
           ) : (
             <div className={tableWrap}>
-              <div className="min-w-[880px]">
+              <div className="min-w-[1000px]">
                 {/* Grid, not <table> — each row is a <details> so the metrics
                     stay a calm five columns and everything operational (niche,
                     campaigns, scrape state) folds underneath the disclosure. */}
@@ -342,6 +368,7 @@ export default async function OurCreatorsPage({
                       ["Avg views", "avg", "desc", "text-right"],
                       ["Views", "views", "desc", "text-right"],
                       ["Eng %", "eng", "desc", "text-right"],
+                      ["CPM", "cpm", "desc", "text-right"],
                     ] as const
                   ).map(([label, key, first, align]) => (
                     <SortHeader
@@ -388,7 +415,7 @@ export default async function OurCreatorsPage({
                             )}
                           </div>
                         )}
-                        {group.groupRows.map(({ m, c, stats, videoCount, joined, available, lpLast }) => (
+                        {group.groupRows.map(({ m, c, stats, videoCount, joined, available, lpLast, lpPay, cpm }) => (
                           <details key={m.id} className="group/row">
                             <summary
                               className={`${GRID} cursor-pointer select-none list-none py-3 pr-1 transition-colors hover:bg-neutral-900/[0.03] [&::-webkit-details-marker]:hidden`}
@@ -448,6 +475,21 @@ export default async function OurCreatorsPage({
                                 all={`${stats.allEngPct != null ? `${stats.allEngPct.toFixed(1)}%` : "—"} all-time`}
                                 windowed={days != null}
                               />
+                              {/* Launchpoint's money, not ours: what was paid per 1k
+                                  views across every account this person holds. Not
+                                  windowed — payouts are all-time by nature. */}
+                              <span className="text-right">
+                                <span className="block text-[15px] font-semibold tracking-[-0.01em] tabular-nums text-neutral-900">
+                                  {cpm != null ? `${formatUsd(cpm)}` : "—"}
+                                </span>
+                                <span className="mt-0.5 block text-[11px] leading-tight tabular-nums text-neutral-400">
+                                  {lpPay && lpPay.earnings > 0
+                                    ? `${formatUsd(lpPay.earnings)} · ${lpPay.paidPosts} paid`
+                                    : lpPay
+                                      ? "not paid yet"
+                                      : "no Launchpoint"}
+                                </span>
+                              </span>
                             </summary>
 
                             {/* Fold-out: the operational half of the old table. */}
@@ -457,6 +499,14 @@ export default async function OurCreatorsPage({
                                 <RowFact label="Followers" value={formatCompact(c.follower_count)} />
                                 <RowFact label="Videos" value={String(videoCount)} />
                                 <RowFact label="Last scraped" value={formatDate(c.last_scraped_at)} />
+                                <RowFact
+                                  label="Earned"
+                                  value={
+                                    lpPay && lpPay.earnings > 0
+                                      ? `${formatUsd(lpPay.earnings)} · ${formatCompact(lpPay.views)} LP views`
+                                      : "—"
+                                  }
+                                />
                                 <RowFact
                                   label="Last post"
                                   value={
