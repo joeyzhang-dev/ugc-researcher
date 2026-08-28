@@ -67,7 +67,7 @@ export default async function LoginPage({
                   type="email"
                   required
                   autoComplete="email"
-                  placeholder="you@trace.co"
+                  placeholder="you@nozomio.com"
                   className={inputClass}
                 />
               </div>

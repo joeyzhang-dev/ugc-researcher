@@ -1,6 +1,7 @@
 # ugc-researcher — agent guide
 
-Standalone research pool (extracted from `trace-ugc-tracker` 2026-07-23). Study
+Standalone research pool (split out of the `trace-ugc-tracker` repo
+2026-07-23). Study
 outside UGC creators: Scrape Creators profile scrapes → view-lift math → format buckets →
 local transcription. **Localhost-only** — Joey runs `npm run dev` for his own
 use. Do not add deploy/CI/Vercel infrastructure unless asked.
@@ -21,10 +22,11 @@ Stack: Next.js 15 (App Router, server components + server actions) + Supabase
 ## Ground rules
 
 - Secrets are in `.env.local` — source them, never print values.
-- Shared Supabase project with `trace-ugc-tracker`. New migrations go in
-  `supabase/migrations/` with **timestamp versions** (`YYYYMMDDHHMMSS_name.sql`)
-  and are applied with `node scripts/apply-migration.mjs <file>` — short numeric
-  versions collide with the tracker's sequence. Never run destructive SQL.
+- Its own Supabase project (`bludgc-research`) since 2026-08-26 — no longer
+  shared. New migrations go in `supabase/migrations/` with **timestamp
+  versions** (`YYYYMMDDHHMMSS_name.sql`) and are applied with
+  `node scripts/apply-migration.mjs <file>`. Keep the timestamp rule: the two
+  repos still share migration filenames on disk. Never run destructive SQL.
 - DB access from scripts/agents: **PostgREST**, not hand-assembled SQL.
   `{NEXT_PUBLIC_SUPABASE_URL}/rest/v1/<table>`, headers `apikey` +
   `Authorization: Bearer {SUPABASE_SERVICE_ROLE_KEY}` (service role bypasses

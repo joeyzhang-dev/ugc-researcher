@@ -9,7 +9,7 @@ import { parseCreatorInput } from "@/lib/creator-input";
 
 const fail = (m: string): never => redirect(`/creators?error=${encodeURIComponent(m)}`);
 
-/** Add an app (a product we promote — Trace, future apps). */
+/** Add an app (a product we promote — Folk, future apps). */
 export async function createApp(formData: FormData) {
   await requireAdmin();
   const name = String(formData.get("name") ?? "").trim();

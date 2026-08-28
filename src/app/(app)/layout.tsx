@@ -23,7 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </span>
             <h1 className="text-lg font-semibold tracking-[-0.01em] text-neutral-900">No staff access</h1>
             <p className="mt-1 text-sm text-neutral-500">
-              This account isn&apos;t a Trace team member.
+              This account isn&apos;t a Nozomio team member.
             </p>
             <form action={signOut} className="mt-5">
               <button className="inline-flex w-full items-center justify-center rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-ambient transition hover:bg-neutral-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas">

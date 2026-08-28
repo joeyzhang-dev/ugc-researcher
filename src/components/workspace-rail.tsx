@@ -92,7 +92,7 @@ export function WorkspaceRail({
               <span className="block truncate text-[12px] font-medium text-neutral-800">
                 {email ?? "Signed in"}
               </span>
-              <span className="block text-[11px] text-neutral-400">Trace team</span>
+              <span className="block text-[11px] text-neutral-400">Nozomio team</span>
             </span>
           </div>
 
