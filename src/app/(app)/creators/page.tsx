@@ -704,7 +704,7 @@ function AppsCampaignsCard({
               <form action={createApp} className="flex items-end gap-2">
                 <label className="flex-1">
                   <span className={labelClass}>New app</span>
-                  <input name="name" placeholder="e.g. Trace" className={inputClass} required />
+                  <input name="name" placeholder="e.g. Folk" className={inputClass} required />
                 </label>
                 <SubmitButton pendingLabel="Adding…">Add</SubmitButton>
               </form>

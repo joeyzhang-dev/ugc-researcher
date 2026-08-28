@@ -5,6 +5,7 @@ import type { ResearchApp } from "@/lib/types";
 import { signOut } from "@/app/login/actions";
 import { AppNav, RAIL_GLYPH, RAIL_LABEL, RAIL_ROW } from "./app-nav";
 import { WorkspaceSwitch } from "./workspace-switcher";
+import { BrandMark, brandChipClass } from "./brand-mark";
 
 /* One rail, one axis each. This is the single most visible surface in the app,
    and it used to carry three overlapping navigations (a workspace rail, a
@@ -55,8 +56,8 @@ export function WorkspaceRail({
           className="group/row relative flex w-full items-center gap-3 rounded-xl px-[14px] py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
         >
           <span className={RAIL_GLYPH}>
-            <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-neutral-950 text-sm font-bold text-white shadow-ambient inset-shadow-highlight">
-              B
+            <span className={`${brandChipClass} h-9 w-9 rounded-[11px]`}>
+              <BrandMark size={30} />
             </span>
           </span>
           <span className={`${RAIL_LABEL} leading-tight`}>
@@ -92,7 +93,7 @@ export function WorkspaceRail({
               <span className="block truncate text-[12px] font-medium text-neutral-800">
                 {email ?? "Signed in"}
               </span>
-              <span className="block text-[11px] text-neutral-400">Trace team</span>
+              <span className="block text-[11px] text-neutral-400">Nozomio team</span>
             </span>
           </div>
 

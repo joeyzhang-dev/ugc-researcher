@@ -193,7 +193,7 @@ export interface ResearchVideoSegment {
   text: string;
 }
 
-/** A product being promoted (Trace today; more apps later). */
+/** A product being promoted (Folk today; more apps later). */
 export interface ResearchApp {
   id: string;
   name: string;

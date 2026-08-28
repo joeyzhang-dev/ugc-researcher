@@ -1,6 +1,8 @@
 /* Creator-channel display names, mirroring derive_creator_name in
    worker/discord_pull_worker.py. The live convention is emoji-only
-   (``✝️jas`` — the track emoji carries the niche, the rest is the creator);
+   (``✝️jas-alcantara`` — the track emoji carries the niche, the rest is the
+   creator's Launchpoint first-last; the bare ``✝️jas`` form predates
+   2026-08-26 and reduces the same way);
    the 2026-08-19 interim form put a niche word in between
    (``✝️christian-jas``) and legacy channels used ``coaching-<name>``. All
    three reduce to the bare creator name; anything else passes through. */

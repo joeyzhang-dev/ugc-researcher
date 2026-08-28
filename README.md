@@ -1,7 +1,7 @@
-# Trace Research
+# Nozomio Research
 
-Standalone research pool, extracted from `trace-ugc-tracker` on 2026-07-23 so it
-can evolve as a dedicated project. Study outside creators (not campaign
+Standalone research pool, split out of the `trace-ugc-tracker` repo on
+2026-07-23 so it can evolve as a dedicated project. Study outside creators (not campaign
 creators): scrape their reels via Scrape Creators, compute view lift, bucket formats, and
 transcribe the winners locally.
 
@@ -26,13 +26,16 @@ transcribe the winners locally.
 
 ## Database
 
-Points at the **same Supabase project as trace-ugc-tracker** — that's where the
-`research_creators`, `research_videos`, and `research_video_segments` tables
-and all scraped data already live. `supabase/migrations/0001_research.sql` is a
-copy of the tracker's migration 0027 for reference / a future dedicated
-database. Note the RLS policies depend on `public.is_staff()` /
-`public.is_admin()` and the `profiles` table from the tracker's earlier
-migrations, so a standalone database needs those first.
+Its **own Supabase project** (`bludgc-research`) since 2026-08-26. It used to
+share the `trace-ugc-tracker` repo's project; that ended when dashboard access
+to the shared one was lost, and the research tables were forked out.
+
+A fresh database is bootstrapped by applying, in order:
+`00000000000000_standalone_bootstrap.sql` (which supplies `profiles`,
+`is_staff()`, `is_admin()` and `set_updated_at()` — the only four things the
+research schema ever borrowed), then `0001_research.sql`, then every
+`2026*.sql` in filename order. See CLAUDE.md for the full account of the fork,
+including what still lives on the old project.
 
 ## Setup
 

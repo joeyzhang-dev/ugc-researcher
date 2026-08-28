@@ -85,7 +85,7 @@ export async function resolveShareLink(url: string): Promise<string> {
       method: "GET",
       redirect: "follow",
       signal: controller.signal,
-      headers: { "user-agent": "Mozilla/5.0 (compatible; TraceBot/1.0)" },
+      headers: { "user-agent": "Mozilla/5.0 (compatible; NozomioBot/1.0)" },
     });
     return res.url || url; // res.url is the final URL after redirects
   } catch {

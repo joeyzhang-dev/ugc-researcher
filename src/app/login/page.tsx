@@ -1,4 +1,5 @@
-import { signIn } from "./actions";
+import { adminPasswordLoginEnabled, signIn, signInAsAdmin } from "./actions";
+import { BrandMark, brandChipClass } from "@/components/brand-mark";
 import { buttonClass, inputClass, labelClass } from "@/components/ui";
 
 export default async function LoginPage({
@@ -7,6 +8,9 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
+  // Rendered only when configured, so an unconfigured deployment never shows a
+  // control that cannot work.
+  const adminLogin = await adminPasswordLoginEnabled();
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas p-6">
@@ -35,8 +39,8 @@ export default async function LoginPage({
       <div className="relative w-full max-w-[400px] animate-fade-up">
         {/* Brand moment — the one screen that earns generous space + larger type. */}
         <div className="mb-8 flex flex-col items-center text-center">
-          <span className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-950 text-xl font-bold text-white shadow-ambient ring-1 ring-hairline inset-shadow-highlight">
-            B
+          <span className={`${brandChipClass} mb-5 h-14 w-14 rounded-2xl`}>
+            <BrandMark size={46} />
           </span>
           <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-neutral-900">
             bludgc
@@ -64,7 +68,7 @@ export default async function LoginPage({
                   type="email"
                   required
                   autoComplete="email"
-                  placeholder="you@trace.co"
+                  placeholder="you@nozomio.com"
                   className={inputClass}
                 />
               </div>
@@ -84,6 +88,41 @@ export default async function LoginPage({
                 Sign in
               </button>
             </form>
+
+            {adminLogin && (
+              <>
+                <div className="my-5 flex items-center gap-3" aria-hidden>
+                  <span className="h-px flex-1 bg-hairline" />
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+                    or
+                  </span>
+                  <span className="h-px flex-1 bg-hairline" />
+                </div>
+
+                <form action={signInAsAdmin} className="space-y-3">
+                  <div>
+                    <label htmlFor="adminPassword" className={labelClass}>
+                      Admin password
+                    </label>
+                    <input
+                      id="adminPassword"
+                      name="password"
+                      type="password"
+                      required
+                      autoComplete="off"
+                      placeholder="••••••••••••"
+                      className={inputClass}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="inline-flex w-full items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium text-neutral-700 ring-1 ring-inset ring-hairline transition hover:bg-neutral-900/[0.03] hover:text-neutral-900 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                  >
+                    Sign in as admin
+                  </button>
+                </form>
+              </>
+            )}
           </div>
         </div>
 
