@@ -45,8 +45,12 @@ function secretMatches(given: string, expected: string): boolean {
  * MFA gate all behave exactly as they do for a normal sign-in, because the
  * session is a normal session.
  *
- * The trade this makes, deliberately: one shared secret means no per-person
- * attribution. Whoever used it is recorded as ADMIN_LOGIN_EMAIL.
+ * Two trades, both deliberate: one shared secret means no per-person
+ * attribution (every use is recorded as ADMIN_LOGIN_EMAIL), and knowing the
+ * secret grants admin — the action promotes that account rather than assuming
+ * someone already did. That is the whole point of "the password is enough",
+ * but it does mean the password IS the admin credential, not a shortcut to
+ * one.
  */
 export async function signInAsAdmin(formData: FormData) {
   const password = String(formData.get("password") ?? "");
@@ -75,11 +79,32 @@ export async function signInAsAdmin(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.verifyOtp({
+  const { data: session, error } = await supabase.auth.verifyOtp({
     type: "magiclink",
     token_hash: link!.properties!.hashed_token,
   });
   if (error) fail(error.message);
+
+  /*
+   * Make the account staff.
+   *
+   * The point of this button is that the password ALONE is enough, so it must
+   * not depend on the profile row already being right. It frequently is not:
+   * `generateLink` creates the auth user when it is missing, and the
+   * on_auth_user_created trigger gives every new profile the default 'creator'
+   * role — which is not staff. Without this the button signs you in perfectly
+   * and then dead-ends on "No staff access", which is exactly what it did.
+   *
+   * Service role, because the session that just started is not admin yet and
+   * so cannot promote itself past the profiles RLS policy.
+   */
+  const userId = session?.user?.id;
+  if (userId) {
+    const { error: roleError } = await admin
+      .from("profiles")
+      .upsert({ id: userId, email, role: "admin" }, { onConflict: "id" });
+    if (roleError) fail(`Signed in, but could not grant admin: ${roleError.message}`);
+  }
 
   // A shared password must not skip a second factor the account has enrolled.
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
