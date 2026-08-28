@@ -56,9 +56,13 @@ export default async function PerformancePage({
   };
   const sortHref = (key: SortKey, dir: SortDir) => hrefWith({ sort: key, dir });
 
+  // "No coach" needs a real value in the URL — an empty string reads as
+  // "no filter", so the coachless group gets a sentinel.
+  const NO_COACH = "none";
+  const coachValue = (coach: string | null) => coach ?? NO_COACH;
   const coaches = report.groups.map((g) => g.coach);
   const groups = report.groups
-    .filter((g) => !coachParam || g.coach === coachParam)
+    .filter((g) => !coachParam || coachValue(g.coach) === coachParam)
     .map((g) => ({
       ...g,
       rows:
@@ -115,7 +119,7 @@ export default async function PerformancePage({
             All coaches
           </Link>
           {coaches.map((c) => (
-            <Link key={c ?? "none"} href={hrefWith({ coach: c ?? "" })} className={chip(coachParam === (c ?? ""))}>
+            <Link key={coachValue(c)} href={hrefWith({ coach: coachValue(c) })} className={chip(coachParam === coachValue(c))}>
               {c ?? "No coach"}
             </Link>
           ))}
