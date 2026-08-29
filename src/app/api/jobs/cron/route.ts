@@ -3,6 +3,7 @@ import { scrapeAll } from "@/lib/jobs/scrape-all";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchScriptPosts } from "@/lib/jobs/match-scripts";
 import { syncLaunchpoint } from "@/lib/jobs/launchpoint";
+import { isDigestHour, sendCoachDigests } from "@/lib/jobs/coach-digest";
 import { authorizeJobRequest } from "../authorize";
 
 export const maxDuration = 300;
@@ -47,6 +48,18 @@ export async function GET(request: NextRequest) {
   if (denied) return denied;
   try {
     const startedAt = Date.now();
+    // Coach digests first, on the Monday 09:00 UTC tick only: a few Discord
+    // calls, and the ledger makes a repeat harmless. Before the scrape so a
+    // long drain cannot starve it; non-fatal so a Discord hiccup does not
+    // take the scrape down with it.
+    let digest: Awaited<ReturnType<typeof sendCoachDigests>> | { failed: string } | null = null;
+    if (isDigestHour() && process.env.DISCORD_BOT_TOKEN) {
+      try {
+        digest = await sendCoachDigests(createAdminClient());
+      } catch (error) {
+        digest = { failed: error instanceof Error ? error.message : String(error) };
+      }
+    }
     const scrape = await scrapeAll(false);
     // Only once the scrape queue is empty — mid-drain the budget is spoken for.
     const idle = scrape.remaining === 0;
@@ -59,7 +72,7 @@ export async function GET(request: NextRequest) {
           budgetMs: Math.max(0, LAUNCHPOINT_BUDGET_MS - (Date.now() - startedAt)),
         })
       : null;
-    return NextResponse.json({ ...scrape, matched, launchpoint });
+    return NextResponse.json({ ...scrape, matched, launchpoint, digest });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
