@@ -70,7 +70,11 @@ export default async function PerformancePage({
       ...g,
       rows:
         sort.key === "digest"
-          ? g.rows
+          ? // Rows already arrive in digest order (bad → decent → good, worst
+            // rise first); descending is simply that order reversed.
+            sort.dir === "asc"
+            ? g.rows
+            : [...g.rows].reverse()
           : [...g.rows].sort((a, b) => {
               const value = (r: PerformanceRow): string | number | null => {
                 const p = r.performance;
@@ -133,7 +137,7 @@ export default async function PerformancePage({
 
         <Card
           title="Weekly read"
-          subtitle={`Good from ${formatCompact(GOOD_AVG_VIEWS)} avg views a post (CPM under ${formatUsd(CPM_GOOD_MAX_USD)}), bad at ${formatCompact(Math.round(BAD_AVG_VIEWS))} and under (CPM over ${formatUsd(CPM_BAD_MIN_USD)}). A spike is a post at ${formatCompact(SPIKE_VIEWS)}+ views. 30d CPM is true (paid ÷ views of paid posts) over the 30 days ending at the creator's newest payout; the ≈ under avg views is what this week's posts will cost once paid. Projected figures are marked.`}
+          subtitle={`Good from ${formatCompact(GOOD_AVG_VIEWS)} avg views a post (CPM under ${formatUsd(CPM_GOOD_MAX_USD)}), bad at ${formatCompact(Math.round(BAD_AVG_VIEWS))} and under (CPM over ${formatUsd(CPM_BAD_MIN_USD)}). A spike is a post at ${formatCompact(SPIKE_VIEWS)}+ views. 30d CPM is true (paid ÷ views of paid posts) over the 30 days ending at the creator's newest payout; ≈ figures are what Launchpoint will pay once it settles (about 3 weeks after posting). With a $${DEFAULT_PAYSCALE.flatFeeUsd} flat fee per post, a CPM under ${formatUsd(CPM_GOOD_MAX_USD)} means ${formatCompact(GOOD_AVG_VIEWS)}+ views on every post — a 1.5k-view post costs ~$28 per 1k no matter what.`}
         >
           {groups.every((g) => g.rows.length === 0) ? (
             <EmptyState message="No roster creators to read." />
@@ -280,7 +284,7 @@ function Row({ row }: { row: PerformanceRow }) {
           cpm == null
             ? "no posts in 30d"
             : projected
-              ? `projected · ${p.cpm30.posts} unpaid`
+              ? "≈ what Launchpoint will pay · nothing settled yet"
               : `${p.cpm30.paidPosts} paid · to ${formatDateUTC(p.cpm30.settledWindow?.end.toISOString())}${
                   p.cpm30.lowSample ? " · low sample" : ""
                 }`
