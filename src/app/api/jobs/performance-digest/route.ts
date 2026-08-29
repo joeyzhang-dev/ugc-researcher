@@ -65,11 +65,14 @@ function digestLine(r: PerformanceRow) {
       belowQuota: p.weekly.belowQuota,
       views: p.weekly.views,
       avgViews: p.weekly.avgViews,
+      projectedCpm: p.weekly.projectedCpm,
       spikes: p.weekly.spikes,
       bestPost: p.weekly.bestPost,
     },
     cpm30: {
       cpm: p.cpm30.cpm,
+      settledThrough: p.cpm30.settledWindow?.end.toISOString() ?? null,
+      lowSample: p.cpm30.lowSample,
       projected: p.cpm30.projected,
       paidPosts: p.cpm30.paidPosts,
       posts: p.cpm30.posts,
@@ -80,6 +83,8 @@ function digestLine(r: PerformanceRow) {
     },
     onboarding: {
       joinedAt: p.onboarding.joinedAt?.toISOString() ?? null,
+      posts: p.onboarding.posts,
+      avgViews: p.onboarding.avgViews,
       bucket: p.onboarding.bucket,
       source: p.onboarding.source,
       final: p.onboarding.final,

@@ -47,6 +47,13 @@ export const CPM_BAD_MIN_USD = 25;
 
 /** Days after posting when Launchpoint settles the post's pay. */
 export const SETTLE_DAYS = 14;
+/** Launchpoint's payouts actually arrive ~3 weeks after posting, not 14
+ *  days (checked 2026-08-29: newest paid post was 20 days old). A creator
+ *  whose newest payout is older than this has no current true CPM — the
+ *  number would describe a creator who has since stopped or changed. */
+export const MAX_SETTLE_LAG_DAYS = 45;
+/** Fewer paid posts than this and one spike owns the number. */
+export const MIN_PAID_SAMPLE = 3;
 /** The rolling window behind "updated 30-day creator CPM". */
 export const CPM_WINDOW_DAYS = 30;
 /** The onboarding read covers the creator's first week of posting. */
@@ -183,11 +190,39 @@ export function projectedCpm(
   return (earnings * 1000) / views;
 }
 
-export function bucketFor(cpm: number | null): Bucket | null {
-  if (cpm == null || !Number.isFinite(cpm)) return null;
-  if (cpm < CPM_GOOD_MAX_USD) return "good";
-  if (cpm > CPM_BAD_MIN_USD) return "bad";
+/** Average views per post at which the payscale yields this CPM (for posts
+ *  that clear the flat-fee floor): `flat * 1000 / (cpm − perThousand)`. */
+export function viewsAtCpm(cpm: number, payscale: Payscale = DEFAULT_PAYSCALE): number {
+  return (payscale.flatFeeUsd * 1000) / (cpm - payscale.perThousandViewsUsd);
+}
+
+/** The bucket lines as average views per post: $2 ⇔ 40,000, $25 ⇔ 1,667. */
+export const GOOD_AVG_VIEWS = viewsAtCpm(CPM_GOOD_MAX_USD);
+export const BAD_AVG_VIEWS = viewsAtCpm(CPM_BAD_MIN_USD);
+
+/**
+ * Buckets are judged on average views per post, not on the CPM directly.
+ *
+ * For any post over 1,000 views the two are the same test — CPM under this
+ * payscale is `40000 / views + 1`, so $2 is 40k and $25 is 1.67k, exactly
+ * Joey's "frequent 40k+ spikes" and "1,500 and under is super bad". Under
+ * 1,000 views they diverge: the flat fee is withheld, a 149-view post costs
+ * $0.15, and its CPM is a "good" $1.00. A creator averaging 149 views is the
+ * worst case there is, not the best, and Launchpoint's own paid-only number
+ * would call him good. Views keep the bucket honest where the price breaks.
+ */
+export function bucketForViews(avgViews: number | null): Bucket | null {
+  if (avgViews == null || !Number.isFinite(avgViews)) return null;
+  if (avgViews >= GOOD_AVG_VIEWS) return "good";
+  if (avgViews <= BAD_AVG_VIEWS) return "bad";
   return "decent";
+}
+
+function avgViews(videos: PerformanceVideo[]): number | null {
+  const viewed = videos.filter((v) => v.view_count != null);
+  return viewed.length > 0
+    ? viewed.reduce((sum, v) => sum + v.view_count!, 0) / viewed.length
+    : null;
 }
 
 export interface PostRef {
@@ -205,13 +240,22 @@ export interface WeeklyRead {
   belowQuota: boolean;
   views: number;
   avgViews: number | null;
+  /** What this week's posts will cost per 1k views under the payscale —
+   *  the leading indicator, weeks before the payout confirms it. Under a
+   *  $40 + $1/1k payscale this is a transform of avgViews, put in the
+   *  dollars the coach thinks in. Always labelled projected. */
+  projectedCpm: number | null;
   /** Posts at or above SPIKE_VIEWS, best first. */
   spikes: PostRef[];
   /** The week's most-viewed post, for the embed's hyperlink. */
   bestPost: PostRef | null;
 }
 
-export function weeklyRead(videos: PerformanceVideo[], week: Window): WeeklyRead {
+export function weeklyRead(
+  videos: PerformanceVideo[],
+  week: Window,
+  payscale: Payscale = DEFAULT_PAYSCALE
+): WeeklyRead {
   const posts = inWindow(videos, week);
   const refs: PostRef[] = posts
     .map((v) => ({ shortcode: v.shortcode, url: v.url, views: v.view_count ?? 0 }))
@@ -223,6 +267,7 @@ export function weeklyRead(videos: PerformanceVideo[], week: Window): WeeklyRead
     belowQuota: posts.length < QUOTA_POSTS_PER_WEEK,
     views,
     avgViews: posts.length > 0 ? views / posts.length : null,
+    projectedCpm: projectedCpm(posts, payscale),
     spikes: refs.filter((r) => r.views >= SPIKE_VIEWS),
     bestPost: refs[0] ?? null,
   };
@@ -230,27 +275,73 @@ export function weeklyRead(videos: PerformanceVideo[], week: Window): WeeklyRead
 
 /** The rolling 30-day CPM as of an instant. */
 export interface CpmRead {
-  /** True CPM over the paid posts in the window. Null until one is paid. */
+  /** True CPM over 30 days of *settled* posts — the 30 days ending at the
+   *  creator's newest payout. Null until one is paid, or when the newest
+   *  payout is older than MAX_SETTLE_LAG_DAYS. */
   cpm: number | null;
   paidPosts: number;
-  /** Projected over every post in the window — the fallback while `cpm` is
-   *  null, and a preview of where the true number is heading. */
+  /** The settled window `cpm` describes — ends at the newest paid post. */
+  settledWindow: Window | null;
+  /** Fewer than MIN_PAID_SAMPLE paid posts: one spike owns the number, so
+   *  the page mutes the change and the streak does not count it. */
+  lowSample: boolean;
+  /** Average views of the settled (paid) posts — what the bucket is judged
+   *  on when the true read is usable. */
+  settledAvgViews: number | null;
+  /** Projected over every post of the calendar window (the `days` before
+   *  `asOf`) — the fallback while `cpm` is null, and a preview of where the
+   *  true number is heading. */
   projected: number | null;
+  /** Posts in the calendar window. */
   posts: number;
+  /** Average views of every post in the calendar window — the bucket basis
+   *  while the true read is missing or a low sample. */
+  avgViews: number | null;
 }
 
+/** The average views a read should be bucketed on: the settled posts when
+ *  the true read is usable, the whole calendar month otherwise. */
+export function bucketBasis(read: CpmRead): { avgViews: number | null; source: "true" | "projected" | null } {
+  if (read.cpm != null && !read.lowSample) return { avgViews: read.settledAvgViews, source: "true" };
+  if (read.avgViews != null) return { avgViews: read.avgViews, source: "projected" };
+  return { avgViews: null, source: null };
+}
+
+/**
+ * Why the true window ends at the newest payout rather than at `asOf`:
+ * payouts land ~3 weeks after posting, so a calendar window of the last 30
+ * days holds only ~one week of settled posts. Two paid posts and a single
+ * spike aging out swung Liam's number by $10 in a week while nothing about
+ * him had changed. Anchoring on the payout frontier keeps a full month of
+ * settled posts in the read, and it moves when new payouts arrive — which
+ * is the only time the truth actually changes. (Liam, 2026-08-29: the
+ * calendar window said $12.33 over 2 posts; this says $1.49 over all 8,
+ * which is what Launchpoint's own paid-only summary shows.)
+ */
 export function cpmRead(
   videos: PerformanceVideo[],
   asOf: Date,
   days: number = CPM_WINDOW_DAYS,
   payscale: Payscale = DEFAULT_PAYSCALE
 ): CpmRead {
-  const posts = inWindow(videos, trailingWindow(asOf, days));
+  const calendar = inWindow(videos, trailingWindow(asOf, days));
+  const frontier = videos
+    .filter((v) => isPaid(v) && postedAt(v) != null && postedAt(v)! < asOf.getTime())
+    .reduce<number | null>((max, v) => (max == null || postedAt(v)! > max ? postedAt(v)! : max), null);
+  const fresh = frontier != null && asOf.getTime() - frontier <= MAX_SETTLE_LAG_DAYS * DAY_MS;
+  const settledWindow: Window | null = fresh
+    ? { start: new Date(frontier! + 1 - days * DAY_MS), end: new Date(frontier! + 1) }
+    : null;
+  const settled = settledWindow ? inWindow(videos, settledWindow).filter(isPaid) : [];
   return {
-    cpm: trueCpm(posts),
-    paidPosts: posts.filter(isPaid).length,
-    projected: projectedCpm(posts, payscale),
-    posts: posts.length,
+    cpm: trueCpm(settled),
+    paidPosts: settled.length,
+    settledWindow,
+    lowSample: settled.length > 0 && settled.length < MIN_PAID_SAMPLE,
+    settledAvgViews: avgViews(settled),
+    projected: projectedCpm(calendar, payscale),
+    posts: calendar.length,
+    avgViews: avgViews(calendar),
   };
 }
 
@@ -271,19 +362,17 @@ export interface OnboardingRead {
   joinedAt: Date | null;
   /** First-week posts. */
   posts: number;
+  avgViews: number | null;
   cpm: number | null;
   projected: number | null;
-  /** True once every first-week post has been paid (or the settlement
-   *  window plus a grace week has long passed with nothing to wait for), so
-   *  the bucket can be treated as the creator's final onboarding verdict. */
+  /** The first week has closed, so the bucket will not change. The bucket
+   *  is judged on views, which are known the day a post goes up; payouts
+   *  only confirm the CPM later. */
   final: boolean;
   bucket: Bucket | null;
-  /** Whether `bucket` came from the true CPM or the projection. */
+  /** Whether `cpm` is true (every first-week post paid) or still projected. */
   source: "true" | "projected" | null;
 }
-
-/** How long after the first-week window closes we stop waiting for payouts. */
-const ONBOARDING_GRACE_DAYS = 7;
 
 export function onboardingRead(
   videos: PerformanceVideo[],
@@ -292,24 +381,24 @@ export function onboardingRead(
   payscale: Payscale = DEFAULT_PAYSCALE
 ): OnboardingRead {
   if (joinedAt == null) {
-    return { joinedAt: null, posts: 0, cpm: null, projected: null, final: false, bucket: null, source: null };
+    return {
+      joinedAt: null, posts: 0, avgViews: null, cpm: null, projected: null, final: false, bucket: null, source: null,
+    };
   }
   const firstWeek: Window = { start: joinedAt, end: new Date(joinedAt.getTime() + ONBOARDING_DAYS * DAY_MS) };
-  const posts = inWindow(videos, firstWeek);
+  const posts = inWindow(videos, firstWeek).filter((v) => postedAt(v)! < asOf.getTime());
   const cpm = trueCpm(posts);
   const projected = projectedCpm(posts, payscale);
   const allPaid = posts.length > 0 && posts.every(isPaid);
-  const waitedLongEnough =
-    asOf.getTime() >= firstWeek.end.getTime() + (SETTLE_DAYS + ONBOARDING_GRACE_DAYS) * DAY_MS;
-  const source = cpm != null ? "true" : projected != null ? "projected" : null;
   return {
     joinedAt,
     posts: posts.length,
+    avgViews: avgViews(posts),
     cpm,
     projected,
-    final: allPaid || (waitedLongEnough && source != null),
-    bucket: bucketFor(cpm ?? projected),
-    source,
+    final: asOf.getTime() >= firstWeek.end.getTime(),
+    bucket: bucketForViews(avgViews(posts)),
+    source: allPaid ? "true" : projected != null ? "projected" : null,
   };
 }
 
@@ -337,7 +426,9 @@ export function badStreak(
   let w = week;
   while (joinedAt == null || w.end.getTime() > joinedAt.getTime()) {
     const read = cpmRead(videos, w.end, CPM_WINDOW_DAYS, payscale);
-    if (bucketFor(read.cpm ?? read.projected) !== "bad") break;
+    // A low-sample true read is not evidence either way — bucketBasis falls
+    // through to the whole month, which sees every post.
+    if (bucketForViews(bucketBasis(read).avgViews) !== "bad") break;
     streak++;
     w = previousWeek(w);
     // A creator with no joining date cannot be walked back forever; nothing
@@ -359,6 +450,8 @@ export interface CreatorPerformance {
   /** Change in the projection — always available, so the embed can still
    *  say which way a never-paid creator is moving. */
   projectedDelta: Delta | null;
+  /** Judged on average views (see bucketForViews) over the settled posts
+   *  when the true read is usable, the calendar month otherwise. */
   bucket: Bucket | null;
   bucketSource: "true" | "projected" | null;
   onboarding: OnboardingRead;
@@ -378,17 +471,17 @@ export function creatorPerformance(input: {
   const { videos, joinedAt, week } = input;
   const cpm30 = cpmRead(videos, week.end, CPM_WINDOW_DAYS, payscale);
   const cpm30Prev = cpmRead(videos, previousWeek(week).end, CPM_WINDOW_DAYS, payscale);
-  const source = cpm30.cpm != null ? "true" : cpm30.projected != null ? "projected" : null;
+  const basis = bucketBasis(cpm30);
   const streak = badStreak(videos, week, joinedAt, payscale);
   return {
     week,
-    weekly: weeklyRead(videos, week),
+    weekly: weeklyRead(videos, week, payscale),
     cpm30,
     cpm30Prev,
     delta: delta(cpm30.cpm, cpm30Prev.cpm),
     projectedDelta: delta(cpm30.projected, cpm30Prev.projected),
-    bucket: bucketFor(cpm30.cpm ?? cpm30.projected),
-    bucketSource: source,
+    bucket: bucketForViews(basis.avgViews),
+    bucketSource: basis.source,
     onboarding: onboardingRead(videos, joinedAt, week.end, payscale),
     weeksSinceJoined: weeksSinceJoined(joinedAt, week),
     badStreak: streak,

@@ -3,8 +3,11 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { loadPerformanceReport, type PerformanceRow } from "@/lib/jobs/performance";
 import {
+  BAD_AVG_VIEWS,
   CPM_BAD_MIN_USD,
   CPM_GOOD_MAX_USD,
+  DEFAULT_PAYSCALE,
+  GOOD_AVG_VIEWS,
   QUOTA_POSTS_PER_WEEK,
   SPIKE_VIEWS,
   lastCompleteWeek,
@@ -130,7 +133,7 @@ export default async function PerformancePage({
 
         <Card
           title="Weekly read"
-          subtitle={`Good under ${formatUsd(CPM_GOOD_MAX_USD)} CPM, bad over ${formatUsd(CPM_BAD_MIN_USD)}. A spike is a post at ${formatCompact(SPIKE_VIEWS)}+ views. CPM is true (paid ÷ views of paid posts) where a payout exists, projected from the payscale otherwise — projected figures are marked.`}
+          subtitle={`Good from ${formatCompact(GOOD_AVG_VIEWS)} avg views a post (CPM under ${formatUsd(CPM_GOOD_MAX_USD)}), bad at ${formatCompact(Math.round(BAD_AVG_VIEWS))} and under (CPM over ${formatUsd(CPM_BAD_MIN_USD)}). A spike is a post at ${formatCompact(SPIKE_VIEWS)}+ views. 30d CPM is true (paid ÷ views of paid posts) over the 30 days ending at the creator's newest payout; the ≈ under avg views is what this week's posts will cost once paid. Projected figures are marked.`}
         >
           {groups.every((g) => g.rows.length === 0) ? (
             <EmptyState message="No roster creators to read." />
@@ -259,11 +262,15 @@ function Row({ row }: { row: PerformanceRow }) {
       <Cell
         value={formatCompact(p.weekly.avgViews == null ? null : Math.round(p.weekly.avgViews))}
         sub={
-          p.weekly.spikes.length > 0
-            ? `${p.weekly.spikes.length} spike${p.weekly.spikes.length === 1 ? "" : "s"} · best ${formatCompact(p.weekly.bestPost?.views ?? null)}`
-            : p.weekly.posts > 0
-              ? `${formatCompact(p.weekly.views)} total`
-              : "no posts"
+          p.weekly.posts === 0
+            ? "no posts"
+            : (p.weekly.avgViews ?? 0) < DEFAULT_PAYSCALE.flatFeeMinViews
+              ? `under ${formatCompact(DEFAULT_PAYSCALE.flatFeeMinViews)} · no flat fee`
+              : `≈ ${formatUsd(p.weekly.projectedCpm)} CPM${
+                  p.weekly.spikes.length > 0
+                    ? ` · ${p.weekly.spikes.length} spike${p.weekly.spikes.length === 1 ? "" : "s"}`
+                    : ""
+                }`
         }
         href={p.weekly.bestPost?.url}
       />
@@ -274,11 +281,20 @@ function Row({ row }: { row: PerformanceRow }) {
             ? "no posts in 30d"
             : projected
               ? `projected · ${p.cpm30.posts} unpaid`
-              : `${p.cpm30.paidPosts} paid of ${p.cpm30.posts}`
+              : `${p.cpm30.paidPosts} paid · to ${formatDateUTC(p.cpm30.settledWindow?.end.toISOString())}${
+                  p.cpm30.lowSample ? " · low sample" : ""
+                }`
         }
-        tone={projected ? "muted" : undefined}
+        tone={projected || p.cpm30.lowSample ? "muted" : undefined}
       />
-      <DeltaCell delta={d} projected={dProjected} />
+      {p.delta != null &&
+      p.cpm30.settledWindow?.end.getTime() === p.cpm30Prev.settledWindow?.end.getTime() ? (
+        // Same newest payout both weeks: the true number could not have
+        // moved, and saying "→ $0.00" would read as a measured no-change.
+        <Cell value="→" sub="no new payouts" />
+      ) : (
+        <DeltaCell delta={d} projected={dProjected} muted={p.cpm30.lowSample || p.cpm30Prev.lowSample} />
+      )}
       <Cell
         value={p.weeksSinceJoined == null ? "—" : `${p.weeksSinceJoined}w`}
         sub={
@@ -334,11 +350,22 @@ function Cell({
   );
 }
 
-/** For CPM, down is good: it costs less to reach a thousand people. */
-function DeltaCell({ delta, projected }: { delta: Delta | null; projected: boolean }) {
+/** For CPM, down is good: it costs less to reach a thousand people. A change
+ *  read off fewer than three paid posts is shown but not coloured — one
+ *  spike entering or leaving the sample is not a trend. */
+function DeltaCell({
+  delta,
+  projected,
+  muted,
+}: {
+  delta: Delta | null;
+  projected: boolean;
+  muted: boolean;
+}) {
   if (!delta) return <Cell value="—" sub="no prior read" />;
   const flat = Math.abs(delta.usd) < 0.005;
-  const tone = flat ? "text-neutral-500" : delta.usd < 0 ? "text-success" : "text-danger";
+  const tone =
+    muted || flat ? "text-neutral-500" : delta.usd < 0 ? "text-success" : "text-danger";
   const arrow = flat ? "→" : delta.usd < 0 ? "▼" : "▲";
   return (
     <span className="text-right">
@@ -347,7 +374,7 @@ function DeltaCell({ delta, projected }: { delta: Delta | null; projected: boole
       </span>
       <span className="mt-0.5 block text-[11px] leading-tight tabular-nums text-neutral-400">
         {delta.pct > 0 ? "+" : ""}
-        {delta.pct.toFixed(1)}%{projected ? " · projected" : ""}
+        {delta.pct.toFixed(1)}%{projected ? " · projected" : muted ? " · low sample" : ""}
       </span>
     </span>
   );
