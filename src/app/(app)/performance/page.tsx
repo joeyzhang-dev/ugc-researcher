@@ -4,8 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import { loadPerformanceReport, type PerformanceRow } from "@/lib/jobs/performance";
 import {
   BAD_AVG_VIEWS,
+  BUCKET_ORDER,
   CPM_BAD_MIN_USD,
   CPM_GOOD_MAX_USD,
+  comparePerformance,
   DEFAULT_PAYSCALE,
   GOOD_AVG_VIEWS,
   QUOTA_POSTS_PER_WEEK,
@@ -64,32 +66,44 @@ export default async function PerformancePage({
   const NO_COACH = "none";
   const coachValue = (coach: string | null) => coach ?? NO_COACH;
   const coaches = report.groups.map((g) => g.coach);
-  const groups = report.groups
-    .filter((g) => !coachParam || coachValue(g.coach) === coachParam)
-    .map((g) => ({
-      ...g,
-      rows:
-        sort.key === "digest"
-          ? // Rows already arrive in digest order (bad → decent → good, worst
-            // rise first); descending is simply that order reversed.
-            sort.dir === "asc"
-            ? g.rows
-            : [...g.rows].reverse()
-          : [...g.rows].sort((a, b) => {
-              const value = (r: PerformanceRow): string | number | null => {
-                const p = r.performance;
-                switch (sort.key) {
-                  case "posts": return p.weekly.posts;
-                  case "views": return p.weekly.avgViews;
-                  case "cpm": return p.cpm30.cpm ?? p.cpm30.projected;
-                  case "delta": return (p.delta ?? p.projectedDelta)?.usd ?? null;
-                  case "joined": return p.weeksSinceJoined;
-                  default: return r.handle;
-                }
-              };
-              return compareValues(value(a), value(b), sort.dir) || a.handle.localeCompare(b.handle);
-            }),
-    }));
+  const visible = report.groups.filter((g) => !coachParam || coachValue(g.coach) === coachParam);
+
+  // Rows arrive in digest order (bad → decent → good → no read, worst rise
+  // first inside a bucket). Any explicit sort is applied to the WHOLE table:
+  // sorting inside each coach band looked broken, because a coach's good
+  // creators stayed under that coach's heading instead of rising to the top.
+  // So the bands only show in the default order; a sorted table is flat and
+  // names the coach on each row instead.
+  const sorted = Boolean(sortParam);
+  const value = (r: PerformanceRow): string | number | null => {
+    const p = r.performance;
+    switch (sort.key) {
+      case "digest": return p.bucket ? BUCKET_ORDER[p.bucket] : null;
+      case "posts": return p.weekly.posts;
+      case "views": return p.weekly.avgViews;
+      case "cpm": return p.cpm30.cpm ?? p.cpm30.projected;
+      case "delta": return (p.delta ?? p.projectedDelta)?.usd ?? null;
+      case "joined": return p.weeksSinceJoined;
+      default: return r.handle;
+    }
+  };
+  const groups = sorted
+    ? [
+        {
+          coach: null as string | null,
+          rows: visible
+            .flatMap((g) => g.rows)
+            .sort(
+              (a, b) =>
+                // Nulls always sink, whichever direction — compareValues does that.
+                compareValues(value(a), value(b), sort.dir) ||
+                // Inside a bucket keep the digest's "worst rise first".
+                (sort.key === "digest" ? comparePerformance(a.performance, b.performance) : 0) ||
+                a.handle.localeCompare(b.handle)
+            ),
+        },
+      ]
+    : visible;
 
   const nextWeek: Window = { start: week.end, end: new Date(week.end.getTime() + (week.end.getTime() - week.start.getTime())) };
   const canGoForward = nextWeek.end.getTime() <= lastCompleteWeek().end.getTime();
@@ -173,7 +187,7 @@ export default async function PerformancePage({
                 <div className="divide-y divide-black/[0.05]">
                   {groups.map((group) => (
                     <Fragment key={group.coach ?? "none"}>
-                      {!coachParam && (
+                      {!coachParam && !sorted && (
                         <div className="flex items-center gap-2.5 bg-surface-sunken px-1 py-2">
                           <span className="text-sm font-semibold tracking-[-0.01em] text-neutral-900">
                             {group.coach ?? "No coach"}
@@ -186,7 +200,7 @@ export default async function PerformancePage({
                         </div>
                       )}
                       {group.rows.map((r) => (
-                        <Row key={r.creatorId} row={r} />
+                        <Row key={r.creatorId} row={r} showCoach={sorted && !coachParam} />
                       ))}
                     </Fragment>
                   ))}
@@ -217,7 +231,7 @@ const chip = (active: boolean) =>
       : "bg-neutral-900/[0.04] text-neutral-600 hover:bg-neutral-900/[0.08]"
   }`;
 
-function Row({ row }: { row: PerformanceRow }) {
+function Row({ row, showCoach }: { row: PerformanceRow; showCoach: boolean }) {
   const p = row.performance;
   const cpm = p.cpm30.cpm ?? p.cpm30.projected;
   const projected = p.cpm30.cpm == null && p.cpm30.projected != null;
@@ -254,6 +268,11 @@ function Row({ row }: { row: PerformanceRow }) {
             >
               @{row.handle}
             </a>
+            {showCoach && (
+              <span className="truncate text-[11px] text-neutral-400">
+                · {row.coach?.replace(/^Coach:\s*/i, "") ?? "no coach"}
+              </span>
+            )}
           </span>
         </span>
       </div>
