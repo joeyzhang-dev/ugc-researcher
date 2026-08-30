@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   EMBED_TOTAL_MAX,
   FIELD_VALUE_MAX,
+  RECAP_COLOR,
   buildCoachDigest,
   buildOnboardingPing,
   chunkLines,
-  cpmPhrase,
-  creatorLine,
+  comparePosting,
+  cpmShort,
   creatorRef,
+  postingLine,
+  progressBar,
   weekLabel,
 } from "@/lib/digest-render";
 import type { PerformanceRow } from "@/lib/jobs/performance";
@@ -58,48 +61,61 @@ describe("creatorRef", () => {
   });
 });
 
-describe("creatorLine", () => {
-  it("reads posts vs quota, views with the projected cost, and the true 30d CPM", () => {
-    const line = creatorLine(row({ videos: settled(60_000) }));
-    expect(line).toContain("4/7 posts ⚠");
-    expect(line).toContain("60K avg (≈$1.67)");
-    expect(line).toContain("[best](https://www.instagram.com/reel/");
-    expect(line).toContain("30d CPM **$1.67**");
-    expect(line).not.toContain("weeks bad");
-  });
-
-  it("does not quote a cost for sub-1k posts, where the flat fee is withheld", () => {
-    const line = creatorLine(row({ videos: settled(149) }));
-    expect(line).toContain("149 avg ·");
-    expect(line).not.toContain("≈$");
-  });
-
-  it("flags a creator at the streak bar with the coach's decision", () => {
-    const line = creatorLine(row({ videos: settled(1_200) }));
-    expect(line).toMatch(/⚠️ \*\*\d+ weeks bad\*\* — coach call or offboard/);
-  });
-
-  it("says 'no posts' rather than inventing zeros", () => {
-    const line = creatorLine(row({ videos: [] }));
-    expect(line).toContain("0/7 posts ⚠ · no posts · no CPM yet");
-  });
-
-  it("shows week-N and the start bucket for a creator in their first month", () => {
-    const joinedAt = new Date(WEEK.start.getTime() - 10 * DAY);
-    const videos = [video(12, 2_000), video(11, 2_500), video(3, 3_000)];
-    const line = creatorLine(row({ videos, joinedAt }));
-    expect(line).toContain("wk 2, started decent");
+describe("progressBar", () => {
+  it("fills proportionally and clamps", () => {
+    expect(progressBar(0)).toBe("░".repeat(14));
+    expect(progressBar(0.5)).toBe("█".repeat(7) + "░".repeat(7));
+    expect(progressBar(2)).toBe("█".repeat(14));
   });
 });
 
-describe("cpmPhrase", () => {
-  it("says 'no new payouts' when the settled window has not moved", () => {
-    expect(cpmPhrase(row({ videos: settled(5_000) }).performance)).toContain("no new payouts");
+describe("postingLine", () => {
+  it("leads with posts in bold, then avg views, the best link and a bare CPM", () => {
+    const line = postingLine(row({ videos: settled(60_000) }));
+    expect(line.startsWith("🟢 **4/7** <@187727571922714626>")).toBe(true);
+    expect(line).toContain("60K avg views");
+    expect(line).toContain("[best](https://www.instagram.com/reel/");
+    expect(line).toContain("· $1.67");
+    expect(line).toContain("🚀 4 spikes");
   });
 
-  it("labels a projection as unpaid", () => {
+  it("never explains what the dot means", () => {
+    const line = postingLine(row({ videos: settled(1_200) }));
+    expect(line.startsWith("🔴 ")).toBe(true);
+    expect(line.toLowerCase()).not.toContain("bad");
+    expect(line.toLowerCase()).not.toContain("bucket");
+  });
+
+  it("says who didn’t post at all", () => {
+    expect(postingLine(row({ videos: [] }))).toContain("**0/7**");
+    expect(postingLine(row({ videos: [] }))).toContain("didn’t post");
+  });
+
+  it("marks a creator in their first two weeks with a sprout", () => {
+    const joinedAt = new Date(WEEK.start.getTime() - 10 * DAY);
+    const line = postingLine(row({ videos: [video(3, 3_000)], joinedAt }));
+    expect(line).toContain("🌱 wk 2");
+  });
+});
+
+describe("cpmShort", () => {
+  it("is a bare true number when the payout frontier has not moved", () => {
+    expect(cpmShort(row({ videos: settled(5_000) }).performance)).toBe("$9.00");
+  });
+
+  it("marks a projection with ≈ and says nothing with no data", () => {
     const videos = Array.from({ length: 8 }, (_, i) => video(2 + i, 5_000, null));
-    expect(cpmPhrase(row({ videos }).performance)).toBe("30d CPM ≈ $9.00 (projected, unpaid)");
+    expect(cpmShort(row({ videos }).performance)).toBe("≈$9.00");
+    expect(cpmShort(row({ videos: [] }).performance)).toBe("");
+  });
+});
+
+describe("comparePosting", () => {
+  it("ranks by posts, then avg views", () => {
+    const many = row({ creatorId: "a", handle: "many", videos: settled(2_000, 6) });
+    const few = row({ creatorId: "b", handle: "few", videos: settled(90_000, 2) });
+    const fewLow = row({ creatorId: "c", handle: "fewlow", videos: settled(1_000, 2) });
+    expect([fewLow, few, many].sort(comparePosting).map((r) => r.handle)).toEqual(["many", "few", "fewlow"]);
   });
 });
 
@@ -116,20 +132,52 @@ describe("chunkLines", () => {
 describe("buildCoachDigest", () => {
   const team = [
     row({ creatorId: "a", handle: "aa", videos: settled(60_000) }),
-    row({ creatorId: "b", handle: "bb", videos: settled(5_000) }),
+    row({ creatorId: "b", handle: "bb", videos: settled(5_000, 7) }),
     row({ creatorId: "c", handle: "cc", videos: settled(1_200) }),
     row({ creatorId: "d", handle: "dd", videos: [] }),
   ];
 
-  it("is one message: a header with the totals, then bad → decent → good → no read", () => {
+  it("headlines posting: bar, totals and quota in the description", () => {
     const [payload, ...rest] = buildCoachDigest({ coach: "Coach: Will's Team", week: WEEK, rows: team });
     expect(rest).toEqual([]);
-    expect(payload.allowed_mentions).toEqual({ parse: [] });
     const [header] = payload.embeds;
-    expect(header.title).toBe("Weekly read — Coach: Will's Team · Aug 24 – Aug 30");
-    expect(header.description).toContain("4 creators · **1 bad**");
-    expect(header.fields!.map((f) => f.name)).toEqual(["🔴 Bad (1)", "🟡 Decent (1)", "🟢 Good (1)", "⚪ No read (1)"]);
-    expect(header.fields![0].value).toContain("@cc");
+    expect(header.author?.name).toBe("Coach: Will's Team");
+    expect(header.title).toBe("📊 Here’s your weekly recap — Aug 24 – Aug 30");
+    // 4+7+4+0 = 15 posts of 28 possible; one creator hit the quota.
+    expect(header.description).toContain("**15** of 28 posts this week (54%)");
+    expect(header.description).toContain("1 of 4 hit the 7-post quota");
+    expect(header.description).toContain("█");
+    expect(header.color).toBe(RECAP_COLOR);
+  });
+
+  it("shows the team stats as an inline grid and ranks everyone by posts", () => {
+    const [payload] = buildCoachDigest({ coach: "x", week: WEEK, rows: team });
+    const [header] = payload.embeds;
+    const inline = header.fields!.filter((f) => f.inline);
+    expect(inline.map((f) => f.name)).toEqual(["Avg views / post", "🚀 Spikes (40k+)", "Didn’t post"]);
+    const list = header.fields!.find((f) => f.name === "Who posted what")!;
+    const order = [...list.value.matchAll(/@(\w+)\]/g)].map((m) => m[1]);
+    expect(order).toEqual(["bb", "aa", "cc", "dd"]);
+    expect(list.value).toContain("didn’t post");
+  });
+
+  it("celebrates the best post and lists the flagged as decisions", () => {
+    const [payload] = buildCoachDigest({ coach: "x", week: WEEK, rows: team });
+    const names = payload.embeds[0].fields!.map((f) => f.name);
+    expect(names).toContain("🏆 Best post of the week");
+    expect(names).toContain("⚠️ Needs a decision");
+    const best = payload.embeds[0].fields!.find((f) => f.name === "🏆 Best post of the week")!;
+    expect(best.value).toContain("@aa — 60K views");
+    const decisions = payload.embeds[0].fields!.find((f) => f.name === "⚠️ Needs a decision")!;
+    expect(decisions.value).toContain("@cc");
+    expect(decisions.value).toContain("→ call or offboard");
+  });
+
+  it("contains no bucket legend and no threshold talk", () => {
+    const all = JSON.stringify(buildCoachDigest({ coach: "x", week: WEEK, rows: team }));
+    expect(all).not.toContain("Buckets:");
+    expect(all).not.toContain("40k avg views a post");
+    expect(all).not.toContain("good ≥");
   });
 
   it("never pings: mentions live inside embeds and parse is empty", () => {
@@ -137,11 +185,6 @@ describe("buildCoachDigest", () => {
     expect(payload.content).toBeUndefined();
     expect(JSON.stringify(payload.embeds)).toContain("<@187727571922714626>");
     expect(payload.allowed_mentions.parse).toEqual([]);
-  });
-
-  it("links the web table in the footer when an app url is given", () => {
-    const [payload] = buildCoachDigest({ coach: "x", week: WEEK, rows: team, appUrl: "https://app" });
-    expect(payload.embeds[0].footer?.text).toBe("Full table: https://app/performance?week=2026-08-24");
   });
 
   it("stays under Discord's limits for a very large team", () => {
@@ -155,6 +198,7 @@ describe("buildCoachDigest", () => {
         const total =
           (e.title?.length ?? 0) +
           (e.description?.length ?? 0) +
+          (e.author?.name.length ?? 0) +
           (e.footer?.text.length ?? 0) +
           (e.fields ?? []).reduce((s, f) => s + f.name.length + f.value.length, 0);
         expect(total).toBeLessThanOrEqual(EMBED_TOTAL_MAX);
@@ -162,22 +206,22 @@ describe("buildCoachDigest", () => {
         for (const f of e.fields ?? []) expect(f.value.length).toBeLessThanOrEqual(FIELD_VALUE_MAX);
       }
     }
-    // Every creator made it into some field.
     const all = JSON.stringify(payloads);
     for (const r of big) expect(all).toContain(`@${r.handle}`);
   });
 });
 
 describe("buildOnboardingPing", () => {
-  it("states the start bucket from the first week's views", () => {
+  it("recaps the first week without explaining the dot", () => {
     const joinedAt = new Date(WEEK.start.getTime() - 7 * DAY);
     const videos = [video(13, 50_000), video(12, 45_000), video(10, 40_000)];
     const ping = buildOnboardingPing(row({ videos, joinedAt }));
     const e = ping.embeds[0];
-    expect(e.title).toBe("New creator — first week closed");
-    expect(e.description).toContain("3 posts in week one");
-    expect(e.description).toContain("**Start: 🟢 Good**");
-    expect(e.description).toContain("(projected)");
+    expect(e.title).toBe("🌱 New creator — first week recap");
+    expect(e.description).toContain("**3** posts in week one");
+    expect(e.description).toContain("45K avg views");
+    expect(e.description).toContain("CPM ≈");
+    expect(e.description!.startsWith("🟢 ")).toBe(true);
     expect(ping.allowed_mentions).toEqual({ parse: [] });
   });
 });
