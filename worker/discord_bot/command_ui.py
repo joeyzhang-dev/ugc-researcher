@@ -122,9 +122,10 @@ COMMAND_CATALOG: tuple[CommandInfo, ...] = (
         description="move a creator to not creating, remove their role, and optionally kick from the server.",
         usage="/offboard user:@person kick:no",
         detail=(
-            "moves their channel to Not Creating 🚫, syncs its permissions, removes the "
-            "creator role, marks them paused in the CRM, and kicks them from the server "
-            "only when `kick` is `yes`."
+            "moves their channel to Not Creating 🚫, syncs its permissions, keeps the "
+            "creator's own access to that channel, removes the creator role, marks them "
+            "paused in the CRM, and kicks them from the server only when `kick` is `yes`. "
+            "the reply includes the offboarding note to copy into their channel."
         ),
     ),
     CommandInfo(
@@ -178,6 +179,29 @@ CATALOG_BY_NAME = {c.name: c for c in COMMAND_CATALOG}
 def command_description(name: str) -> str:
     """Description registered with Discord for a command (shown in the picker)."""
     return CATALOG_BY_NAME[name].description
+
+
+def build_offboard_message_embed(
+    message: str, *, coach_name: Optional[str] = None
+) -> EmbedSpec:
+    """The copy-paste offboarding note, wrapped in a code block.
+
+    A fenced block is the whole point: Discord renders one with a copy button
+    and, more importantly, paste-safe — the note is written to be sent verbatim
+    by a human in the creator's channel, not rendered as embed markdown.
+    The text is NOT markdown-escaped for the same reason: its ``**this**`` is
+    intentional emphasis in the message the operator will send.
+    """
+    footer = (
+        None if coach_name
+        else "couldn't tell which coach team this channel was under — fill in [coach]"
+    )
+    return build_embed(
+        title="offboarding message",
+        description=clip(f"```\n{message}\n```", MAX_DESCRIPTION),
+        color=COLOR_WARN if footer else COLOR_BRAND,
+        footer=footer,
+    )
 
 
 def build_help_embed() -> EmbedSpec:

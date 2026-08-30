@@ -2,17 +2,20 @@
 
 Offboarding is intentionally a small orchestration layer around injected
 Discord/CRM side effects: find the creator channel, move it to the paused
-category with synced permissions, remove the creator role, optionally kick the
-member, and mark the CRM row paused. Keeping the side effects injected makes the
-logic unit-testable without importing discord.py or touching the gateway.
+category with synced permissions, re-grant the creator their own access to it,
+remove the creator role, optionally kick the member, and mark the CRM row
+paused. Keeping the side effects injected makes the logic unit-testable without
+importing discord.py or touching the gateway.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Mapping, Optional
 
 from discord_bot.config import PAUSED_CATEGORIES
 from discord_bot.onboarding import (
+    OverwriteSpec,
     _bot_top_role_name,
     _bot_top_role_position,
     _find_role,
@@ -34,6 +37,8 @@ class OffboardOutcome:
     category_name: Optional[str] = None
     channel_moved: bool = False
     permissions_synced: bool = False
+    access_retained: bool = False
+    access_error: Optional[str] = None
     role_removed: bool = False
     role_already_absent: bool = False
     role_error: Optional[str] = None
@@ -43,6 +48,8 @@ class OffboardOutcome:
     kicked: bool = False
     kick_error: Optional[str] = None
     crm_synced: bool = False
+    coach_name: Optional[str] = None
+    offboard_message: Optional[str] = None
     error: Optional[str] = None
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
@@ -96,6 +103,79 @@ def category_denies_everyone(category: Any, default_role: Any) -> bool:
                         break
 
     return getattr(overwrite, "view_channel", None) is False
+
+
+def build_retained_access_spec() -> OverwriteSpec:
+    """The overwrite that keeps an offboarded creator in their own channel.
+
+    Syncing permissions to the paused category is what hides the channel from
+    everyone else, but it also wipes the creator's own overwrite — so the person
+    the channel is about loses the thread the moment they are offboarded. This
+    puts exactly one overwrite back, for that member alone: read the history,
+    see new messages, and reply. Nobody else's access changes.
+    """
+    return OverwriteSpec(
+        "creator_member",
+        view_channel=True,
+        send_messages=True,
+        read_message_history=True,
+    )
+
+
+# The two program leads named in every offboarding message. Written the way
+# Discord renders a username so the operator can paste the text straight in —
+# a pasted "@name" is inert text either way, so nothing is auto-pinged.
+PROGRAM_LEAD_HANDLES: tuple[str, ...] = ("@_willwilson.", "@lukeugc")
+
+# "🏀 Will's Team" -> "Will". Categories record the coach team (see the pull
+# worker's NON_NICHE_CATEGORIES note), so the category the channel sat in
+# BEFORE the move is the only record of who coached this creator.
+_TEAM_CATEGORY = re.compile(r"\bteam\b", re.IGNORECASE)
+_CATEGORY_JUNK = re.compile(r"[^\w\s&'/-]", re.UNICODE)
+
+
+def coach_from_category(category_name: Optional[str]) -> Optional[str]:
+    """The coach's name from their team category, or ``None`` if it isn't one.
+
+    Only "<something> Team" categories name a coach. A generic bucket
+    (``FOLK TEAM``, ``Not Creating 🚫``) names nobody, and guessing there would
+    put the wrong person's name in a message about cutting someone.
+    """
+    if not category_name or not _TEAM_CATEGORY.search(category_name):
+        return None
+    name = category_name.split(":", 1)[-1]
+    name = _CATEGORY_JUNK.sub("", name).strip()
+    name = _TEAM_CATEGORY.sub("", name).strip()
+    name = re.sub(r"[\u2019']s$", "", name).strip()
+    if not name or name.upper() == "FOLK":
+        return None
+    return name
+
+
+def build_offboard_message(*, username: Optional[str], coach_name: Optional[str]) -> str:
+    """The operator's copy-paste offboarding note.
+
+    Deliberately verbatim boilerplate: this is a message a human sends in the
+    creator's channel, so the only variables are who it is addressed to and
+    which coach signs it. A missing username or coach leaves a visible
+    placeholder rather than a silently malformed sentence.
+    """
+    who = f"@{username}" if username else "@[creator]"
+    leads = " and ".join(PROGRAM_LEAD_HANDLES)
+    coach = coach_name or "[coach]"
+    return (
+        f"hey {who} , after some long thought with {leads} , we decided that we have to "
+        "cut you from this program for the time being. This decision was made purely "
+        "based off performance of **this** specific campaign\n"
+        "\n"
+        "so from today, no more new posts, but you're remaining posts will be paid out "
+        "within the next ~30 days and feel free to message me in this channel if you "
+        "have any issues.\n"
+        "\n"
+        f"{coach} and I appreciate the time that we had working with you! :heart:  Will "
+        "definitely reach out in the future if something comes along either us think you "
+        "will be a good fit for!"
+    )
 
 
 def _resolve_paused_category(guild: Any) -> Optional[Any]:
@@ -176,6 +256,7 @@ async def execute_offboarding(
     creator_role_id: Optional[int] = None,
     niche_role_ids: Optional[Mapping[int, int]] = None,
     move_channel: Callable[..., Awaitable[None]],
+    grant_channel_access: Optional[Callable[..., Awaitable[None]]] = None,
     remove_role: Optional[Callable[..., Awaitable[None]]] = None,
     kick_member: Optional[Callable[..., Awaitable[None]]] = None,
     sync_crm: Optional[Callable[..., bool]] = None,
@@ -259,6 +340,17 @@ async def execute_offboarding(
     if channel_name is None:
         channel_name = getattr(channel, "name", "")
 
+    # Read the coach off the channel's CURRENT category, before the move
+    # overwrites it with the paused one — afterwards there is no record of who
+    # this creator was coached by.
+    coach_name = coach_from_category(
+        getattr(getattr(channel, "category", None), "name", None)
+    )
+    offboard_message = build_offboard_message(
+        username=getattr(member, "name", None) or None,
+        coach_name=coach_name,
+    )
+
     category = _resolve_paused_category(guild)
     expected = ", ".join(sorted(PAUSED_CATEGORIES))
     if category is None:
@@ -292,6 +384,27 @@ async def execute_offboarding(
             error=f"couldn't move the channel: {exc}",
             warnings=tuple(warnings),
         )
+
+    # The sync above dropped the creator's own overwrite along with everyone
+    # else's. Put theirs back — and only theirs — so an offboarded creator can
+    # still read and reply in their channel. Skipped when they are being kicked:
+    # an overwrite for someone who is no longer in the guild grants nothing.
+    access_retained = False
+    access_error: Optional[str] = None
+    if not kick and hasattr(member, "roles"):
+        if grant_channel_access is None:
+            access_error = "no channel-access callback configured; the creator lost access to their channel"
+        else:
+            try:
+                await grant_channel_access(
+                    channel=channel,
+                    member=member,
+                    permissions=build_retained_access_spec().as_permission_kwargs(),
+                    reason=reason,
+                )
+                access_retained = True
+            except Exception as exc:  # noqa: BLE001 - surfaced to the operator
+                access_error = f"couldn't keep the creator in their channel: {exc}"
 
     creator_role = _find_role(guild, creator_role_name, creator_role_id)
     role_removed = False
@@ -399,6 +512,8 @@ async def execute_offboarding(
         category_name=category_name,
         channel_moved=True,
         permissions_synced=True,
+        access_retained=access_retained,
+        access_error=access_error,
         role_removed=role_removed,
         role_already_absent=role_already_absent,
         role_error=role_error,
@@ -408,6 +523,8 @@ async def execute_offboarding(
         kicked=kicked,
         kick_error=kick_error,
         crm_synced=crm_synced,
+        coach_name=coach_name,
+        offboard_message=offboard_message,
         warnings=tuple(warnings),
     )
 
@@ -422,6 +539,11 @@ def render_offboard_outcome(outcome: OffboardOutcome, creator_role_name: str) ->
         lines.append(f"✅ moved <#{outcome.channel_id}> to **{outcome.category_name}**")
     if outcome.permissions_synced:
         lines.append(f"✅ synced permissions to **{outcome.category_name}**")
+
+    if outcome.access_error:
+        lines.append(f"⚠️ {outcome.access_error}")
+    elif outcome.access_retained:
+        lines.append(f"✅ kept the creator's own access to <#{outcome.channel_id}> (read + post)")
 
     if outcome.role_error:
         lines.append(f"⚠️ {outcome.role_error}")

@@ -22,6 +22,7 @@ from discord_bot.command_ui import (
     build_creator_embed,
     build_creators_embed,
     build_help_embed,
+    build_offboard_message_embed,
     clip,
     command_description,
     creator_name_choices,
@@ -366,6 +367,11 @@ def register_commands(
         async def move_channel(*, channel, category, sync_permissions, reason):
             await channel.edit(category=category, sync_permissions=sync_permissions, reason=reason)
 
+        async def grant_channel_access(*, channel, member, permissions, reason):
+            await channel.set_permissions(
+                member, overwrite=discord.PermissionOverwrite(**permissions), reason=reason
+            )
+
         async def remove_role(*, member, role, reason):
             await member.remove_roles(role, reason=reason)
 
@@ -380,6 +386,7 @@ def register_commands(
             creator_role_id=cfg.creator_role_id,
             niche_role_ids=cfg.niche_role_ids,
             move_channel=move_channel,
+            grant_channel_access=grant_channel_access,
             remove_role=remove_role,
             kick_member=kick_member,
             sync_crm=offboard_crm_sync,
@@ -388,12 +395,21 @@ def register_commands(
             reason=f"/offboard by {interaction.user}",
         )
         logger.info(
-            "offboard %s -> channel=%s moved=%s role_removed=%s kicked=%s",
+            "offboard %s -> channel=%s moved=%s access_kept=%s role_removed=%s kicked=%s",
             getattr(user, "id", None), outcome.channel_id, outcome.channel_moved,
-            outcome.role_removed, outcome.kicked,
+            outcome.access_retained, outcome.role_removed, outcome.kicked,
         )
+        # The note goes out as a separate ephemeral embed rather than inline in
+        # the status text: only the operator sees it, and it is a draft for THEM
+        # to send in the channel — the bot never posts it itself.
+        embeds = []
+        if outcome.ok and outcome.offboard_message:
+            embeds.append(_to_embed(build_offboard_message_embed(
+                outcome.offboard_message, coach_name=outcome.coach_name
+            )))
         await interaction.followup.send(
             render_offboard_outcome(outcome, cfg.creator_role_name),
+            embeds=embeds,
             ephemeral=True, allowed_mentions=NO_MENTIONS,
         )
 
