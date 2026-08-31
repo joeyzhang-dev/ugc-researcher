@@ -70,6 +70,15 @@ Schema changes are self-serve — never ask Joey to paste SQL into the dashboard
   `.env.local` and records the version in
   `supabase_migrations.schema_migrations`.
 
+**Discord snowflakes must be read as text.** `discord_user_id` and
+`channel_id` are bigints, and `JSON.parse` turns them into IEEE doubles —
+`1335356398049038400` comes back as `…038300`. Live consequence
+(2026-08-31): `scripts/merge-creators.mjs` read rows with `select=*`, wrote a
+corrupted `discord_user_id`, and its channel PATCH matched zero rows while
+still returning success, so it reported moving a channel it never moved. Any
+query whose snowflake is written back or used as a filter must cast
+`::text`.
+
 Rules for new migrations in this repo:
 
 - Name them `YYYYMMDDHHMMSS_description.sql` (timestamp version). The apply
@@ -360,13 +369,25 @@ the person who saw it.
   **Two signals feed this**, and the second exists because the first missed a
   real case: a contractor id already bound to one of our creators, *and* a
   Launchpoint contractor whose real name matches an existing creator's
-  `display_name` under a different handle. Noah-andre Terry renamed from
-  `@dresdistrict` to `@morrismotivatesyou`; the old row carried no contractor
-  id, so id-matching saw nothing and the sync created a second row for the same
-  person — his Discord channel still points at the old one. Name-matching
-  catches that. **The duplicate itself is still unmerged** — merging two
-  creator rows moves videos, assignments and memberships and needs a human
-  decision about which handle survives.
+  `display_name` under a different handle. Name-matching caught Noah-andre
+  Terry, whose old row carried no contractor id.
+
+  **That case was NOT a rename, and the distinction matters.** Checked live
+  2026-08-31: `@dresdistrict` (60,526 followers, IG account 48836876604) and
+  `@morrismotivatesyou` (42 followers, account 14122842500) are two separate
+  live Instagram accounts belonging to one person, with zero shared shortcodes
+  and overlapping posting dates. Launchpoint pays for the small one; the big
+  one is his personal account we had been scraping. A "rename" merge would
+  have fused two real feeds and invented an average that never existed.
+  Resolved by moving his Discord link, coaching channel, 37 script assignments
+  and app membership onto `@morrismotivatesyou` and archiving `@dresdistrict`
+  with its 64 posts intact — `scripts/merge-creators.mjs --keep-videos` exists
+  for exactly this shape. **Before merging a reported pair, check whether the
+  two handles are the same account**: same-account renames share reel
+  shortcodes, two accounts share none.
+
+  `@vicklockedin` vs `@lockinwithvick` is still unresolved and may be either
+  shape — check the shortcodes before assuming.
 - **Ingested posts are queued for transcription only if posted within
   `TRANSCRIBE_WINDOW_DAYS` (30).** Recent ones land `transcript_status:
   'pending'` and the Fly worker picks them up on its next 60s poll; older ones
