@@ -23,7 +23,8 @@ import {
   postChannelMessage,
   type PermissionOverwrite,
 } from "@/lib/discord";
-import { buildCoachDigest, buildOnboardingPing } from "@/lib/digest-render";
+import { buildCoachRecapV2, buildOnboardingPing } from "@/lib/digest-render";
+import { recapImageUrl } from "@/lib/recap-image-url";
 import { lastCompleteWeek, type Window } from "@/lib/performance";
 import { loadPerformanceReport, type PerformanceRow } from "@/lib/jobs/performance";
 
@@ -182,7 +183,16 @@ export async function sendCoachDigests(admin: SupabaseClient, options: DigestOpt
     if (!options.toChannelId && sentKeys.has(key)) {
       result.skipped.push({ coach: group.coach, reason: "already sent this week" });
     } else {
-      const payloads = buildCoachDigest({ coach: group.coach, week, rows: group.rows, appUrl });
+      // One message now, not a chunked series: the per-creator detail is a
+      // rendered card, so there is nothing left to overflow into extra embeds.
+      const payload = buildCoachRecapV2({
+        coach: group.coach,
+        week,
+        rows: group.rows,
+        appUrl,
+        imageUrl: recapImageUrl(appUrl, group.coach, week.start),
+      });
+      const payloads = [payload];
       if (!dryRun) {
         const ids: string[] = [];
         for (const p of payloads) ids.push(await postChannelMessage(target.channelId, p));

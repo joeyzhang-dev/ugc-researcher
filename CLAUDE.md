@@ -474,6 +474,45 @@ or `POST /api/jobs/research {"action":"launchpoint-sync"}`. Repeat until
   `GET /api/jobs/coach-digest?week=&dry=1&to=<channel>` previews (`to` posts
   everything to one test channel without touching the ledger). Needs
   `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` on Vercel.
+## Roster lifecycle
+
+`research_creators.archived_at` is the only thing that means "we stopped
+working with this creator". Nothing else does, and the two columns that look
+like they might are both something else: `status` is scrape health
+(`pending`/`ready`/`failed`) — a creator who left a month ago still reads
+`ready` because her last scrape worked — and `kind` is `roster` vs `research`.
+
+Before it existed, every creator ever added stayed on /creators forever and
+kept costing a scrape. Measured 2026-08-30: **28 of 59 roster creators had not
+posted in over 30 days.**
+
+- **Archiving hides and de-queues; it never deletes.** Videos, transcripts,
+  script assignments and Launchpoint history all stay — the roster is a working
+  list, and a departed creator's posts are still the corpus this pool studies.
+  `creatorsInScope` filters `archived_at is null` in the query rather than at
+  the call site, so every bulk enqueue path is covered at once.
+- **/overview filters them too.** A retired creator is permanently "not
+  posting", so leaving them in would let them dominate the stale-creator card
+  by construction.
+- **Dormancy informs, the flag decides.** `quietDays` (in
+  `src/lib/roster-archive.ts`) derives days-since-last-post from Launchpoint's
+  cross-platform recency and renders a `quiet Nd` chip past
+  `QUIET_AFTER_DAYS` (30), escalating at `DORMANT_AFTER_DAYS` (60). It never
+  hides anything on its own: a creator on a two-week break is not retired, and
+  a row vanishing without anyone choosing it is the exact failure the
+  "Unassigned" band was added to prevent (6547bae). Launchpoint's stamp can run
+  hours ahead of our clock, so the count floors at 0.
+- **Launchpoint cannot supply this.** Checked live against
+  `GET /analytics/accounts`: all 117 tracked accounts report `programCount: 1`
+  and `contractCount: 0`, dormant ones included. There is no upstream lifecycle
+  signal to sync, which is why the flag has to be ours.
+
+Not solved by this: the unmerged rename duplicates. `@dresdistrict` (dead
+handle, no Launchpoint link, still scraped) holds the app membership while
+`@morrismotivatesyou` — same person, posting — sits in the Unassigned band;
+same for `@vicklockedin` vs `@lockinwithvick`. Archiving the dead row hides it
+but does not move its videos or assignments. See the rename note under
+**Launchpoint**.
 
 ## Scheduled work
 

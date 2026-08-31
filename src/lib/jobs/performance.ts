@@ -31,6 +31,10 @@ export interface PerformanceRow {
   creatorId: string;
   handle: string;
   displayName: string | null;
+  /** The real name from Launchpoint. Preferred wherever a human reads the
+   *  roster: display_name is the Instagram persona ('mads', 'D1 man hater'),
+   *  which is not what a coach calls the person. */
+  launchpointName: string | null;
   avatarUrl: string | null;
   profileUrl: string | null;
   /** Snowflake as text — needed verbatim for a `<@id>` mention. */
@@ -85,6 +89,7 @@ export async function loadPerformanceReport(
     id: string;
     handle: string;
     display_name: string | null;
+    launchpoint_name: string | null;
     avatar_url: string | null;
     profile_url: string | null;
     discord_user_id: string | null;
@@ -106,7 +111,7 @@ export async function loadPerformanceReport(
       client
         .from("research_creators")
         .select(
-          "id, handle, display_name, avatar_url, profile_url, discord_user_id::text, launchpoint_creator_id"
+          "id, handle, display_name, launchpoint_name, avatar_url, profile_url, discord_user_id::text, launchpoint_creator_id"
         )
         .eq("kind", "roster")
         .eq("platform", "instagram")
@@ -178,6 +183,7 @@ export async function loadPerformanceReport(
       creatorId: c.id,
       handle: c.handle,
       displayName: c.display_name,
+      launchpointName: c.launchpoint_name,
       avatarUrl: c.avatar_url,
       profileUrl: c.profile_url,
       discordUserId: c.discord_user_id,

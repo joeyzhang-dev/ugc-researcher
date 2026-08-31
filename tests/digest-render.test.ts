@@ -36,6 +36,7 @@ function row(over: Partial<PerformanceRow> & { videos?: PerformanceVideo[]; join
     creatorId: "c1",
     handle: "lockedwliam",
     displayName: "Liam",
+    launchpointName: null,
     avatarUrl: null,
     profileUrl: "https://www.instagram.com/lockedwliam/",
     discordUserId: "187727571922714626",

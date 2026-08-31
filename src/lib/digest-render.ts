@@ -266,3 +266,146 @@ export function buildOnboardingPing(row: PerformanceRow): MessagePayload {
     allowed_mentions: { parse: [] },
   };
 }
+
+/* --- Components V2 ------------------------------------------------------- */
+
+/** `IS_COMPONENTS_V2` (1 << 15). A message sent with this flag cannot use
+ *  `content` or `embeds` at all, and the flag can never be removed from it. */
+export const FLAG_IS_COMPONENTS_V2 = 32768;
+
+/** Discord caps a V2 message at 40 components, counting nested ones. */
+export const COMPONENTS_PER_MESSAGE_MAX = 40;
+
+export type V2Component = Record<string, unknown>;
+
+export interface V2MessagePayload {
+  flags: number;
+  components: V2Component[];
+  allowed_mentions: { parse: [] };
+}
+
+const textDisplay = (content: string): V2Component => ({ type: 10, content });
+/** Separator spacing is an INT in the API (1 = small, 2 = large) even though
+ *  the docs render it as a string — sending "small" is a 400. */
+export const SEPARATOR_SMALL = 1;
+export const SEPARATOR_LARGE = 2;
+
+const separator = (divider = true, spacing: number = SEPARATOR_SMALL): V2Component => ({
+  type: 14,
+  divider,
+  spacing,
+});
+
+/**
+ * The weekly recap as a Components V2 message.
+ *
+ * The old embed put sixteen creators into embed *fields*, which Discord lays
+ * out as a dense two-column grid with no control over wrapping — the source
+ * of the cramped block this replaces. V2 drops fields entirely: the per-
+ * creator detail becomes one rendered card (`/api/jobs/recap-image`), and the
+ * message keeps only what a coach must read as text — the headline, the best
+ * post, and who needs a decision.
+ *
+ * `imageUrl` is nullable on purpose. It needs both an app origin and
+ * CRON_SECRET to sign, and neither is guaranteed on every deploy; without it
+ * the message falls back to the ranked text list rather than posting a recap
+ * with a hole where the numbers were.
+ */
+export function buildCoachRecapV2(input: {
+  coach: string;
+  week: Window;
+  rows: PerformanceRow[];
+  imageUrl?: string | null;
+  appUrl?: string | null;
+}): V2MessagePayload {
+  const { coach, week, rows, imageUrl } = input;
+  const quota = rows.length * QUOTA_POSTS_PER_WEEK;
+  const posts = rows.reduce((sum, r) => sum + r.performance.weekly.posts, 0);
+  const hitQuota = rows.filter((r) => !r.performance.weekly.belowQuota).length;
+  const silent = rows.filter((r) => r.performance.weekly.posts === 0);
+  const views = rows.reduce((sum, r) => sum + r.performance.weekly.views, 0);
+  const avgViews = posts > 0 ? views / posts : null;
+  const spikes = rows.reduce((sum, r) => sum + r.performance.weekly.spikes.length, 0);
+  const best = rows
+    .filter((r) => r.performance.weekly.bestPost)
+    .map((r) => ({ handle: r.handle, post: r.performance.weekly.bestPost! }))
+    .sort((a, b) => b.post.views - a.post.views)[0];
+  const flagged = rows.filter((r) => r.performance.flagged);
+
+  const body: V2Component[] = [
+    textDisplay(
+      `## 📊 ${coach} — weekly recap\n` +
+        `**${weekLabel(week)}** · ${rows.length} creator${rows.length === 1 ? "" : "s"}`
+    ),
+    // The numbers a coach quotes, on one line. Everything per-creator lives
+    // in the card below, where a bar makes it comparable.
+    textDisplay(
+      `**${formatCompact(posts)}** posts · ` +
+        `**${avgViews != null ? formatCompact(Math.round(avgViews)) : "—"}** avg views · ` +
+        `**${hitQuota}/${rows.length}** hit quota · ` +
+        `**${spikes}** spike${spikes === 1 ? "" : "s"} · ` +
+        `**${silent.length}** didn’t post`
+    ),
+  ];
+
+  if (imageUrl) {
+    body.push({
+      type: 12,
+      items: [
+        {
+          media: { url: imageUrl },
+          description: `Weekly posting chart for ${coach}, ${weekLabel(week)}`,
+        },
+      ],
+    });
+  } else {
+    // No signed card: fall back to the ranked list so the recap still carries
+    // its numbers. Chunked to stay under the 4,000-char text display cap.
+    const ranked = [...rows].sort(comparePosting);
+    for (const chunk of chunkLines(ranked.map(postingLine), 3800)) {
+      body.push(textDisplay(chunk));
+    }
+  }
+
+  if (best) {
+    body.push(separator());
+    body.push(
+      textDisplay(
+        `🏆 **Best post** — [@${best.handle}, ${formatCompact(best.post.views)} views](${best.post.url})`
+      )
+    );
+  }
+
+  if (flagged.length) {
+    body.push(separator());
+    body.push(
+      textDisplay(
+        `⚠️ **Needs a decision**\n` +
+          flagged
+            .map(
+              (r) =>
+                `${creatorRef(r)} — **${r.performance.badStreak} weeks** without traction → call or offboard`
+            )
+            .join("\n")
+      )
+    );
+  }
+
+  // The link to the full table rides as a button rather than footer text, so
+  // it is tappable on mobile instead of a URL to select and paste.
+  if (input.appUrl) {
+    const href = `${input.appUrl.replace(/\/$/, "")}/performance?week=${week.start
+      .toISOString()
+      .slice(0, 10)}`;
+    body.push({
+      type: 1,
+      components: [{ type: 2, style: 5, label: "Open the full table", url: href }],
+    });
+  }
+
+  return {
+    flags: FLAG_IS_COMPONENTS_V2,
+    components: [{ type: 17, accent_color: RECAP_COLOR, components: body }],
+    allowed_mentions: { parse: [] },
+  };
+}
