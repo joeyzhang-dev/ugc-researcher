@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
  *            The ledger is not written, so the real send still happens later.
  * - `force=1` ignore the research_settings kill switch. For previewing before
  *            the flag is flipped on; it does NOT bypass the ledger.
+ * - `limit`  send only the first N creators, for eyeballing a sample.
  */
 export async function GET(request: NextRequest) {
   const denied = await authorizeJobRequest(request);
@@ -25,6 +26,8 @@ export async function GET(request: NextRequest) {
     dryRun: sp.get("dry") === "1",
     toChannelId: sp.get("to") || null,
     force: sp.get("force") === "1",
+    // Preview a sample rather than the whole roster.
+    limit: sp.get("limit") ? Number(sp.get("limit")) : undefined,
   };
   try {
     const admin = createAdminClient();

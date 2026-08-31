@@ -139,14 +139,15 @@ async function enabled(admin: SupabaseClient, column: string): Promise<boolean> 
 
 export async function sendCreatorWeekly(
   admin: SupabaseClient,
-  options: { dryRun?: boolean; toChannelId?: string | null; force?: boolean } = {}
+  options: { dryRun?: boolean; toChannelId?: string | null; force?: boolean; limit?: number } = {}
 ): Promise<CreatorSendResult> {
   if (!options.force && !(await enabled(admin, "creator_weekly_enabled"))) {
     return { ...empty(), disabled: true };
   }
   const result = empty();
   const week = lastCompleteWeek();
-  const { targets: list, skipped } = await targets(admin);
+  const { targets: all, skipped } = await targets(admin);
+  const list = options.limit ? all.slice(0, options.limit) : all;
   result.skipped.push(...skipped);
   const sentKeys = await ledgerKeys(admin, "creator-weekly");
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://bludgc.vercel.app").replace(/\/$/, "");
@@ -219,13 +220,14 @@ export async function sendCreatorWeekly(
 
 export async function sendCreatorDaily(
   admin: SupabaseClient,
-  options: { dryRun?: boolean; toChannelId?: string | null; force?: boolean } = {}
+  options: { dryRun?: boolean; toChannelId?: string | null; force?: boolean; limit?: number } = {}
 ): Promise<CreatorSendResult> {
   if (!options.force && !(await enabled(admin, "creator_daily_enabled"))) {
     return { ...empty(), disabled: true };
   }
   const result = empty();
-  const { targets: list, skipped } = await targets(admin);
+  const { targets: all, skipped } = await targets(admin);
+  const list = options.limit ? all.slice(0, options.limit) : all;
   result.skipped.push(...skipped);
   const sentKeys = await ledgerKeys(admin, "creator-daily");
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://bludgc.vercel.app").replace(/\/$/, "");
