@@ -250,6 +250,35 @@ export interface CreatorSyncResult {
  * makes when two scripts score too close to separate. Auto-merging here would
  * silently move one creator's posts onto another creator's row.
  */
+/**
+ * Index creator rows by every name we hold for them, for rename detection.
+ *
+ * Two names go in per row and the order matters. `launchpoint_name` is the
+ * reliable half — Launchpoint owns it and it is the person's real name.
+ * `display_name` is owned by the Instagram scrape and usually holds a persona
+ * ("D1 man hater", "jake 👨‍💻🏋️📈"), so keying on it alone misses the very
+ * renames this exists to catch. It is still indexed, because for a row
+ * Launchpoint has never named it is the only signal there is.
+ *
+ * A row that matches under both names appears once per bucket, not twice —
+ * otherwise a creator whose two names normalize alike would look like two
+ * separate people colliding.
+ */
+export function indexCreatorsByRealName<
+  T extends { display_name: string | null; launchpoint_name?: string | null },
+>(rows: readonly T[]): Map<string, T[]> {
+  const byName = new Map<string, T[]>();
+  for (const row of rows) {
+    for (const candidate of [row.launchpoint_name, row.display_name]) {
+      const key = nameKey(candidate);
+      if (!key) continue;
+      const bucket = byName.get(key) ?? [];
+      if (!bucket.includes(row)) byName.set(key, [...bucket, row]);
+    }
+  }
+  return byName;
+}
+
 export async function syncLaunchpointCreators(
   admin: SupabaseClient,
   accounts?: LaunchpointAccount[]
@@ -262,12 +291,13 @@ export async function syncLaunchpointCreators(
     platform: string;
     kind: string;
     display_name: string | null;
+    launchpoint_name: string | null;
     launchpoint_creator_id: string | null;
   };
   const existing = await readAllRows<CreatorRow>(
     admin,
     "research_creators",
-    "id, handle, platform, kind, display_name, launchpoint_creator_id"
+    "id, handle, platform, kind, display_name, launchpoint_name, launchpoint_creator_id"
   );
 
   const byKey = new Map<string, CreatorRow>();
@@ -277,10 +307,8 @@ export async function syncLaunchpointCreators(
   // Noah-andre Terry end up as two rows (@dresdistrict and
   // @morrismotivatesyou) with his Discord channel still pointing at the old
   // one. Contractor-id matching alone cannot see it.
-  const byDisplayName = new Map<string, CreatorRow[]>();
+  const byRealName = indexCreatorsByRealName(existing);
   for (const row of existing) {
-    const nameK = nameKey(row.display_name);
-    if (nameK) byDisplayName.set(nameK, [...(byDisplayName.get(nameK) ?? []), row]);
     byKey.set(`${row.platform}:${row.handle.toLowerCase().replace(/^@/, "")}`, row);
     if (row.launchpoint_creator_id) {
       const list = byContractor.get(row.launchpoint_creator_id) ?? [];
@@ -296,7 +324,11 @@ export async function syncLaunchpointCreators(
     skipped: 0,
     notCreated: [],
   };
-  const links: { id: string; launchpoint_creator_id: string }[] = [];
+  const links: {
+    id: string;
+    launchpoint_creator_id?: string;
+    launchpoint_name?: string;
+  }[] = [];
   const creates: Record<string, unknown>[] = [];
 
   for (const account of all) {
@@ -307,8 +339,18 @@ export async function syncLaunchpointCreators(
     }
     const match = byKey.get(`${platform}:${account.handle}`);
     if (match) {
-      if (match.launchpoint_creator_id !== account.contractorId) {
-        links.push({ id: match.id, launchpoint_creator_id: account.contractorId });
+      // The contractor id and the real name are patched together: both come
+      // from this one payload, and a row linked without its name is exactly
+      // the row rename detection cannot see.
+      const realName = account.contractorName || null;
+      const needsId = match.launchpoint_creator_id !== account.contractorId;
+      const needsName = realName !== null && match.launchpoint_name !== realName;
+      if (needsId || needsName) {
+        links.push({
+          id: match.id,
+          ...(needsId ? { launchpoint_creator_id: account.contractorId } : {}),
+          ...(needsName ? { launchpoint_name: realName } : {}),
+        });
       }
       result.linked++;
       continue;
@@ -340,7 +382,7 @@ export async function syncLaunchpointCreators(
     // person's real name under a different handle. Still only reported —
     // two creators can share a name — but reported is the whole point, since
     // creating the row silently is what produces a split identity.
-    const sameName = (byDisplayName.get(nameKey(account.contractorName)) ?? []).filter(
+    const sameName = (byRealName.get(nameKey(account.contractorName)) ?? []).filter(
       (r) => r.platform === platform && !r.launchpoint_creator_id
     );
     if (sameName.length > 0) {
@@ -356,6 +398,7 @@ export async function syncLaunchpointCreators(
       handle: account.handle,
       kind: "roster",
       display_name: account.contractorName,
+      launchpoint_name: account.contractorName,
       profile_url:
         platform === "instagram"
           ? `https://www.instagram.com/${account.handle}/`
@@ -370,12 +413,9 @@ export async function syncLaunchpointCreators(
 
   // One update per row: these are per-id patches, not a bulk upsert, and there
   // are at most a few dozen on a first run and none on later ones.
-  for (const row of links) {
-    const { error: e } = await admin
-      .from("research_creators")
-      .update({ launchpoint_creator_id: row.launchpoint_creator_id })
-      .eq("id", row.id);
-    if (e) throw new Error(`linking creator ${row.id}: ${e.message}`);
+  for (const { id, ...patch } of links) {
+    const { error: e } = await admin.from("research_creators").update(patch).eq("id", id);
+    if (e) throw new Error(`linking creator ${id}: ${e.message}`);
   }
   for (const batch of chunk(creates, WRITE_CHUNK)) {
     const { error: e } = await admin.from("research_creators").insert(batch);

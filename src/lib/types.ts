@@ -42,6 +42,18 @@ export interface ResearchCreator {
    *  Shared across a person's platform rows — one contractor, one id, one row
    *  here per platform+handle. */
   launchpoint_creator_id: string | null;
+  /** The creator's real name per Launchpoint ('Sarah Jiang'), synced by the
+   *  creators phase. Separate from `display_name` on purpose: that one is
+   *  owned by the Instagram scrape and holds their IG persona ('D1 man
+   *  hater'). Different facts — one column would make them overwrite each
+   *  other every cycle. */
+  launchpoint_name: string | null;
+  /** Set when we stop working with a creator: hides them from the default
+   *  roster and takes them out of bulk scrape enqueues. Nothing is deleted —
+   *  their videos, transcripts and Launchpoint history all stay. Distinct from
+   *  `status`, which is scrape health, not lifecycle. */
+  archived_at: string | null;
+  archived_reason: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

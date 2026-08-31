@@ -12,7 +12,11 @@ import {
   toPlatform,
   type LaunchpointAccount,
 } from "@/lib/launchpoint";
-import { matchChannelToContractor, withinTranscribeWindow } from "@/lib/jobs/launchpoint";
+import {
+  indexCreatorsByRealName,
+  matchChannelToContractor,
+  withinTranscribeWindow,
+} from "@/lib/jobs/launchpoint";
 
 describe("shortcodeFromUrl", () => {
   // The entire Launchpoint ↔ research_videos join rests on this function.
@@ -368,5 +372,46 @@ describe("nameKey", () => {
   it("is empty for nothing usable", () => {
     expect(nameKey(null)).toBe("");
     expect(nameKey("🌱")).toBe("");
+  });
+});
+
+describe("indexCreatorsByRealName", () => {
+  const row = (
+    handle: string,
+    display_name: string | null,
+    launchpoint_name: string | null = null
+  ) => ({ handle, display_name, launchpoint_name });
+
+  it("finds a creator by their real name when display_name is a persona", () => {
+    // The live case: the Instagram scrape owns display_name and writes the
+    // handle's persona, so the real name is only reachable via Launchpoint.
+    const sarah = row("copingwitharah", "D1 man hater", "Sarah Jiang");
+    const index = indexCreatorsByRealName([sarah]);
+    expect(index.get(nameKey("Sarah Jiang"))).toEqual([sarah]);
+    expect(index.get(nameKey("D1 man hater"))).toEqual([sarah]);
+  });
+
+  it("still indexes a row Launchpoint has never named", () => {
+    // 6 live rows had no launchpoint_name; display_name is all they have.
+    const dre = row("dresdistrict", "Noah-andre Terry");
+    expect(indexCreatorsByRealName([dre]).get(nameKey("Noah-andre Terry"))).toEqual([dre]);
+  });
+
+  it("lists a row once when both names normalize alike", () => {
+    // Otherwise one creator looks like two people colliding, and the rename
+    // check would report a conflict against itself.
+    const jas = row("wisdomwjas", "Jas Alcantara", "jas alcantara");
+    expect(indexCreatorsByRealName([jas]).get(nameKey("Jas Alcantara"))).toEqual([jas]);
+  });
+
+  it("buckets two genuinely different people who share a name", () => {
+    const a = row("anna.one", null, "Anna Florek");
+    const b = row("anna.two", null, "Anna Florek");
+    expect(indexCreatorsByRealName([a, b]).get(nameKey("Anna Florek"))).toEqual([a, b]);
+  });
+
+  it("ignores rows with no usable name at all", () => {
+    expect(indexCreatorsByRealName([row("ghost", null, null)]).size).toBe(0);
+    expect(indexCreatorsByRealName([row("ghost", "  ", "🌱")]).size).toBe(0);
   });
 });
