@@ -23,7 +23,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { postChannelMessage } from "@/lib/discord";
+import { listGuildMembers, postChannelMessage } from "@/lib/discord";
 import { loadCreatorStats } from "@/lib/jobs/creator-stats";
 import { loadDailyRecap } from "@/lib/jobs/daily-recap";
 import { diagnose, cpmNote } from "@/lib/creator-coaching";
@@ -71,7 +71,29 @@ interface Target {
  * missing is a skip with a reason, never a guess — posting someone's earnings
  * into the wrong channel is unrecoverable.
  */
-async function targets(admin: SupabaseClient): Promise<{ targets: Target[]; skipped: CreatorSendResult["skipped"] }> {
+/** Discord ids currently in the guild, or null when the lookup failed.
+ *
+ *  A stored discord_user_id can outlive the account's membership — the person
+ *  left, or was removed. Pinging that id renders as a literal `@unknown-user`
+ *  in the channel (seen live), which looks broken to everyone reading, and the
+ *  message is pointless anyway: someone who left cannot see the channel.
+ *
+ *  Null rather than an empty set on failure, so a Discord hiccup degrades to
+ *  "send to everyone" instead of silently sending to nobody. */
+async function guildMemberIds(): Promise<Set<string> | null> {
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!guildId) return null;
+  try {
+    return new Set((await listGuildMembers(guildId)).map((m) => m.user.id));
+  } catch {
+    return null;
+  }
+}
+
+async function targets(
+  admin: SupabaseClient,
+  memberIds: Set<string> | null
+): Promise<{ targets: Target[]; skipped: CreatorSendResult["skipped"] }> {
   const { data: creators, error } = await admin
     .from("research_creators")
     .select("id, handle, discord_user_id::text, archived_at")
@@ -103,6 +125,10 @@ async function targets(admin: SupabaseClient): Promise<{ targets: Target[]; skip
     const channelId = channelByCreator.get(c.id as string);
     if (!channelId) {
       skipped.push({ handle, reason: "no tracked coaching channel" });
+      continue;
+    }
+    if (memberIds && !memberIds.has(c.discord_user_id as string)) {
+      skipped.push({ handle, reason: "no longer in the server" });
       continue;
     }
     out.push({
@@ -146,7 +172,7 @@ export async function sendCreatorWeekly(
   }
   const result = empty();
   const week = lastCompleteWeek();
-  const { targets: all, skipped } = await targets(admin);
+  const { targets: all, skipped } = await targets(admin, await guildMemberIds());
   const list = options.limit ? all.slice(0, options.limit) : all;
   result.skipped.push(...skipped);
   const sentKeys = await ledgerKeys(admin, "creator-weekly");
@@ -226,7 +252,7 @@ export async function sendCreatorDaily(
     return { ...empty(), disabled: true };
   }
   const result = empty();
-  const { targets: all, skipped } = await targets(admin);
+  const { targets: all, skipped } = await targets(admin, await guildMemberIds());
   const list = options.limit ? all.slice(0, options.limit) : all;
   result.skipped.push(...skipped);
   const sentKeys = await ledgerKeys(admin, "creator-daily");
