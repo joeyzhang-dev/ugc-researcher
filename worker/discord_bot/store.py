@@ -290,6 +290,29 @@ def _creator_name(channel_name: Optional[str]) -> str:
     return pull.derive_creator_name(channel_name or "")
 
 
+def creator_names() -> list[dict]:
+    """Just enough to drive a name autocomplete: the channel-derived name and
+    the linked Instagram handle.
+
+    Deliberately NOT `creator_overview`: that one also pages thousands of
+    messages to compute per-channel activity counters, which an autocomplete
+    does not use and cannot afford. Discord kills an autocomplete interaction
+    after 3 seconds, and the roster read was blowing straight through it —
+    every first keystroke came back empty with a 10062.
+    """
+    channels = pull.sb_all(
+        "research_discord_channels?select=channel_name,research_creators(handle)&is_tracked=eq.true"
+    )
+    rows = []
+    for c in channels:
+        linked = c.get("research_creators") or {}
+        rows.append({
+            "creator_name": _creator_name(c.get("channel_name")),
+            "instagram": linked.get("handle"),
+        })
+    return rows
+
+
 def creator_overview() -> list[dict]:
     """One row per tracked channel, shaped for command_ui's embeds."""
     channels = pull.sb_all(

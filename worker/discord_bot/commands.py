@@ -87,6 +87,23 @@ def _to_overwrite(spec: OverwriteSpec) -> discord.PermissionOverwrite:
 _ROSTER_TTL_SECONDS = 30
 _roster_cache: dict[str, object] = {"at": 0.0, "rows": None}
 
+# Autocomplete has its own cache and its own (much cheaper) query: Discord
+# discards an autocomplete interaction after 3 seconds, so it cannot share the
+# overview read that pages the message history.
+_NAMES_TTL_SECONDS = 300
+_names_cache: dict[str, object] = {"at": 0.0, "rows": None}
+
+
+async def _creator_names(force: bool = False) -> list[dict]:
+    now = time.monotonic()
+    cached = _names_cache.get("rows")
+    if not force and cached is not None and now - float(_names_cache["at"]) < _NAMES_TTL_SECONDS:
+        return cached  # type: ignore[return-value]
+    rows = await asyncio.to_thread(store.creator_names)
+    _names_cache["rows"] = rows
+    _names_cache["at"] = now
+    return rows
+
 
 async def _creator_rows(force: bool = False) -> list[dict]:
     """Creator roster, cached briefly and fetched off the event loop —
@@ -702,7 +719,7 @@ def register_commands(
         interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
         try:
-            rows = await _creator_rows()
+            rows = await _creator_names()
         except Exception:  # noqa: BLE001 - autocomplete must never raise at the user
             return []
         return [app_commands.Choice(name=n, value=n) for n in creator_name_choices(rows, current)]
@@ -722,7 +739,7 @@ def register_commands(
         # the text through and let the API's handle lookup decide.
         handle = creator.strip().lstrip("@")
         try:
-            row = find_creator_row(await _creator_rows(), creator)
+            row = find_creator_row(await _creator_names(), creator)
             if row and row.get("instagram"):
                 handle = str(row["instagram"]).lstrip("@")
         except Exception:  # noqa: BLE001 - the roster is a convenience here
@@ -754,7 +771,7 @@ def register_commands(
         interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
         try:
-            rows = await _creator_rows()
+            rows = await _creator_names()
         except Exception:  # noqa: BLE001 - autocomplete must never raise at the user
             return []
         return [app_commands.Choice(name=n, value=n) for n in creator_name_choices(rows, current)]
