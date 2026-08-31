@@ -133,3 +133,25 @@ describe("cpmNote", () => {
     expect(cpmNote(null, null)).toBeNull();
   });
 });
+
+describe("cpmNote when the creator did not post", () => {
+  it("does not congratulate someone who posted nothing", () => {
+    // Seen live: 0 posts this week, $1.32 CPM settled from July, and the card
+    // said "that is exactly where you want it" directly under "you didn't post".
+    const note = cpmNote(1.32, null, null, false)!;
+    expect(note).not.toContain("exactly where you want it");
+    expect(note).toContain("Posting again");
+  });
+
+  it("still congratulates a creator who did post", () => {
+    expect(cpmNote(1.32, null, null, true)).toContain("exactly where you want it");
+  });
+
+  it("frames a mid CPM as needing new posts when they are inactive", () => {
+    expect(cpmNote(8, null, null, false)).toContain("needs new posts");
+  });
+
+  it("defaults to the active voice when the flag is not passed", () => {
+    expect(cpmNote(1.32, null, null)).toContain("exactly where you want it");
+  });
+});

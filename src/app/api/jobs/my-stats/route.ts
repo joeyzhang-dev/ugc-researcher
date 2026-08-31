@@ -61,7 +61,12 @@ export async function GET(request: NextRequest) {
       // diagnosis ("call or offboard") must never reach the person it is about.
       message: coaching.creator,
       tone: coaching.tone,
-      cpmNote: cpmNote(s.money.cpm30.cpm, s.money.cpm30.projected, s.money.cpm30.settledWindow),
+      cpmNote: cpmNote(
+        s.money.cpm30.cpm,
+        s.money.cpm30.projected,
+        s.money.cpm30.settledWindow,
+        s.current.posts > 0
+      ),
       // Every window the card shows, stated rather than implied.
       windows: {
         week: {

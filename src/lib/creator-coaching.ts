@@ -181,16 +181,29 @@ export function cpmNote(
   projected: number | null,
   /** The window `cpm` describes, so the sentence can say which 30 days it
    *  means. The true window ends at the creator's newest payout, not today. */
-  window?: { start: Date; end: Date } | null
+  window?: { start: Date; end: Date } | null,
+  /** Whether they posted in the week being reported.
+   *
+   * CPM is settled from posts made weeks ago, so a creator who posted nothing
+   * this week can still show a great one. Congratulating them for it — "that
+   * is exactly where you want it" directly under "you didn't post this week" —
+   * reads as if nobody is looking, and rewards the wrong thing. Seen live on
+   * Adriel's card (0 posts, $1.32 from July). When they are inactive the same
+   * number is framed as something they are letting go cold. */
+  postedThisWeek: boolean = true
 ): string | null {
   const band = cpmBand(cpm);
   const span = window ? ` (${range(window.start)}–${range(new Date(window.end.getTime() - 1))})` : "";
   if (band === "great")
-    return `Your CPM is $${cpm!.toFixed(2)}${span} — well under the $${CPM_GREAT_USD} line. That is exactly where you want it.`;
+    return postedThisWeek
+      ? `Your CPM is $${cpm!.toFixed(2)}${span} — well under the $${CPM_GREAT_USD} line. That is exactly where you want it.`
+      : `Your CPM is $${cpm!.toFixed(2)}${span} — that is a strong number, earned on posts you already made. Posting again is what keeps it there.`;
   if (band === "poor")
     return `Your CPM is $${cpm!.toFixed(2)}${span}. Views are what pulls that number down — nothing else does.`;
   if (band === "ok")
-    return `Your CPM is $${cpm!.toFixed(2)}${span}. Under $${CPM_GREAT_USD} is the target.`;
+    return postedThisWeek
+      ? `Your CPM is $${cpm!.toFixed(2)}${span}. Under $${CPM_GREAT_USD} is the target.`
+      : `Your CPM is $${cpm!.toFixed(2)}${span}, from earlier posts. Under $${CPM_GREAT_USD} is the target — and it needs new posts to get there.`;
   if (cpm == null && projected != null) {
     return (
       `No settled payouts yet, so this is tracking at about $${projected.toFixed(2)} over the last 30 days — ` +
