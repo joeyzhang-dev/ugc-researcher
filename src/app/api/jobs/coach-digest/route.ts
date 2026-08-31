@@ -18,6 +18,8 @@ export const dynamic = "force-dynamic";
  *            channel); the ledger is not written, so the real send still
  *            happens later.
  * - `weeklyOnly=1` skip the onboarding pings.
+ * - `resend=1` post a week again even though the ledger has it. Use when a
+ *            digest went out wrong; the original ledger row is kept.
  *
  * CRON_SECRET or admin. The hourly cron calls the same function on Monday
  * 09:00 UTC; this route is the manual/preview entry point.
@@ -32,6 +34,9 @@ export async function GET(request: NextRequest) {
       dryRun: sp.get("dry") === "1",
       toChannelId: sp.get("to") || null,
       weeklyOnly: sp.get("weeklyOnly") === "1",
+      // Deliberate re-send of a week already in the ledger. Recorded under its
+      // own key; it does not delete or overwrite the original.
+      resend: sp.get("resend") === "1",
     });
     return NextResponse.json(result);
   } catch (error) {

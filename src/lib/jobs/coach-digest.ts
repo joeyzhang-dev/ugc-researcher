@@ -49,6 +49,17 @@ export interface DigestOptions {
   toChannelId?: string | null;
   /** Skip the onboarding pings (weekly only). */
   weeklyOnly?: boolean;
+  /**
+   * Post a week's digest again even though the ledger says it was sent.
+   *
+   * For a deliberate re-send — a digest that went out wrong and needs
+   * replacing. The re-send is recorded under its own suffixed key rather than
+   * overwriting or deleting the original row: the ledger is the record of what
+   * this bot actually posted, and a re-send is a new fact about that week, not
+   * a correction of the old one. Deleting the row would leave two messages in
+   * the channel and a ledger claiming one.
+   */
+  resend?: boolean;
 }
 
 export interface DigestResult {
@@ -197,8 +208,10 @@ export async function sendCoachDigests(admin: SupabaseClient, options: DigestOpt
     }
 
     // Weekly digest.
-    const key = weeklyKey(target.categoryId, week);
-    if (!options.toChannelId && sentKeys.has(key)) {
+    const baseKey = weeklyKey(target.categoryId, week);
+    // A re-send gets its own key so the original row survives as history.
+    const key = options.resend ? `${baseKey}:resend:${sendNonce}` : baseKey;
+    if (!options.toChannelId && !options.resend && sentKeys.has(key)) {
       result.skipped.push({ coach: group.coach, reason: "already sent this week" });
     } else {
       // One message now, not a chunked series: the per-creator detail is a
