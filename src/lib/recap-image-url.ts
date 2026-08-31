@@ -46,3 +46,29 @@ export function recapImageUrl(
   if (nonce) q.set("n", nonce);
   return `${appUrl.replace(/\/$/, "")}/api/jobs/recap-image?${q.toString()}`;
 }
+
+/**
+ * Render the card once before it is linked, so Discord's fetch is warm.
+ *
+ * Discord's media proxy fetches the URL the moment the message is posted and
+ * gives up quickly. A cold `next/og` render on Vercel takes 4-16s — measured
+ * live 2026-08-31, cold 4.75s vs 0.24s warm — so the first fetch loses the
+ * race and the card renders as a broken-image box. `next/og` already returns
+ * `cache-control: public, immutable, max-age=31536000`, so one request from us
+ * is enough to make every later fetch instant.
+ *
+ * Verified by probe: the identical URL, query string and all, renders in
+ * Discord once warmed and fails cold. Best-effort — a failure here is not
+ * worth losing the digest over, and the nonce means a later send gets a fresh
+ * URL rather than inheriting a cached failure.
+ */
+export async function warmRecapImage(url: string, timeoutMs = 25_000): Promise<boolean> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    // Drain the body: the render is only cached once the response completes.
+    await res.arrayBuffer();
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

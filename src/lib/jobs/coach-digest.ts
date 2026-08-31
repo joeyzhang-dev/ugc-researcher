@@ -24,7 +24,7 @@ import {
   type PermissionOverwrite,
 } from "@/lib/discord";
 import { buildCoachRecapV2, buildOnboardingPing } from "@/lib/digest-render";
-import { recapImageUrl } from "@/lib/recap-image-url";
+import { recapImageUrl, warmRecapImage } from "@/lib/recap-image-url";
 import { lastCompleteWeek, type Window } from "@/lib/performance";
 import { loadPerformanceReport, type PerformanceRow } from "@/lib/jobs/performance";
 
@@ -186,14 +186,21 @@ export async function sendCoachDigests(admin: SupabaseClient, options: DigestOpt
     } else {
       // One message now, not a chunked series: the per-creator detail is a
       // rendered card, so there is nothing left to overflow into extra embeds.
+      // Fresh per send, so a retry gets a URL Discord has not already cached a
+      // failure against.
+      const imageUrl = recapImageUrl(appUrl, group.coach, week.start, sendNonce);
+      // Render it before Discord asks for it — see warmRecapImage. A cold
+      // render loses the race with Discord's proxy and the card comes out as a
+      // broken-image box.
+      const warmed = imageUrl && !dryRun ? await warmRecapImage(imageUrl) : false;
       const payload = buildCoachRecapV2({
         coach: group.coach,
         week,
         rows: group.rows,
         appUrl,
-        // Fresh per send, so a retry gets a URL Discord has not already
-        // cached a failure against.
-        imageUrl: recapImageUrl(appUrl, group.coach, week.start, sendNonce),
+        // Link it only once it is known to render: a URL that 404s or times
+        // out would be cached as a failure by Discord against that exact URL.
+        imageUrl: warmed ? imageUrl : null,
       });
       const payloads = [payload];
       if (!dryRun) {
