@@ -440,7 +440,11 @@ export function cpmRead(
   days: number = CPM_WINDOW_DAYS,
   payscale: Payscale = DEFAULT_PAYSCALE
 ): CpmRead {
-  const calendar = inWindow(videos, trailingWindow(asOf, days));
+  // Published reels only. Every count and average below is about how the
+  // creator's WORK performed, and a trial batch is one piece of work uploaded
+  // twenty times — leaving it raw drags the average toward the trial noise
+  // floor and hands each upload its own flat-fee projection.
+  const calendar = collapseTrialUploads(inWindow(videos, trailingWindow(asOf, days))).kept;
   const frontier = videos
     .filter((v) => isPaid(v) && postedAt(v) != null && postedAt(v)! < asOf.getTime())
     .reduce<number | null>((max, v) => (max == null || postedAt(v)! > max ? postedAt(v)! : max), null);
@@ -448,6 +452,14 @@ export function cpmRead(
   const settledWindow: Window | null = fresh
     ? { start: new Date(frontier! + 1 - days * DAY_MS), end: new Date(frontier! + 1) }
     : null;
+  // The ONE deliberate exception: the settled set is not collapsed.
+  //
+  // trueCpm is dollars actually paid divided by the views those same dollars
+  // were paid for. Measured 2026-08-31, 1 of 8 trial uploads in a window had
+  // been paid ($42.93) — so dropping trials here would delete real earnings
+  // from the numerator while leaving the ratio's own denominator behind, and
+  // understate money a creator genuinely received. It is filtered to paid
+  // posts already, which is what keeps the trial floor out of it.
   const settled = settledWindow ? inWindow(videos, settledWindow).filter(isPaid) : [];
   return {
     cpm: trueCpm(settled),
@@ -502,7 +514,12 @@ export function onboardingRead(
     };
   }
   const firstWeek: Window = { start: joinedAt, end: new Date(joinedAt.getTime() + ONBOARDING_DAYS * DAY_MS) };
-  const posts = inWindow(videos, firstWeek).filter((v) => postedAt(v)! < asOf.getTime());
+  // Collapsed like every other post count: a creator who runs trials in their
+  // first week would otherwise be recorded as shipping twenty pieces of work
+  // when they shipped one, and judged on the trial floor's view average.
+  const posts = collapseTrialUploads(
+    inWindow(videos, firstWeek).filter((v) => postedAt(v)! < asOf.getTime())
+  ).kept;
   const cpm = trueCpm(posts);
   const projected = projectedCpm(posts, payscale);
   const allPaid = posts.length > 0 && posts.every(isPaid);

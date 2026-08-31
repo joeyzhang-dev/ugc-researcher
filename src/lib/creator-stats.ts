@@ -14,6 +14,7 @@
 
 import {
   DEFAULT_PAYSCALE,
+  collapseTrialUploads,
   WEEK_MS,
   cpmRead,
   delta,
@@ -75,7 +76,10 @@ export function trendWindows(asOf: Date, count: number = TREND_WEEKS): Window[] 
  *  routinely reaches back further than eight weeks. */
 export function moneyRead(videos: PerformanceVideo[], asOf: Date): MoneyRead {
   const paid = videos.filter((v) => (v.earnings_usd ?? 0) > 0);
-  const withViews = videos.filter((v) => (v.view_count ?? 0) > 0);
+  // "Awaiting payout" is a count of WORK in the pipeline, so it counts
+  // published reels. Left raw it read 166 for a creator with 57 paid posts —
+  // almost all of it trial uploads that will never be paid separately.
+  const withViews = collapseTrialUploads(videos).kept.filter((v) => (v.view_count ?? 0) > 0);
   const now = cpmRead(videos, asOf);
   const prev = cpmRead(videos, new Date(asOf.getTime() - WEEK_MS));
   return {

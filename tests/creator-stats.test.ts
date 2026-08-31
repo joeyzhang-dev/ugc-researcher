@@ -133,3 +133,58 @@ describe("moneyRead", () => {
     expect(m.earnedUsd).toBe(0);
   });
 });
+
+describe("trial uploads never reach a posts or views figure", () => {
+  const SCRIPT = "four things you should not be doing if you claim to be a christian number one";
+
+  it("keeps trial uploads out of the projected CPM and its averages", () => {
+    // Each trial upload over 1k views would otherwise be handed its own $40
+    // flat-fee projection, and drag avg views toward the trial noise floor.
+    const batch = [
+      vid("win", "2026-08-10T12:00:00Z", 80000, 0, SCRIPT),
+      ...Array.from({ length: 12 }, (_, i) => vid(`t${i}`, "2026-08-10T13:00:00Z", 2000, 0, SCRIPT)),
+    ];
+    const m = moneyRead(batch, ASOF);
+    expect(m.cpm30.posts).toBe(1);
+    expect(m.cpm30.avgViews).toBe(80000);
+  });
+
+  it("does not count trial uploads as awaiting payout", () => {
+    // Shipped as 166 for a creator with 57 paid posts — nearly all trials.
+    const batch = [
+      vid("win", "2026-08-10T12:00:00Z", 80000, 0, SCRIPT),
+      ...Array.from({ length: 20 }, (_, i) => vid(`t${i}`, "2026-08-10T13:00:00Z", 2000, 0, SCRIPT)),
+    ];
+    expect(moneyRead(batch, ASOF).unpaidPosts).toBe(1);
+  });
+
+  it("still counts money a creator actually received on a trial upload", () => {
+    // Deliberate exception: trueCpm is dollars paid over the views those
+    // dollars were paid for. Dropping a PAID trial would delete real earnings.
+    const m = moneyRead(
+      [
+        vid("win", "2026-07-20T12:00:00Z", 80000, 100, SCRIPT),
+        vid("t0", "2026-07-20T13:00:00Z", 2000, 42.93, SCRIPT),
+      ],
+      ASOF
+    );
+    expect(m.earnedUsd).toBeCloseTo(142.93, 2);
+    expect(m.paidPosts).toBe(2);
+  });
+});
+
+describe("onboardingRead", () => {
+  it("counts a first-week trial batch as one post", async () => {
+    const { onboardingRead } = await import("@/lib/performance");
+    const SCRIPT = "welcome to my page here is what i do every single morning without fail";
+    const joined = new Date("2026-08-03T00:00:00Z");
+    const videos = [
+      vid("win", "2026-08-04T12:00:00Z", 40000, 0, SCRIPT),
+      ...Array.from({ length: 15 }, (_, i) => vid(`t${i}`, "2026-08-04T13:00:00Z", 1500, 0, SCRIPT)),
+    ];
+    const o = onboardingRead(videos, joined, ASOF);
+    // Judged on the reel they shipped, not on the trial floor.
+    expect(o.posts).toBe(1);
+    expect(o.avgViews).toBe(40000);
+  });
+});
