@@ -16,6 +16,7 @@ import type { CreatorStatsRow } from "@/lib/jobs/creator-stats";
 import { QUOTA_POSTS_PER_WEEK, type Bucket, type PostRef, type Window } from "@/lib/performance";
 import { bucketForViews } from "@/lib/performance";
 import { formatCompact, formatUsd } from "@/lib/format";
+import { CPM_BAND_COLOR, CPM_BAND_LABEL, PlatformMark, cpmBand } from "@/lib/card-chrome";
 
 const C = {
   bg: "#1a1b1e",
@@ -178,10 +179,11 @@ export function CreatorCard({ row }: { row: CreatorStatsRow }) {
   // Direction on the 30-day CPM: only when both reads are real. A projection
   // moving is not the same fact and must not wear the same arrow.
   const d = s.money.delta;
-  const cpmNote =
+  const cpmMove =
     d && !cpm.lowSample && !s.money.cpm30Prev.lowSample && Math.abs(d.usd) >= 0.005
       ? `${d.usd < 0 ? "▼" : "▲"}${formatUsd(Math.abs(d.usd))}`
       : undefined;
+  const band = cpmBand(cpm.cpm);
 
   return (
     <div
@@ -241,6 +243,7 @@ export function CreatorCard({ row }: { row: CreatorStatsRow }) {
             ) : null}
           </div>
         </div>
+        <PlatformMark />
       </div>
 
       {/* This week */}
@@ -273,8 +276,16 @@ export function CreatorCard({ row }: { row: CreatorStatsRow }) {
         <Stat
           label="30d CPM"
           value={cpm.cpm != null ? formatUsd(cpm.cpm) : cpm.projected != null ? `≈${formatUsd(cpm.projected)}` : "—"}
-          note={cpmNote ?? (cpm.cpm == null && cpm.projected != null ? "projected" : undefined)}
-          color={cpmNote ? (d && d.usd < 0 ? C.up : C.down) : undefined}
+          // Lower CPM is better, which is backwards from everything else here,
+          // so the band carries a word as well as a colour.
+          note={
+            band
+              ? `${CPM_BAND_LABEL[band]}${cpmMove ? ` ${cpmMove}` : ""}`
+              : cpm.cpm == null && cpm.projected != null
+                ? "projected"
+                : undefined
+          }
+          color={band ? CPM_BAND_COLOR[band] : undefined}
         />
         <Stat label="Earned" value={formatUsd(s.money.earnedUsd)} note="all time" />
         <Stat label="Paid posts" value={`${s.money.paidPosts}`} />

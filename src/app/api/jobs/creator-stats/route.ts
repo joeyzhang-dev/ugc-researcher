@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadCreatorStats } from "@/lib/jobs/creator-stats";
 import { creatorCardUrl, warmRecapImage } from "@/lib/recap-image-url";
+import { cpmNote, diagnose } from "@/lib/creator-coaching";
 import { QUOTA_POSTS_PER_WEEK, lastCompleteWeek, weekKey } from "@/lib/performance";
 import { authorizeJobRequest } from "../authorize";
 
@@ -50,6 +51,9 @@ export async function GET(request: NextRequest) {
 
     const s = row.stats;
     const cpm = s.money.cpm30;
+    // The coach voice, not the creator one: this endpoint feeds /stats, which
+    // only staff can run.
+    const coaching = diagnose(s);
     return NextResponse.json({
       handle: row.handle,
       name: row.launchpointName ?? row.displayName ?? row.handle,
@@ -64,6 +68,9 @@ export async function GET(request: NextRequest) {
       archived: !!row.archivedAt,
       week: weekKey({ start: asOf, end: asOf }),
       quota: QUOTA_POSTS_PER_WEEK,
+      readCase: coaching.case,
+      message: coaching.coach,
+      cpmNote: cpmNote(cpm.cpm, cpm.projected),
       imageUrl,
       current: {
         posts: s.current.posts,

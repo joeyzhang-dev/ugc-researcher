@@ -13,7 +13,12 @@ for var, dummy in {
     os.environ.setdefault(var, dummy)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from discord_bot.permissions import may_run_commands, staff_only_message  # noqa: E402
+from discord_bot.permissions import (  # noqa: E402
+    OPEN_COMMANDS,
+    command_is_open,
+    may_run_commands,
+    staff_only_message,
+)
 from discord_bot.config import DEFAULT_STAFF_ROLE_IDS  # noqa: E402
 
 COACH, DEV, FOLK_TEAM = DEFAULT_STAFF_ROLE_IDS
@@ -74,6 +79,27 @@ class MayRunCommands(unittest.TestCase):
         msg = staff_only_message()
         for name in ("Coach", "dev", "Folk Team"):
             self.assertIn(name, msg)
+
+
+class OpenCommands(unittest.TestCase):
+    def test_my_stats_is_open_because_creators_need_it(self):
+        # Creators hold none of the staff roles; gating /my-stats would make it
+        # unusable by exactly the people it exists for.
+        self.assertTrue(command_is_open("my-stats"))
+
+    def test_every_other_command_stays_staff_only(self):
+        for name in ("stats", "onboard", "offboard", "link", "creators", "creator", "health", "socials"):
+            self.assertFalse(command_is_open(name), name)
+
+    def test_the_open_list_stays_deliberately_tiny(self):
+        # A guard on scope creep: anything added here is readable by the whole
+        # server, so it must be a conscious change with a test to match.
+        self.assertEqual(OPEN_COMMANDS, frozenset({"my-stats"}))
+
+    def test_an_unknown_or_missing_command_is_not_open(self):
+        self.assertFalse(command_is_open(None))
+        self.assertFalse(command_is_open(""))
+        self.assertFalse(command_is_open("my-stats-secret"))
 
 
 if __name__ == "__main__":

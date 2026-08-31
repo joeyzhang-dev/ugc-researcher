@@ -20,6 +20,7 @@
 import type { PerformanceRow } from "@/lib/jobs/performance";
 import { QUOTA_POSTS_PER_WEEK, TOP_POSTS, type Bucket, type PostRef, type Window } from "@/lib/performance";
 import { formatCompact } from "@/lib/format";
+import { PlatformMark } from "@/lib/card-chrome";
 
 /** Discord renders media on a dark surface; this matches its dark theme so
  *  the card reads as part of the message rather than a pasted screenshot. */
@@ -284,6 +285,7 @@ export function RecapCard({ coach, week, rows }: RecapCardData) {
           <div style={{ display: "flex", fontSize: 20, color: IMG.dim, marginLeft: 16 }}>
             {monthDay(week.start)} – {monthDay(new Date(week.end.getTime() - 1))}
           </div>
+          <PlatformMark />
         </div>
 
         <div style={{ display: "flex", marginTop: 26 }}>

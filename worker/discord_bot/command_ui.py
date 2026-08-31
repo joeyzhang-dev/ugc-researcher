@@ -139,6 +139,15 @@ COMMAND_CATALOG: tuple[CommandInfo, ...] = (
         ),
     ),
     CommandInfo(
+        name="my-stats",
+        description="See your own week — posts, views, earnings and what to do next.",
+        usage="/my-stats",
+        detail=(
+            "for creators. private to you, shows only your own numbers, and needs your "
+            "Discord linked to your Instagram (`/link`). anyone in the server can run it."
+        ),
+    ),
+    CommandInfo(
         name="link",
         description="Link a creator's Instagram to their Discord profile and coaching channel.",
         usage="/link username:@person instagram:@handle",
@@ -635,6 +644,9 @@ def build_stats_embed(data: dict) -> EmbedSpec:
         f"30d CPM **{cpm_text}** · earned **{_usd(money.get('earnedUsd'))}** · "
         f"{money.get('paidPosts', 0)} paid, {money.get('unpaidPosts', 0)} awaiting",
     ]
+    if data.get("message"):
+        lines.append("")
+        lines.append(f"💡 {data['message']}")
     if totals.get("trialUploads"):
         lines.append(
             f"-# {_compact(totals['trialUploads'])} trial-reel uploads excluded — "
@@ -662,4 +674,49 @@ def build_stats_embed(data: dict) -> EmbedSpec:
         fields=fields,
         color=COLOR_BRAND,
         footer=f"week of {data.get('week')}" if data.get("week") else None,
+    )
+
+
+def build_my_stats_embed(data: dict) -> EmbedSpec:
+    """The creator's own week, in their own voice.
+
+    Short on purpose. The card carries the detail; this is the part that shows
+    in a notification preview, so it leads with the encouragement and the one
+    next step rather than with a table of numbers.
+    """
+    cur = data.get("current") or {}
+    money = data.get("money") or {}
+    quota = data.get("quota") or 7
+    posts = cur.get("posts") or 0
+    tone = (data.get("tone") or "neutral").lower()
+    color = {"good": COLOR_OK, "warn": COLOR_WARN, "bad": COLOR_WARN}.get(tone, COLOR_BRAND)
+
+    lines = [data.get("message") or ""]
+    note = data.get("cpmNote")
+    if note:
+        lines.append(f"-# {note}")
+
+    fields = [
+        EmbedField(name="This week", value=f"**{posts}**/{quota} posts", inline=True),
+        EmbedField(
+            name="Avg views",
+            value=f"**{_compact(cur.get('avgViews')) if posts else '—'}**",
+            inline=True,
+        ),
+        EmbedField(name="Earned", value=f"**{_usd(money.get('earnedUsd'))}**", inline=True),
+    ]
+    best = data.get("personalBestAvgViews")
+    if best:
+        fields.append(
+            EmbedField(name="Your best week", value=f"{_compact(best)} avg views", inline=True)
+        )
+    if cur.get("spikes"):
+        fields.append(EmbedField(name="Spikes 40k+", value=f"🚀 {cur['spikes']}", inline=True))
+
+    return build_embed(
+        title=f"📊 Your week, {data.get('name') or data.get('handle')}",
+        description="\n".join(x for x in lines if x),
+        fields=fields,
+        color=color,
+        footer="only you can see this",
     )

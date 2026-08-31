@@ -61,6 +61,33 @@ export async function findCreatorByHandle(
   return (data?.[0] as Record<string, unknown>) ?? null;
 }
 
+/**
+ * Resolve a creator by their Discord id.
+ *
+ * `/my-stats` resolves the caller this way and never by a name they typed:
+ * the id comes from the interaction, which Discord signs, so it is the one
+ * identifier a creator cannot put words into. Accepting a handle there would
+ * let anyone read anyone's earnings.
+ *
+ * `discord_user_id` is a bigint snowflake, so it is compared as text — a JS
+ * number loses the low bits and would silently match the wrong person.
+ */
+export async function findCreatorByDiscordUserId(
+  client: SupabaseClient,
+  discordUserId: string
+): Promise<Record<string, unknown> | null> {
+  const id = (discordUserId ?? "").trim();
+  if (!/^\d{5,25}$/.test(id)) return null;
+  const { data, error } = await client
+    .from("research_creators")
+    .select(CREATOR_COLUMNS)
+    .eq("platform", "instagram")
+    .eq("discord_user_id", id)
+    .limit(1);
+  if (error) throw new Error(`looking up discord ${id}: ${error.message}`);
+  return (data?.[0] as Record<string, unknown>) ?? null;
+}
+
 export async function loadCreatorStats(
   client: SupabaseClient,
   handle: string,

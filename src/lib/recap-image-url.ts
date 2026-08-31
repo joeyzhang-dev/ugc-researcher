@@ -40,6 +40,27 @@ export function creatorCardSignature(handle: string, asOf: string, nonce = ""): 
   return signParts("creator", handle.toLowerCase(), asOf, nonce);
 }
 
+/** The my-stats card's signature. Its own subject, so a coach-card link
+ *  cannot be replayed to fetch the creator-facing render or vice versa. */
+export function myCardSignature(handle: string, asOf: string, nonce = ""): string | null {
+  return signParts("mycard", handle.toLowerCase(), asOf, nonce);
+}
+
+export function myCardUrl(
+  appUrl: string | null | undefined,
+  handle: string,
+  asOf: Date,
+  nonce = ""
+): string | null {
+  if (!appUrl) return null;
+  const day = asOf.toISOString().slice(0, 10);
+  const sig = myCardSignature(handle, day, nonce);
+  if (!sig) return null;
+  const q = new URLSearchParams({ handle, asOf: day, sig });
+  if (nonce) q.set("n", nonce);
+  return `${appUrl.replace(/\/$/, "")}/api/jobs/my-card?${q.toString()}`;
+}
+
 /** The absolute creator-card URL, or null when it cannot be signed. */
 export function creatorCardUrl(
   appUrl: string | null | undefined,

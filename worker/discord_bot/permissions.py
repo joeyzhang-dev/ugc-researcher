@@ -9,6 +9,20 @@ from __future__ import annotations
 from typing import Sequence
 
 
+# Commands any member of the server may run. Everything else is staff-only.
+#
+# `/my-stats` is deliberately open: it is FOR creators, who by definition do
+# not hold Coach/dev/Folk Team, and it can only ever return the caller's own
+# row — the web route keys on the Discord id from the signed interaction and
+# takes no handle at all. Gating it would have made it unusable by exactly the
+# people it exists for.
+OPEN_COMMANDS: frozenset[str] = frozenset({"my-stats"})
+
+
+def command_is_open(command_name: str | None) -> bool:
+    return (command_name or "") in OPEN_COMMANDS
+
+
 def may_run_commands(member, staff_role_ids) -> bool:
     """Whether this member may run the bot's slash commands.
 

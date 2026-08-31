@@ -17,9 +17,10 @@ import discord
 from discord import app_commands
 
 from discord_bot import socials, store, webapi
-from discord_bot.permissions import may_run_commands, staff_only_message
+from discord_bot.permissions import command_is_open, may_run_commands, staff_only_message
 from discord_bot.command_ui import (
     EmbedSpec,
+    build_my_stats_embed,
     build_stats_embed,
     build_creator_embed,
     build_creators_embed,
@@ -218,6 +219,11 @@ def register_commands(
     # decorator is a rule you can forget to apply, and the failure mode is a
     # command that silently runs for the whole server.
     async def _staff_gate(interaction: discord.Interaction) -> bool:
+        name = getattr(interaction.command, "name", None)
+        # /my-stats is for creators, who hold none of the staff roles. It is
+        # safe to open because it cannot address anyone but the caller.
+        if command_is_open(name):
+            return True
         if may_run_commands(interaction.user, cfg.staff_role_ids):
             return True
         try:
@@ -752,6 +758,38 @@ def register_commands(
         except Exception:  # noqa: BLE001 - autocomplete must never raise at the user
             return []
         return [app_commands.Choice(name=n, value=n) for n in creator_name_choices(rows, current)]
+
+    # ---- /my-stats ----------------------------------------------------
+
+    @tree.command(name="my-stats", description=command_description("my-stats"), guild=guild)
+    @app_commands.guild_only()
+    async def my_stats_command(interaction: discord.Interaction) -> None:
+        # Open to every member (see permissions.OPEN_COMMANDS) — and safe to
+        # be, because it takes no target: the caller's own id is the only key.
+        await interaction.response.defer(ephemeral=True)
+        try:
+            data = await asyncio.to_thread(webapi.my_stats, interaction.user.id)
+        except webapi.WebApiError as exc:
+            if "not-linked" in str(exc):
+                await interaction.followup.send(
+                    "❌ your Discord isn't linked to a creator account yet — "
+                    "ask your coach to run `/link` for you, then try again.",
+                    ephemeral=True, allowed_mentions=NO_MENTIONS,
+                )
+                return
+            await interaction.followup.send(
+                f"❌ couldn't load your stats: {exc}", ephemeral=True, allowed_mentions=NO_MENTIONS
+            )
+            return
+
+        embed = _to_embed(build_my_stats_embed(data))
+        if data.get("imageUrl"):
+            embed.set_image(url=data["imageUrl"])
+        logger.info(
+            "my-stats %s -> handle=%s posts=%s",
+            interaction.user, data.get("handle"), (data.get("current") or {}).get("posts"),
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True, allowed_mentions=NO_MENTIONS)
 
     # ---- /creators ----------------------------------------------------
 

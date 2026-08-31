@@ -59,3 +59,12 @@ def _get(path: str) -> dict:
 def creator_stats(handle: str) -> dict:
     """One creator's stats panel, with an already-warmed card image URL."""
     return _get("/api/jobs/creator-stats?" + urllib.parse.urlencode({"handle": handle}))
+
+
+def my_stats(discord_user_id: int | str) -> dict:
+    """The caller's own stats. Keyed on their Discord id, never a handle — the
+    id comes from the interaction Discord signed, so it is the one identifier
+    a creator cannot put words into."""
+    return _get(
+        "/api/jobs/my-stats?" + urllib.parse.urlencode({"discordUserId": str(discord_user_id)})
+    )
