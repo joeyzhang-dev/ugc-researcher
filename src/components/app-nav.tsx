@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
-/* The app's *section* axis — the six pages. Lives in the workspace rail as a
+/* The app's *section* axis — the seven pages. Lives in the workspace rail as a
    vertical list so there's exactly one place to change page. Icons are thin
    line marks (Discord is its filled brand glyph) sized to share the rail's
    36px glyph column, so collapsed they line up under the workspace marks. */
@@ -70,6 +70,17 @@ const SECTION_TABS: SectionTab[] = [
         <path d="M2.8 19.6c.8-3 3.2-4.8 6.2-4.8s5.4 1.8 6.2 4.8" />
         <circle cx="17.2" cy="9" r="2.4" />
         <path d="M15.8 14.5c2.4.3 4.5 1.9 5.4 4.2" />
+      </svg>
+    ),
+  },
+  {
+    href: "/performance", // weekly coach read: quota, views, 30d CPM, buckets
+    label: "Performance",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" {...stroke}>
+        <path d="M3.5 19.5h17" />
+        <path d="M5 15.5 9.5 10l3.5 3.5L19 7" />
+        <path d="M15.5 7H19v3.5" />
       </svg>
     ),
   },

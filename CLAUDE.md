@@ -437,6 +437,44 @@ Run it from /settings (browser-driven 45s slices, same shape as "Scrape all"),
 or `POST /api/jobs/research {"action":"launchpoint-sync"}`. Repeat until
 `{ remaining: 0 }`.
 
+## Performance + coach digests
+
+`/performance` and the weekly Discord digest to coaches read one function,
+`loadPerformanceReport` (`src/lib/jobs/performance.ts`) over the pure math in
+`src/lib/performance.ts` — the page and the ping cannot disagree on a number.
+
+- **The number is the true CPM**: dollars Launchpoint actually paid ÷ views of
+  the posts it paid for (Joey's dashboard figure,
+  `/analytics/videos?creator=<id>&paid=true` — the param is `creator`;
+  `creatorId` is silently ignored there). Launchpoint's per-account `cpm`
+  divides by every post's views, paid or not, and is never read.
+- **Payscale** (`/pay-structures`): $40 flat once a post clears 1k views +
+  $1 per 1k, settled on day-14 views; payouts land ~3 weeks after posting.
+  Projected CPM from that formula fills the gap and is always labelled.
+- **The true 30d window ends at the creator's newest payout**, not at now — a
+  calendar window held one week of paid posts and swung Liam $1.49 → $12.33
+  when a spike aged out. < 3 paid posts is a low sample: shown, not coloured,
+  and the bad-streak defers to the month.
+- **Buckets are judged on average views** (good ≥ 40k, bad ≤ 1,667 — the $2
+  and $25 CPM lines for posts over 1k views). Sub-1k posts get no flat fee
+  and read as a "good" $1 CPM; a 149-view creator must be bad, not best.
+- **Weeks are Monday→Monday UTC**, passed explicitly, so a re-run reproduces
+  the same digest. Quota is 7 posts/week (the program's ceiling is 21).
+- **Coach = the Discord category of the creator's coaching channel**
+  (`Coach: Will's Team`, `Coach: Luke's Team`). `Not Creating 🚫` is skipped.
+  TikTok is ignored throughout.
+- **Digests post from the web app over REST** (`src/lib/discord.ts`, bot
+  token, no gateway — cannot double-connect the token), into a
+  `#📊weekly-report` channel the app creates inside each coach category,
+  visible to the `Coach`, `Folk Team` and `dev` roles only. Creators are
+  mentioned (`<@id>` renders blue anywhere) but never pinged: mentions sit in
+  embeds and `allowed_mentions` is empty. `research_coach_digests` is the
+  idempotency ledger — a week already keyed there is skipped, so a retry
+  cannot double-post. Sent by the hourly cron on the Monday 09:00 UTC tick;
+  `GET /api/jobs/coach-digest?week=&dry=1&to=<channel>` previews (`to` posts
+  everything to one test channel without touching the ledger). Needs
+  `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` on Vercel.
+
 ## Scheduled work
 
 `vercel.json` runs `/api/jobs/cron` hourly. Vercel Cron issues a **GET**,
