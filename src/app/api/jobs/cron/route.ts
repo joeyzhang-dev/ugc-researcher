@@ -4,6 +4,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { matchScriptPosts } from "@/lib/jobs/match-scripts";
 import { syncLaunchpoint } from "@/lib/jobs/launchpoint";
 import { isDigestHour, sendCoachDigests } from "@/lib/jobs/coach-digest";
+import {
+  isCreatorDailyHour,
+  isCreatorWeeklyHour,
+  sendCreatorDaily,
+  sendCreatorWeekly,
+} from "@/lib/jobs/creator-digest";
 import { authorizeJobRequest } from "../authorize";
 
 export const maxDuration = 300;
@@ -60,6 +66,30 @@ export async function GET(request: NextRequest) {
         digest = { failed: error instanceof Error ? error.message : String(error) };
       }
     }
+    // Creator recaps, on their own hours. Each is a no-op unless its flag is
+    // on in research_settings, and each is ledgered per creator per period, so
+    // a retried tick cannot double-notify anyone. Non-fatal for the same
+    // reason the coach digest is: a Discord hiccup must not take the scrape
+    // down with it.
+    let creatorWeekly: unknown = null;
+    let creatorDaily: unknown = null;
+    if (process.env.DISCORD_BOT_TOKEN) {
+      if (isCreatorWeeklyHour()) {
+        try {
+          creatorWeekly = await sendCreatorWeekly(createAdminClient());
+        } catch (error) {
+          creatorWeekly = { failed: error instanceof Error ? error.message : String(error) };
+        }
+      }
+      if (isCreatorDailyHour()) {
+        try {
+          creatorDaily = await sendCreatorDaily(createAdminClient());
+        } catch (error) {
+          creatorDaily = { failed: error instanceof Error ? error.message : String(error) };
+        }
+      }
+    }
+
     const scrape = await scrapeAll(false);
     // Only once the scrape queue is empty — mid-drain the budget is spoken for.
     const idle = scrape.remaining === 0;
@@ -72,7 +102,7 @@ export async function GET(request: NextRequest) {
           budgetMs: Math.max(0, LAUNCHPOINT_BUDGET_MS - (Date.now() - startedAt)),
         })
       : null;
-    return NextResponse.json({ ...scrape, matched, launchpoint, digest });
+    return NextResponse.json({ ...scrape, matched, launchpoint, digest, creatorWeekly, creatorDaily });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });

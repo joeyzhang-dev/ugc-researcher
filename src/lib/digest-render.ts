@@ -287,7 +287,10 @@ export type V2Component = Record<string, unknown>;
 export interface V2MessagePayload {
   flags: number;
   components: V2Component[];
-  allowed_mentions: { parse: [] };
+  /** `parse: []` blocks every implicit mention; `users` opts exactly one id
+   *  back in. A roster-derived message must never be able to fire @everyone
+   *  because a creator's display name contains it. */
+  allowed_mentions: { parse: []; users?: string[] };
 }
 
 const textDisplay = (content: string): V2Component => ({ type: 10, content });
@@ -323,8 +326,11 @@ export function buildCoachRecapV2(input: {
   rows: PerformanceRow[];
   imageUrl?: string | null;
   appUrl?: string | null;
+  /** The coach who owns this team, pinged at the top. Null when it could not
+   *  be settled confidently — see coach-mention: no ping beats a wrong one. */
+  coachUserId?: string | null;
 }): V2MessagePayload {
-  const { coach, week, rows, imageUrl } = input;
+  const { coach, week, rows, imageUrl, coachUserId } = input;
   const quota = rows.length * QUOTA_POSTS_PER_WEEK;
   const posts = rows.reduce((sum, r) => sum + r.performance.weekly.posts, 0);
   const hitQuota = rows.filter((r) => !r.performance.weekly.belowQuota).length;
@@ -338,6 +344,7 @@ export function buildCoachRecapV2(input: {
   const body: V2Component[] = [
     textDisplay(
       `## 📊 ${coach} — weekly recap\n` +
+        (coachUserId ? `<@${coachUserId}> ` : "") +
         `**${weekLabel(week)}** · ${rows.length} creator${rows.length === 1 ? "" : "s"}`
     ),
     // The numbers a coach quotes, on one line. Everything per-creator lives
@@ -424,6 +431,6 @@ export function buildCoachRecapV2(input: {
   return {
     flags: FLAG_IS_COMPONENTS_V2,
     components: [{ type: 17, accent_color: RECAP_COLOR, components: body }],
-    allowed_mentions: { parse: [] },
+    allowed_mentions: coachUserId ? { parse: [], users: [coachUserId] } : { parse: [] },
   };
 }

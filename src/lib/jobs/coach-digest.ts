@@ -25,6 +25,8 @@ import {
 } from "@/lib/discord";
 import { buildCoachRecapV2, buildOnboardingPing } from "@/lib/digest-render";
 import { recapImageUrl, warmRecapImage } from "@/lib/recap-image-url";
+import { coachForCategory } from "@/lib/coach-mention";
+import { listGuildMembers } from "@/lib/discord";
 import { lastCompleteWeek, type Window } from "@/lib/performance";
 import { loadPerformanceReport, type PerformanceRow } from "@/lib/jobs/performance";
 
@@ -140,6 +142,21 @@ export async function sendCoachDigests(admin: SupabaseClient, options: DigestOpt
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://bludgc.vercel.app").replace(/\/$/, "");
   const sendNonce = Date.now().toString(36);
 
+  // Who to ping per team. Resolved once; a failure here costs the ping, not
+  // the digest — an unpinged recap is still a recap.
+  let coachCandidates: { discordUserId: string; names: (string | null | undefined)[] }[] = [];
+  try {
+    const guildId = process.env.DISCORD_GUILD_ID;
+    if (guildId) {
+      coachCandidates = (await listGuildMembers(guildId)).map((m) => ({
+        discordUserId: m.user.id,
+        names: [m.nick, m.user.global_name, m.user.username],
+      }));
+    }
+  } catch {
+    coachCandidates = [];
+  }
+
   const report = await loadPerformanceReport(admin, week);
 
   // Where each coach's digest goes. With a test-channel override we neither
@@ -195,6 +212,7 @@ export async function sendCoachDigests(admin: SupabaseClient, options: DigestOpt
       const warmed = imageUrl && !dryRun ? await warmRecapImage(imageUrl) : false;
       const payload = buildCoachRecapV2({
         coach: group.coach,
+        coachUserId: coachForCategory(group.coach, coachCandidates),
         week,
         rows: group.rows,
         appUrl,

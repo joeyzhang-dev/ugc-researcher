@@ -114,3 +114,15 @@ export function createTextChannel(
     permission_overwrites: channel.overwrites,
   });
 }
+
+export interface GuildMember {
+  user: { id: string; username: string; global_name: string | null };
+  nick: string | null;
+  roles: string[];
+}
+
+/** Guild members, for resolving which coach owns which team category.
+ *  One page of 1,000 is the whole guild here and Discord's per-call maximum. */
+export function listGuildMembers(guildId: string, limit = 1000): Promise<GuildMember[]> {
+  return discordRequest<GuildMember[]>("GET", `/guilds/${guildId}/members?limit=${limit}`);
+}
