@@ -40,6 +40,26 @@ export function creatorCardSignature(handle: string, asOf: string, nonce = ""): 
   return signParts("creator", handle.toLowerCase(), asOf, nonce);
 }
 
+/** The daily card's signature. Keyed on the Discord id rather than a handle:
+ *  the daily card is only ever rendered for the caller themselves. */
+export function dailyCardSignature(discordUserId: string, day: string, nonce = ""): string | null {
+  return signParts("dailycard", discordUserId, day, nonce);
+}
+
+export function dailyCardUrl(
+  appUrl: string | null | undefined,
+  discordUserId: string,
+  day: string,
+  nonce = ""
+): string | null {
+  if (!appUrl) return null;
+  const sig = dailyCardSignature(discordUserId, day, nonce);
+  if (!sig) return null;
+  const q = new URLSearchParams({ u: discordUserId, day, sig });
+  if (nonce) q.set("n", nonce);
+  return `${appUrl.replace(/\/$/, "")}/api/jobs/my-day-card?${q.toString()}`;
+}
+
 /** The my-stats card's signature. Its own subject, so a coach-card link
  *  cannot be replayed to fetch the creator-facing render or vice versa. */
 export function myCardSignature(handle: string, asOf: string, nonce = ""): string | null {

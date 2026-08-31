@@ -20,6 +20,7 @@ from discord_bot import socials, store, webapi
 from discord_bot.permissions import command_is_open, may_run_commands, staff_only_message
 from discord_bot.command_ui import (
     EmbedSpec,
+    build_my_day_embed,
     build_my_stats_embed,
     build_stats_embed,
     build_creator_embed,
@@ -805,6 +806,38 @@ def register_commands(
         logger.info(
             "my-stats %s -> handle=%s posts=%s",
             interaction.user, data.get("handle"), (data.get("current") or {}).get("posts"),
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True, allowed_mentions=NO_MENTIONS)
+
+    # ---- /my-day ------------------------------------------------------
+
+    @tree.command(name="my-day", description=command_description("my-day"), guild=guild)
+    @app_commands.guild_only()
+    async def my_day_command(interaction: discord.Interaction) -> None:
+        # Open to every member, like /my-stats, and safe for the same reason:
+        # the caller's own id is the only key it accepts.
+        await interaction.response.defer(ephemeral=True)
+        try:
+            data = await asyncio.to_thread(webapi.my_day, interaction.user.id)
+        except webapi.WebApiError as exc:
+            if "not-linked" in str(exc):
+                await interaction.followup.send(
+                    "❌ your Discord isn't linked to a creator account yet — "
+                    "ask your coach to run `/link` for you, then try again.",
+                    ephemeral=True, allowed_mentions=NO_MENTIONS,
+                )
+                return
+            await interaction.followup.send(
+                f"❌ couldn't load your day: {exc}", ephemeral=True, allowed_mentions=NO_MENTIONS
+            )
+            return
+
+        embed = _to_embed(build_my_day_embed(data))
+        if data.get("imageUrl"):
+            embed.set_image(url=data["imageUrl"])
+        logger.info(
+            "my-day %s -> handle=%s added=%s streak=%s",
+            interaction.user, data.get("handle"), data.get("viewsAdded"), data.get("streakDays"),
         )
         await interaction.followup.send(embed=embed, ephemeral=True, allowed_mentions=NO_MENTIONS)
 

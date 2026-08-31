@@ -68,3 +68,10 @@ def my_stats(discord_user_id: int | str) -> dict:
     return _get(
         "/api/jobs/my-stats?" + urllib.parse.urlencode({"discordUserId": str(discord_user_id)})
     )
+
+
+def my_day(discord_user_id: int | str) -> dict:
+    """The caller's own day. Keyed on their Discord id, like my_stats."""
+    return _get(
+        "/api/jobs/my-day?" + urllib.parse.urlencode({"discordUserId": str(discord_user_id)})
+    )

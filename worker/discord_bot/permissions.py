@@ -16,7 +16,7 @@ from typing import Sequence
 # row — the web route keys on the Discord id from the signed interaction and
 # takes no handle at all. Gating it would have made it unusable by exactly the
 # people it exists for.
-OPEN_COMMANDS: frozenset[str] = frozenset({"my-stats"})
+OPEN_COMMANDS: frozenset[str] = frozenset({"my-stats", "my-day"})
 
 
 def command_is_open(command_name: str | None) -> bool:

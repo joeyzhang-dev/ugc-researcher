@@ -148,6 +148,16 @@ COMMAND_CATALOG: tuple[CommandInfo, ...] = (
         ),
     ),
     CommandInfo(
+        name="my-day",
+        description="Your day — what moved yesterday, your streak, and this week's pace.",
+        usage="/my-day",
+        detail=(
+            "for creators. private to you. shows yesterday's view movement, which reel is "
+            "still running, your posting streak, and how many posts are left to hit 7 this "
+            "week. anyone in the server can run it."
+        ),
+    ),
+    CommandInfo(
         name="link",
         description="Link a creator's Instagram to their Discord profile and coaching channel.",
         usage="/link username:@person instagram:@handle",
@@ -727,4 +737,44 @@ def build_my_stats_embed(data: dict) -> EmbedSpec:
         # The week is named here rather than left to "this week", which means
         # different things depending on when you happen to read the message.
         footer=f"{span} · Instagram · only you can see this" if span else "only you can see this",
+    )
+
+
+def build_my_day_embed(data: dict) -> EmbedSpec:
+    """The creator's day. Short by design — a daily gets opened every morning,
+    so it has to read in about five seconds."""
+    pace = data.get("pace") or {}
+    posts = pace.get("postsThisWeek") or 0
+    quota = pace.get("quota") or 7
+    streak = data.get("streakDays") or 0
+    best = data.get("bestStreakDays") or 0
+
+    fields = [
+        EmbedField(name="Views added", value=f"**{_compact(data.get('viewsAdded'))}**", inline=True),
+        EmbedField(name="Posted", value=f"**{data.get('postedThatDay', 0)}**", inline=True),
+        EmbedField(
+            name="Streak",
+            value=(f"**{streak}d**" + (f" · best {best}d" if best > streak else " 🏆 best")) if streak else "—",
+            inline=True,
+        ),
+        EmbedField(name="Week so far", value=f"**{posts}**/{quota}", inline=True),
+    ]
+    movers = data.get("movers") or []
+    if movers:
+        fields.append(
+            EmbedField(
+                name="Still running",
+                value="\n".join(
+                    f"[+{_compact(m.get('viewsDelta'))} views]({m.get('url')}) · {_compact(m.get('views'))} total"
+                    for m in movers[:3]
+                ),
+            )
+        )
+
+    return build_embed(
+        title=f"☀️ Your day — {data.get('day')}",
+        description=data.get("message") or "",
+        fields=fields,
+        color=COLOR_OK if pace.get("onTrack") else COLOR_WARN,
+        footer="yesterday's numbers · Instagram · only you can see this",
     )

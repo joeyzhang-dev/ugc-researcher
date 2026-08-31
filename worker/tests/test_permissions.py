@@ -82,6 +82,9 @@ class MayRunCommands(unittest.TestCase):
 
 
 class OpenCommands(unittest.TestCase):
+    def test_my_day_is_open_too(self):
+        self.assertTrue(command_is_open("my-day"))
+
     def test_my_stats_is_open_because_creators_need_it(self):
         # Creators hold none of the staff roles; gating /my-stats would make it
         # unusable by exactly the people it exists for.
@@ -94,7 +97,7 @@ class OpenCommands(unittest.TestCase):
     def test_the_open_list_stays_deliberately_tiny(self):
         # A guard on scope creep: anything added here is readable by the whole
         # server, so it must be a conscious change with a test to match.
-        self.assertEqual(OPEN_COMMANDS, frozenset({"my-stats"}))
+        self.assertEqual(OPEN_COMMANDS, frozenset({"my-stats", "my-day"}))
 
     def test_an_unknown_or_missing_command_is_not_open(self):
         self.assertFalse(command_is_open(None))
