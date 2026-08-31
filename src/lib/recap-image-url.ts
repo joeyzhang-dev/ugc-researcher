@@ -9,13 +9,51 @@
 
 import { createHmac } from "node:crypto";
 
+/** Hex HMAC of an arbitrary set of parts, or null when CRON_SECRET is unset.
+ *  Parts are joined with `|`, so a caller must keep their order stable. */
+export function signParts(...parts: string[]): string | null {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return null;
+  return createHmac("sha256", secret).update(parts.join("|")).digest("hex").slice(0, 32);
+}
+
+/** Constant-time compare over two strings. Length is compared first, which is
+ *  not secret — the signature length is fixed and public. */
+export function signatureMatches(given: string | null, expected: string | null): boolean {
+  if (!given || !expected || given.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < given.length; i++) diff |= given.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
+
 /** Hex HMAC of `coach|week|nonce`, or null when CRON_SECRET is unset.
  *  Truncated to 32 hex chars: still 128 bits, and it keeps the URL readable in
  *  a log. The nonce is inside the signature so it cannot be edited away. */
 export function recapImageSignature(coach: string, week: string, nonce = ""): string | null {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return null;
-  return createHmac("sha256", secret).update(`${coach}|${week}|${nonce}`).digest("hex").slice(0, 32);
+  return signParts(coach, week, nonce);
+}
+
+/** The creator card's signature. A distinct subject prefix keeps a recap
+ *  signature from being replayed at the creator card, which exposes a
+ *  different slice of the same data. */
+export function creatorCardSignature(handle: string, asOf: string, nonce = ""): string | null {
+  return signParts("creator", handle.toLowerCase(), asOf, nonce);
+}
+
+/** The absolute creator-card URL, or null when it cannot be signed. */
+export function creatorCardUrl(
+  appUrl: string | null | undefined,
+  handle: string,
+  asOf: Date,
+  nonce = ""
+): string | null {
+  if (!appUrl) return null;
+  const day = asOf.toISOString().slice(0, 10);
+  const sig = creatorCardSignature(handle, day, nonce);
+  if (!sig) return null;
+  const q = new URLSearchParams({ handle, asOf: day, sig });
+  if (nonce) q.set("n", nonce);
+  return `${appUrl.replace(/\/$/, "")}/api/jobs/creator-card?${q.toString()}`;
 }
 
 /**

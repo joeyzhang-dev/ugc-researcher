@@ -129,6 +129,16 @@ COMMAND_CATALOG: tuple[CommandInfo, ...] = (
         ),
     ),
     CommandInfo(
+        name="stats",
+        description="Pull one creator's performance panel — trend, CPM, earnings, best posts.",
+        usage="/stats creator:jas-alcantara",
+        detail=(
+            "private to you. shows this week against the last 8, the 30-day CPM and what "
+            "they've earned, and their best posts — all on the same numbers as the weekly "
+            "coach recap, trial-reel uploads excluded."
+        ),
+    ),
+    CommandInfo(
         name="link",
         description="Link a creator's Instagram to their Discord profile and coaching channel.",
         usage="/link username:@person instagram:@handle",
@@ -551,4 +561,105 @@ def build_creators_embed(rows: Sequence[dict], stats: Optional[dict] = None, top
         description=f"{len(rows)} tracked creator channels.",
         fields=fields,
         footer="Full dashboard: /creators page in the web app",
+    )
+
+
+def _compact(n) -> str:
+    """Mirror of the web app's formatCompact, so a number reads the same in the
+    embed as it does on the card beneath it."""
+    try:
+        n = float(n)
+    except (TypeError, ValueError):
+        return "—"
+    n = round(n)
+    if n < 10_000:
+        return f"{n:,}"
+    for limit, suffix in ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K")):
+        if abs(n) >= limit:
+            value = n / limit
+            return f"{value:.1f}".rstrip("0").rstrip(".") + suffix
+    return f"{n:,}"
+
+
+def _usd(n) -> str:
+    try:
+        return f"${float(n):,.2f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def build_stats_embed(data: dict) -> EmbedSpec:
+    """One creator's stats, for `/stats`.
+
+    The card image carries the trend and the top posts; this text carries the
+    handful of numbers someone might want to quote in a reply without opening
+    an image. Deliberately not a second copy of the whole card — two renderings
+    of the same data invite them to disagree.
+    """
+    cur = data.get("current") or {}
+    totals = data.get("totals") or {}
+    money = data.get("money") or {}
+    quota = data.get("quota") or 7
+
+    posts = cur.get("posts") or 0
+    subtitle_bits = [f"@{data.get('handle')}"]
+    if data.get("coach"):
+        subtitle_bits.append(str(data["coach"]))
+    if data.get("niche"):
+        subtitle_bits.append(str(data["niche"]))
+    if data.get("archived"):
+        subtitle_bits.append("**archived**")
+
+    cpm = money.get("cpm")
+    projected = money.get("projectedCpm")
+    if cpm is not None:
+        cpm_text = _usd(cpm)
+        delta = money.get("deltaUsd")
+        if delta is not None and abs(delta) >= 0.005 and not money.get("lowSample"):
+            cpm_text += f" {'▼' if delta < 0 else '▲'}{_usd(abs(delta))[1:]}"
+        if money.get("lowSample"):
+            cpm_text += " *(low sample)*"
+    elif projected is not None:
+        cpm_text = f"≈{_usd(projected)} *(projected)*"
+    else:
+        cpm_text = "—"
+
+    lines = [
+        " · ".join(subtitle_bits),
+        "",
+        f"**{posts}**/{quota} posts this week · "
+        f"**{_compact(cur.get('avgViews')) if posts else '—'}** avg views"
+        + (f" · 🚀 {cur['spikes']}" if cur.get("spikes") else ""),
+        f"**{totals.get('posts', 0)}** posts over 8 weeks · "
+        f"**{_compact((totals.get('views') or 0) / totals['posts']) if totals.get('posts') else '—'}** avg views",
+        f"30d CPM **{cpm_text}** · earned **{_usd(money.get('earnedUsd'))}** · "
+        f"{money.get('paidPosts', 0)} paid, {money.get('unpaidPosts', 0)} awaiting",
+    ]
+    if totals.get("trialUploads"):
+        lines.append(
+            f"-# {_compact(totals['trialUploads'])} trial-reel uploads excluded — "
+            "posts and views count published reels only"
+        )
+
+    fields: list[EmbedField] = []
+    top = data.get("topPosts") or []
+    if top:
+        fields.append(
+            EmbedField(
+                name="🏆 Best posts",
+                value="\n".join(
+                    f"{i + 1}. [{_compact(p.get('views'))} views]({p.get('url')}) · {p.get('week')}"
+                    for i, p in enumerate(top[:5])
+                ),
+            )
+        )
+    if data.get("discordChannelId"):
+        fields.append(EmbedField(name="Channel", value=f"<#{data['discordChannelId']}>", inline=True))
+
+    return build_embed(
+        title=f"📈 {data.get('name') or data.get('handle')}",
+        description="\n".join(lines),
+        fields=fields,
+        color=COLOR_BRAND,
+        footer=f"week of {data.get('week')}" if data.get("week") else None,
     )

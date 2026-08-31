@@ -16,9 +16,11 @@ from typing import Optional, Sequence
 import discord
 from discord import app_commands
 
-from discord_bot import socials, store
+from discord_bot import socials, store, webapi
+from discord_bot.permissions import may_run_commands, staff_only_message
 from discord_bot.command_ui import (
     EmbedSpec,
+    build_stats_embed,
     build_creator_embed,
     build_creators_embed,
     build_help_embed,
@@ -211,6 +213,21 @@ def register_commands(
     Eight top-level entries: /onboard /offboard /link /socials (a group of
     view|add|remove) /help /health /creator /creators.
     """
+
+    # One gate for every command, including any added later: a per-command
+    # decorator is a rule you can forget to apply, and the failure mode is a
+    # command that silently runs for the whole server.
+    async def _staff_gate(interaction: discord.Interaction) -> bool:
+        if may_run_commands(interaction.user, cfg.staff_role_ids):
+            return True
+        try:
+            await interaction.response.send_message(staff_only_message(), ephemeral=True)
+        except discord.InteractionResponded:
+            await interaction.followup.send(staff_only_message(), ephemeral=True)
+        return False
+
+    tree.interaction_check = _staff_gate
+
     guild = discord.Object(id=cfg.discord_guild_id)
 
     def channel_owner(channel_id: int) -> Optional[int]:
@@ -329,7 +346,6 @@ def register_commands(
             ]
         )(onboard)
     # Gated to staff: coaches hold Administrator, which implies Manage Channels.
-    onboard = app_commands.default_permissions(manage_channels=True)(onboard)
     onboard = app_commands.guild_only()(onboard)
     onboard_command = tree.command(
         name="onboard", description=command_description("onboard"), guild=guild
@@ -421,7 +437,6 @@ def register_commands(
     offboard = app_commands.choices(
         kick=[app_commands.Choice(name="no", value="no"), app_commands.Choice(name="yes", value="yes")]
     )(offboard)
-    offboard = app_commands.default_permissions(manage_channels=True)(offboard)
     offboard = app_commands.guild_only()(offboard)
     tree.command(name="offboard", description=command_description("offboard"), guild=guild)(offboard)
 
@@ -510,7 +525,6 @@ def register_commands(
         username="The creator's Discord account",
         instagram="Their Instagram handle or profile URL",
     )(link)
-    link = app_commands.default_permissions(manage_channels=True)(link)
     link = app_commands.guild_only()(link)
     tree.command(name="link", description=command_description("link"), guild=guild)(link)
 
@@ -646,7 +660,6 @@ def register_commands(
     # ---- /health ------------------------------------------------------
 
     @tree.command(name="health", description=command_description("health"), guild=guild)
-    @app_commands.default_permissions(manage_channels=True)
     @app_commands.guild_only()
     async def health_command(interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -680,6 +693,58 @@ def register_commands(
 
     @creator_command.autocomplete("name")
     async def creator_autocomplete(
+        interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        try:
+            rows = await _creator_rows()
+        except Exception:  # noqa: BLE001 - autocomplete must never raise at the user
+            return []
+        return [app_commands.Choice(name=n, value=n) for n in creator_name_choices(rows, current)]
+
+    # ---- /stats -------------------------------------------------------
+
+    @tree.command(name="stats", description=command_description("stats"), guild=guild)
+    @app_commands.describe(creator="Which creator to pull stats for")
+    @app_commands.guild_only()
+    async def stats_command(interaction: discord.Interaction, creator: str) -> None:
+        # Ephemeral from the first frame: the deferral sets visibility, so a
+        # later followup cannot quietly make earnings public.
+        await interaction.response.defer(ephemeral=True)
+
+        # The autocomplete offers channel names; a typed value may be a raw
+        # handle instead. Resolve a name when we recognise it, otherwise pass
+        # the text through and let the API's handle lookup decide.
+        handle = creator.strip().lstrip("@")
+        try:
+            row = find_creator_row(await _creator_rows(), creator)
+            if row and row.get("instagram"):
+                handle = str(row["instagram"]).lstrip("@")
+        except Exception:  # noqa: BLE001 - the roster is a convenience here
+            pass
+
+        try:
+            data = await asyncio.to_thread(webapi.creator_stats, handle)
+        except webapi.WebApiError as exc:
+            await interaction.followup.send(
+                f"❌ couldn't load stats for `@{handle}`: {exc}",
+                ephemeral=True, allowed_mentions=NO_MENTIONS,
+            )
+            return
+
+        embed = _to_embed(build_stats_embed(data))
+        # The card is the panel; the embed is the quotable summary. A card that
+        # failed to render comes back null rather than as a broken-image box.
+        if data.get("imageUrl"):
+            embed.set_image(url=data["imageUrl"])
+        logger.info(
+            "stats %s -> handle=%s posts=%s image=%s",
+            interaction.user, handle,
+            (data.get("current") or {}).get("posts"), bool(data.get("imageUrl")),
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True, allowed_mentions=NO_MENTIONS)
+
+    @stats_command.autocomplete("creator")
+    async def stats_autocomplete(
         interaction: discord.Interaction, current: str
     ) -> list[app_commands.Choice[str]]:
         try:

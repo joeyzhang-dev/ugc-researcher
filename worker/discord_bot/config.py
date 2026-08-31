@@ -15,6 +15,15 @@ from discord_bot.onboarding import WelcomeLinks
 # Where offboarded creators' channels go. Matches the worker's discover step.
 PAUSED_CATEGORIES: frozenset[str] = frozenset({"Not Creating 🚫"})
 
+# Roles allowed to run the bot's slash commands. Live ids, 2026-08-31.
+# Anyone holding Administrator also passes (see commands.may_run_commands) so a
+# server owner can never lock themselves out of their own bot.
+DEFAULT_STAFF_ROLE_IDS: tuple[int, ...] = (
+    1508031076189081700,  # Coach
+    1543029497849315419,  # dev
+    1507900543039967332,  # Folk Team
+)
+
 DEFAULT_CREATOR_ROLE_NAME = "Folk Creator"
 DEFAULT_CREATOR_ROLE_ID = 1507900545359282308  # Folk Creator
 DEFAULT_POST_TRACKING_CHANNEL_ID = 1508703255490859079  # 📊・set-up-post-tracking
@@ -57,6 +66,15 @@ DEFAULT_EXCLUDED_CATEGORY_IDS: frozenset[int] = frozenset(
 )
 
 
+def _env_id_tuple(name: str, default: tuple[int, ...]) -> tuple[int, ...]:
+    """Comma-separated role ids; malformed input fails startup loudly rather
+    than silently narrowing (or widening) who can run the bot."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return tuple(int(piece.strip()) for piece in raw.split(",") if piece.strip())
+
+
 def _default_niche_role_ids() -> dict[int, int]:
     return dict(DEFAULT_NICHE_ROLE_ID_PAIRS)
 
@@ -72,6 +90,10 @@ class BotConfig:
     discord_bot_token: str
     discord_guild_id: int
     app_public_url: str = DEFAULT_APP_PUBLIC_URL
+    staff_role_ids: tuple[int, ...] = DEFAULT_STAFF_ROLE_IDS
+    """Where the bot reaches the web app for stats. Keep in sync with
+    portal.ts and the digest's own default."""
+    app_url: str = "https://bludgc.vercel.app"
     creator_role_name: str = DEFAULT_CREATOR_ROLE_NAME
     creator_role_id: int | None = DEFAULT_CREATOR_ROLE_ID
     launchpoint_bot_id: int | None = DEFAULT_LAUNCHPOINT_BOT_ID
@@ -129,6 +151,8 @@ def load_bot_config() -> BotConfig:
         discord_bot_token=os.environ["DISCORD_BOT_TOKEN"],
         discord_guild_id=int(os.environ["DISCORD_GUILD_ID"]),
         app_public_url=(os.environ.get("APP_PUBLIC_URL", "").strip() or DEFAULT_APP_PUBLIC_URL).rstrip("/"),
+        staff_role_ids=_env_id_tuple("STAFF_ROLE_IDS", DEFAULT_STAFF_ROLE_IDS),
+        app_url=(os.environ.get("NEXT_PUBLIC_APP_URL") or "https://bludgc.vercel.app").rstrip("/"),
         creator_role_name=os.environ.get("CREATOR_ROLE_NAME", "").strip() or DEFAULT_CREATOR_ROLE_NAME,
         creator_role_id=_env_int("CREATOR_ROLE_ID", DEFAULT_CREATOR_ROLE_ID),
         launchpoint_bot_id=_env_int("LAUNCHPOINT_BOT_ID", DEFAULT_LAUNCHPOINT_BOT_ID),
