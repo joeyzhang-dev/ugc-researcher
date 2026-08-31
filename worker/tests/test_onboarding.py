@@ -63,28 +63,48 @@ class BuildWelcomeMessage(unittest.TestCase):
             emoji_instagram=C.DEFAULT_INSTAGRAM_EMOJI_ID,
         )
 
-    def test_pings_the_creator_and_uses_id_mentions(self):
+    def test_the_greeting_pings_the_creator_and_stays_short(self):
         from discord_bot.onboarding import build_welcome_message
 
         msg = build_welcome_message(42, self._links())
         self.assertIn("<@42>", msg)
+        # The greeting is the hello only — the tasks moved to the checklist.
+        self.assertNotIn("## today", msg)
+        self.assertLess(len(msg), 2000)
+
+    def test_the_checklist_uses_id_mentions(self):
+        from discord_bot.onboarding import build_onboarding_checklist_message
+
+        msg = build_onboarding_checklist_message(self._links())
         # Eight distinct channels, every one as <#id>.
         self.assertEqual(msg.count("<#"), 8)
         self.assertNotIn("#\u30fb", msg)  # no literal "#emoji・name" text
+        self.assertIn("## today", msg)
+        self.assertIn("Payouts:", msg)
+
+    def test_the_checklist_does_not_ping_again(self):
+        from discord_bot.onboarding import build_onboarding_checklist_message
+
+        # The greeting already pinged them a second earlier.
+        self.assertNotIn("<@", build_onboarding_checklist_message(self._links()))
 
     def test_custom_emoji_carry_their_ids(self):
-        from discord_bot.onboarding import build_welcome_message
+        from discord_bot.onboarding import build_onboarding_checklist_message
 
-        msg = build_welcome_message(42, self._links())
+        msg = build_onboarding_checklist_message(self._links())
         self.assertIn("<:tt:", msg)
         self.assertIn("<:ig:", msg)
         # A bare :tt: would render as literal text.
         self.assertNotIn(" :tt:", msg)
 
-    def test_fits_in_a_single_discord_message(self):
-        from discord_bot.onboarding import build_welcome_message
+    def test_both_messages_fit_in_a_single_discord_message(self):
+        from discord_bot.onboarding import (
+            build_onboarding_checklist_message,
+            build_welcome_message,
+        )
 
         self.assertLess(len(build_welcome_message(42, self._links())), 2000)
+        self.assertLess(len(build_onboarding_checklist_message(self._links())), 2000)
 
 
 if __name__ == "__main__":

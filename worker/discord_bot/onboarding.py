@@ -118,6 +118,7 @@ class OnboardOutcome:
     niche_role_name: Optional[str] = None
     niche_role_error: Optional[str] = None
     welcome_posted: bool = False
+    checklist_posted: bool = False
     crm_synced: bool = False
     error: Optional[str] = None
     warnings: tuple[str, ...] = field(default_factory=tuple)
@@ -236,18 +237,33 @@ def resolve_category(niche: str, category_names: Iterable[str]) -> tuple[Optiona
 
 
 def build_welcome_message(user_id: int, links: WelcomeLinks) -> str:
-    """Render the welcome post.
+    """The greeting, posted first.
+
+    Kept separate from the checklist so the ping and the "this is your channel"
+    orientation land as their own message. A creator opening the channel sees a
+    short hello rather than a wall of tasks, and the checklist below is a
+    standalone block they can scroll back to or pin on its own.
+    """
+    return (
+        f"welcome <@{user_id}>! this is your channel — post your content and questions here."
+    )
+
+
+def build_onboarding_checklist_message(links: WelcomeLinks) -> str:
+    """The day-one checklist, posted immediately after the greeting.
 
     Every channel goes in as ``<#id>`` and every custom emoji as ``<:name:id>``
     so they resolve to real links and images in the posted message. Written as
     a plain f-string rather than an embed because Discord does not render
     markdown headings (``##``) inside embed bodies, and the headings are what
     give this its shape.
+
+    Takes no ``user_id``: the greeting already pinged them, and a second ping
+    in the same second is just noise.
     """
     tt = f"<:tt:{links.emoji_tiktok}>"
     ig = f"<:ig:{links.emoji_instagram}>"
     return (
-        f"welcome <@{user_id}>! this is your channel — post your content and questions here.\n\n"
         "## today\n"
         f"- **create {tt}{ig} accounts:** wisdomwjoey, joeyprays, lockedwjoey, "
         "dialedinjoey etc. *(depends on your niche)*\n"
@@ -518,12 +534,20 @@ async def execute_onboarding(
                         niche_role_error = f"couldn't assign **{niche_role_name}**: {exc}"
 
     welcome_posted = False
+    checklist_posted = False
     if channel_created:
         try:
             await channel.send(build_welcome_message(getattr(member, "id", 0), welcome_links))
             welcome_posted = True
         except Exception as exc:  # noqa: BLE001 - surfaced to the operator
             warnings.append(f"couldn't post the welcome message: {exc}")
+        # Posted separately, and independently: a failed greeting must not cost
+        # the creator their checklist, which is the half that carries the work.
+        try:
+            await channel.send(build_onboarding_checklist_message(welcome_links))
+            checklist_posted = True
+        except Exception as exc:  # noqa: BLE001 - surfaced to the operator
+            warnings.append(f"couldn't post the onboarding checklist: {exc}")
 
     crm_synced = False
     if sync_crm is not None:
@@ -554,6 +578,7 @@ async def execute_onboarding(
         niche_role_name=niche_role_name,
         niche_role_error=niche_role_error,
         welcome_posted=welcome_posted,
+        checklist_posted=checklist_posted,
         crm_synced=crm_synced,
         warnings=tuple(warnings),
     )
@@ -586,6 +611,8 @@ def render_outcome(outcome: OnboardOutcome, creator_role_name: str) -> str:
 
     if outcome.welcome_posted:
         lines.append("✅ posted the welcome message")
+    if outcome.checklist_posted:
+        lines.append("✅ posted the onboarding checklist")
 
     if outcome.crm_synced:
         lines.append("✅ tracked in the CRM")
