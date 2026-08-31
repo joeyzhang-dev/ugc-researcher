@@ -18,7 +18,7 @@
  */
 
 import type { PerformanceRow } from "@/lib/jobs/performance";
-import { QUOTA_POSTS_PER_WEEK, type Bucket, type Window } from "@/lib/performance";
+import { QUOTA_POSTS_PER_WEEK, TOP_POSTS, type Bucket, type PostRef, type Window } from "@/lib/performance";
 import { formatCompact } from "@/lib/format";
 
 /** Discord renders media on a dark surface; this matches its dark theme so
@@ -44,10 +44,23 @@ export const CARD_WIDTH = 1200;
 const ROW_H = 58;
 const HEADER_H = 250;
 const FOOTER_H = 92;
+const TOP_STRIP_H = 250;
 
 /** Tall enough for the roster, so nothing scrolls or clips. */
-export function cardHeight(rowCount: number): number {
-  return HEADER_H + Math.max(rowCount, 1) * ROW_H + FOOTER_H;
+export function cardHeight(rowCount: number, topPosts = 0): number {
+  return (
+    HEADER_H + Math.max(rowCount, 1) * ROW_H + (topPosts > 0 ? TOP_STRIP_H : 0) + FOOTER_H
+  );
+}
+
+/** How many posts the strip will show. Exported so the route sizes the PNG
+ *  with the same number the card lays itself out with — when those two
+ *  disagree the surplus renders as a white band under the card. */
+export function topPostCount(rows: PerformanceRow[]): number {
+  return Math.min(
+    rows.reduce((n, r) => n + r.performance.weekly.topPosts.length, 0),
+    TOP_POSTS
+  );
 }
 
 const monthDay = (d: Date): string =>
@@ -157,9 +170,16 @@ function CreatorRow({ row, index, max }: { row: PerformanceRow; index: number; m
         ) : null}
       </div>
 
-      <div style={{ display: "flex", width: 96, fontSize: 20, color: IMG.text }}>
-        {w.posts}
-        <span style={{ color: IMG.faint, fontSize: 15, marginLeft: 3 }}>/{QUOTA_POSTS_PER_WEEK}</span>
+      <div style={{ display: "flex", flexDirection: "column", width: 96 }}>
+        <div style={{ display: "flex", fontSize: 20, color: IMG.text }}>
+          {w.posts}
+          <span style={{ color: IMG.faint, fontSize: 15, marginLeft: 3 }}>/{QUOTA_POSTS_PER_WEEK}</span>
+        </div>
+        {/* The trial uploads behind those posts — effort the collapse hides
+            from the count but a coach should still see. */}
+        {w.trialUploads > 0 ? (
+          <div style={{ display: "flex", fontSize: 13, color: IMG.faint }}>+{w.trialUploads} trials</div>
+        ) : null}
       </div>
 
       <div style={{ display: "flex", width: 132, fontSize: 19, color: w.posts ? IMG.dim : IMG.faint }}>
@@ -168,6 +188,35 @@ function CreatorRow({ row, index, max }: { row: PerformanceRow; index: number; m
 
       <div style={{ display: "flex", width: 74, fontSize: 19, color: IMG.dim }}>
         {w.spikes.length ? `🚀 ${w.spikes.length}` : ""}
+      </div>
+    </div>
+  );
+}
+
+/** The week's best reels, with their thumbnails. Five, not one: a single
+ *  lucky post says nothing, five shows whether the hooks are landing. */
+function TopPosts({ posts }: { posts: { handle: string; post: PostRef }[] }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", padding: "20px 40px 0 40px" }}>
+      <div style={{ display: "flex", fontSize: 14, color: IMG.faint, textTransform: "uppercase" }}>
+        Top posts this week
+      </div>
+      <div style={{ display: "flex", marginTop: 12 }}>
+        {posts.map(({ handle, post }, i) => (
+          <div key={post.shortcode ?? i} style={{ display: "flex", flexDirection: "column", marginRight: 18 }}>
+            {post.thumbnail ? (
+              <img src={post.thumbnail} width={94} height={118} style={{ borderRadius: 8, objectFit: "cover" }} />
+            ) : (
+              <div style={{ display: "flex", width: 94, height: 118, borderRadius: 8, backgroundColor: IMG.panel }} />
+            )}
+            <div style={{ display: "flex", fontSize: 17, color: IMG.text, marginTop: 6 }}>
+              {formatCompact(post.views)}
+            </div>
+            <div style={{ display: "flex", fontSize: 12, color: IMG.faint }}>
+              @{handle.length > 13 ? `${handle.slice(0, 12)}…` : handle}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -207,6 +256,12 @@ export function RecapCard({ coach, week, rows }: RecapCardData) {
   const spikes = rows.reduce((s, r) => s + r.performance.weekly.spikes.length, 0);
   const avgViews = posts > 0 ? views / posts : 0;
   const maxPosts = Math.max(...rows.map((r) => r.performance.weekly.posts), QUOTA_POSTS_PER_WEEK);
+  const trials = rows.reduce((s, r) => s + r.performance.weekly.trialUploads, 0);
+  // Best five across the whole team, not five from one creator.
+  const topPosts = rows
+    .flatMap((r) => r.performance.weekly.topPosts.map((post) => ({ handle: r.handle, post })))
+    .sort((a, b) => b.post.views - a.post.views)
+    .slice(0, TOP_POSTS);
   const pct = quota > 0 ? Math.round((posts / quota) * 100) : 0;
 
   return (
@@ -215,7 +270,7 @@ export function RecapCard({ coach, week, rows }: RecapCardData) {
         display: "flex",
         flexDirection: "column",
         width: CARD_WIDTH,
-        height: cardHeight(rows.length),
+        height: cardHeight(rows.length, topPosts.length),
         backgroundColor: IMG.bg,
         color: IMG.text,
         fontFamily: "Inter",
@@ -237,6 +292,7 @@ export function RecapCard({ coach, week, rows }: RecapCardData) {
           <Stat label="Hit quota" value={`${hit}`} note={`of ${rows.length}`} />
           <Stat label="Spikes 40k+" value={`${spikes}`} />
           <Stat label="Didn’t post" value={`${silent}`} />
+          {trials > 0 ? <Stat label="Trial uploads" value={formatCompact(trials)} note="not counted" /> : null}
         </div>
       </div>
 
@@ -255,6 +311,7 @@ export function RecapCard({ coach, week, rows }: RecapCardData) {
         <div style={{ display: "flex", width: 438 }}>Posts (tick = {QUOTA_POSTS_PER_WEEK}/wk quota)</div>
         <div style={{ display: "flex", width: 96 }} />
         <div style={{ display: "flex", width: 132 }}>Avg views</div>
+        <div style={{ display: "flex", width: 74 }}>🚀 40k+</div>
       </div>
       <div style={{ display: "flex", height: 1, backgroundColor: IMG.line, marginLeft: 40, marginRight: 40 }} />
 
@@ -262,12 +319,14 @@ export function RecapCard({ coach, week, rows }: RecapCardData) {
         <CreatorRow key={row.creatorId} row={row} index={i} max={maxPosts} />
       ))}
 
+      {topPosts.length ? <TopPosts posts={topPosts} /> : null}
+
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          marginTop: "auto",
-          padding: "0 40px 30px 40px",
+          height: FOOTER_H,
+          padding: "0 40px",
           fontSize: 15,
           color: IMG.faint,
         }}

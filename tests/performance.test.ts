@@ -5,6 +5,7 @@ import {
   badStreak,
   bucketBasis,
   bucketForViews,
+  collapseTrialUploads,
   comparePerformance,
   cpmRead,
   creatorPerformance,
@@ -16,12 +17,12 @@ import {
   projectedCpm,
   projectedEarnings,
   trueCpm,
+  type PerformanceVideo,
   weekKey,
   weekStart,
   weekWindow,
   weeklyRead,
   weeksSinceJoined,
-  type PerformanceVideo,
 } from "@/lib/performance";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -401,3 +402,78 @@ describe("creatorPerformance", () => {
 function projectedEarningsFor(views: number): number {
   return projectedEarnings(views);
 }
+
+describe("collapseTrialUploads", () => {
+  const vid = (shortcode: string, views: number, transcript: string | null) => ({
+    shortcode,
+    url: `https://www.instagram.com/reel/${shortcode}/`,
+    posted_at: "2026-08-26T12:00:00Z",
+    view_count: views,
+    earnings_usd: 0,
+    transcript_text: transcript,
+  });
+
+  const SCRIPT =
+    "four things you should not be doing if you claim to be a christian number one is judging people";
+
+  it("keeps only the published winner of a trial batch", () => {
+    // The live shape: one upload wins and gets pushed, the rest sit at the
+    // trial noise floor.
+    const batch = [
+      vid("winner", 83339, SCRIPT),
+      ...Array.from({ length: 10 }, (_, i) => vid(`trial${i}`, 2000 + i, SCRIPT)),
+    ];
+    const { kept, suppressed } = collapseTrialUploads(batch);
+    expect(kept.map((v) => v.shortcode)).toEqual(["winner"]);
+    expect(suppressed).toBe(10);
+  });
+
+  it("does not merge two genuinely different reels", () => {
+    const other = "the bible literally tells us how to turn poverty into generational wealth";
+    const { kept, suppressed } = collapseTrialUploads([
+      vid("a", 5000, SCRIPT),
+      vid("b", 4000, other),
+    ]);
+    expect(kept).toHaveLength(2);
+    expect(suppressed).toBe(0);
+  });
+
+  it("leaves a hand-posted pair alone", () => {
+    // Posting the same reel twice is something creators do deliberately;
+    // TRIAL_MIN_BATCH keeps that from reading as a trial run.
+    const { kept, suppressed } = collapseTrialUploads([
+      vid("a", 5000, SCRIPT),
+      vid("b", 400, SCRIPT),
+    ]);
+    expect(kept).toHaveLength(2);
+    expect(suppressed).toBe(0);
+  });
+
+  it("never drops a post that has no transcript", () => {
+    // A missing transcript is not evidence of duplication — guessing would
+    // silently delete real posts.
+    const { kept, suppressed } = collapseTrialUploads([
+      vid("a", 100, null),
+      vid("b", 200, ""),
+      vid("c", 300, null),
+    ]);
+    expect(kept).toHaveLength(3);
+    expect(suppressed).toBe(0);
+  });
+
+  it("counts posts and averages over the survivors only", () => {
+    const week = { start: new Date("2026-08-24T00:00:00Z"), end: new Date("2026-08-31T00:00:00Z") };
+    const read = weeklyRead(
+      [
+        vid("winner", 80000, SCRIPT),
+        ...Array.from({ length: 20 }, (_, i) => vid(`t${i}`, 2000, SCRIPT)),
+      ],
+      week
+    );
+    expect(read.posts).toBe(1);
+    expect(read.trialUploads).toBe(20);
+    // The average is the published reel's views, not dragged to the trial floor.
+    expect(read.avgViews).toBe(80000);
+    expect(read.spikes).toHaveLength(1);
+  });
+});

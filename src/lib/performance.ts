@@ -20,12 +20,20 @@
  */
 
 import type { ResearchVideo } from "@/lib/types";
+import { transcriptMatchScore } from "@/lib/scripts";
 
 /** The subset of a video the math needs. `ResearchVideo` satisfies it. */
 export type PerformanceVideo = Pick<
   ResearchVideo,
   "shortcode" | "url" | "posted_at" | "view_count" | "earnings_usd"
->;
+> & {
+  /** Only populated for videos inside the reporting week — it is all the
+   *  trial-reel collapse needs, and pulling transcripts for the whole corpus
+   *  would multiply the loader's payload for no gain. */
+  transcript_text?: string | null;
+  /** As above: week-window posts only, for the top-posts strip. */
+  thumbnail_url?: string | null;
+};
 
 export type Bucket = "good" | "decent" | "bad";
 
@@ -37,6 +45,10 @@ export const QUOTA_POSTS_PER_WEEK = 7;
  *  median: the baseline post does 1.5–2k, and 40k is also exactly where the
  *  payscale puts CPM under $2, so one number drives both notions of "good". */
 export const SPIKE_VIEWS = 40_000;
+
+/** How many of the week's posts the recap celebrates. Five is enough to show
+ *  a pattern ("her hooks are landing") rather than one lucky reel. */
+export const TOP_POSTS = 5;
 
 /** Bucket lines from Joey's call notes: under $2 is good, 1.5k avg views
  *  (≈ $27 CPM) is "super bad". Measured against the roster on 2026-08-29:
@@ -229,6 +241,9 @@ export interface PostRef {
   shortcode: string | null;
   url: string;
   views: number;
+  /** Populated for posts inside the reporting week, so the recap card can
+   *  show the reel rather than just link it. */
+  thumbnail?: string | null;
 }
 
 /** "How did they do last week" — posts, views, spikes. All true numbers:
@@ -249,6 +264,97 @@ export interface WeeklyRead {
   spikes: PostRef[];
   /** The week's most-viewed post, for the embed's hyperlink. */
   bestPost: PostRef | null;
+  /** The week's best few, most-viewed first — one line each in the recap. */
+  topPosts: PostRef[];
+  /** Uploads folded away as trial-reel repeats. Surfaced so a coach can see
+   *  the raw effort behind a small post count. */
+  trialUploads: number;
+}
+
+/* --- trial reels ---------------------------------------------------------- */
+
+/**
+ * How alike two transcripts are, symmetrically (0–1).
+ *
+ * `transcriptMatchScore` is deliberately asymmetric — it asks "how much of the
+ * script survived into the transcript", which is the right question when
+ * matching a script to a post. Here both sides are transcripts of the same
+ * length, and we want "are these the same video", so we take the weaker of the
+ * two directions: a short clip fully contained in a long ramble is not the
+ * same reel, and only requiring both directions rules that out.
+ */
+export function transcriptSimilarity(a: string, b: string): number {
+  return Math.min(transcriptMatchScore(a, b), transcriptMatchScore(b, a));
+}
+
+/** Above this, two posts are the same reel uploaded twice. Measured against
+ *  the live corpus (2026-08-31): a real trial batch scores ~1.0 across its
+ *  members, while two genuinely different scripts by the same creator on the
+ *  same theme topped out around 0.5. */
+export const TRIAL_SAME_REEL = 0.8;
+
+/** A batch has to be more than a pair before we call it a trial run. Posting
+ *  the same reel twice is something creators do by hand; twenty times is the
+ *  trial-reel tool. */
+export const TRIAL_MIN_BATCH = 3;
+
+export interface TrialCollapse {
+  /** One representative per distinct reel — the best-performing upload of
+   *  each batch, which is the one Instagram actually published. */
+  kept: PerformanceVideo[];
+  /** How many uploads were folded away. Reported, never silently dropped. */
+  suppressed: number;
+}
+
+/**
+ * Collapse trial-reel batches down to one post each.
+ *
+ * Creators run Instagram Trials through a tool that uploads the same reel
+ * dozens of times: measured live, one creator's week held 104 uploads carrying
+ * 17 distinct transcripts, one of them repeated 59 times. Counted raw, that
+ * creator "posted 104 times" and their average views collapsed toward the
+ * trial noise floor (~2k) no matter how well the published cut did (83k).
+ *
+ * Neither Launchpoint nor Instagram flags a trial for us — checked both
+ * (2026-08-31): no field on `/posts`, and `crossPostGroupId` turned out to be
+ * the Instagram↔TikTok cross-post pair, size 1–2, not the batch. So the batch
+ * is identified by what actually distinguishes it: the same words, over and
+ * over, from one creator inside one week.
+ *
+ * The representative is the highest-view upload because that is the one that
+ * won the trial and got published — in the 59-upload batch it took 83k views
+ * and 72k reach while its siblings sat at ~2k. Keeping the max, rather than
+ * summing, is what makes "avg views" mean "how did their reel do".
+ *
+ * Anything without a transcript stands alone. A missing transcript is not
+ * evidence of duplication, and guessing would quietly delete real posts.
+ */
+export function collapseTrialUploads(videos: PerformanceVideo[]): TrialCollapse {
+  const withText: PerformanceVideo[] = [];
+  const kept: PerformanceVideo[] = [];
+  for (const v of videos) {
+    if ((v.transcript_text ?? "").trim().length > 0) withText.push(v);
+    else kept.push(v);
+  }
+
+  // Most-viewed first, so the first member of a group is already its winner.
+  const ordered = [...withText].sort((a, b) => (b.view_count ?? 0) - (a.view_count ?? 0));
+  const groups: PerformanceVideo[][] = [];
+  for (const v of ordered) {
+    const text = v.transcript_text ?? "";
+    const group = groups.find((g) => transcriptSimilarity(g[0].transcript_text ?? "", text) >= TRIAL_SAME_REEL);
+    if (group) group.push(v);
+    else groups.push([v]);
+  }
+
+  let suppressed = 0;
+  for (const group of groups) {
+    kept.push(group[0]);
+    // A pair is not a trial run; keep both and count neither as suppressed.
+    if (group.length >= TRIAL_MIN_BATCH) suppressed += group.length - 1;
+    else for (const extra of group.slice(1)) kept.push(extra);
+  }
+  return { kept, suppressed };
 }
 
 export function weeklyRead(
@@ -256,9 +362,17 @@ export function weeklyRead(
   week: Window,
   payscale: Payscale = DEFAULT_PAYSCALE
 ): WeeklyRead {
-  const posts = inWindow(videos, week);
+  // Trial-reel batches collapse to one post each BEFORE anything is counted:
+  // posts, views, average and spikes all describe reels the creator actually
+  // shipped, not uploads the trial tool made.
+  const { kept: posts, suppressed: trialUploads } = collapseTrialUploads(inWindow(videos, week));
   const refs: PostRef[] = posts
-    .map((v) => ({ shortcode: v.shortcode, url: v.url, views: v.view_count ?? 0 }))
+    .map((v) => ({
+      shortcode: v.shortcode,
+      url: v.url,
+      views: v.view_count ?? 0,
+      thumbnail: v.thumbnail_url ?? null,
+    }))
     .sort((a, b) => b.views - a.views);
   const views = refs.reduce((sum, r) => sum + r.views, 0);
   return {
@@ -270,6 +384,8 @@ export function weeklyRead(
     projectedCpm: projectedCpm(posts, payscale),
     spikes: refs.filter((r) => r.views >= SPIKE_VIEWS),
     bestPost: refs[0] ?? null,
+    topPosts: refs.slice(0, TOP_POSTS),
+    trialUploads,
   };
 }
 

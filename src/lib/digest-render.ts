@@ -22,7 +22,13 @@
  */
 
 import type { PerformanceRow } from "@/lib/jobs/performance";
-import { QUOTA_POSTS_PER_WEEK, type Bucket, type CreatorPerformance, type Window } from "@/lib/performance";
+import {
+  QUOTA_POSTS_PER_WEEK,
+  TOP_POSTS,
+  type Bucket,
+  type CreatorPerformance,
+  type Window,
+} from "@/lib/performance";
 import { formatCompact, formatUsd } from "@/lib/format";
 
 export const FIELD_VALUE_MAX = 1024;
@@ -326,10 +332,7 @@ export function buildCoachRecapV2(input: {
   const views = rows.reduce((sum, r) => sum + r.performance.weekly.views, 0);
   const avgViews = posts > 0 ? views / posts : null;
   const spikes = rows.reduce((sum, r) => sum + r.performance.weekly.spikes.length, 0);
-  const best = rows
-    .filter((r) => r.performance.weekly.bestPost)
-    .map((r) => ({ handle: r.handle, post: r.performance.weekly.bestPost! }))
-    .sort((a, b) => b.post.views - a.post.views)[0];
+  const trials = rows.reduce((sum, r) => sum + r.performance.weekly.trialUploads, 0);
   const flagged = rows.filter((r) => r.performance.flagged);
 
   const body: V2Component[] = [
@@ -344,7 +347,10 @@ export function buildCoachRecapV2(input: {
         `**${avgViews != null ? formatCompact(Math.round(avgViews)) : "—"}** avg views · ` +
         `**${hitQuota}/${rows.length}** hit quota · ` +
         `**${spikes}** spike${spikes === 1 ? "" : "s"} · ` +
-        `**${silent.length}** didn’t post`
+        `**${silent.length}** didn’t post` +
+        (trials > 0
+          ? `\n-# ${formatCompact(trials)} trial-reel uploads excluded — posts and views count published reels only`
+          : "")
     ),
   ];
 
@@ -367,11 +373,23 @@ export function buildCoachRecapV2(input: {
     }
   }
 
-  if (best) {
+  // Top five, not one. A single post can be luck; five is a pattern a coach
+  // can act on ("her hooks are landing", "his all came from one concept").
+  const top = rows
+    .flatMap((r) => r.performance.weekly.topPosts.map((post) => ({ handle: r.handle, post })))
+    .sort((a, b) => b.post.views - a.post.views)
+    .slice(0, TOP_POSTS);
+  if (top.length) {
     body.push(separator());
     body.push(
       textDisplay(
-        `🏆 **Best post** — [@${best.handle}, ${formatCompact(best.post.views)} views](${best.post.url})`
+        `🏆 **Top posts this week**\n` +
+          top
+            .map(
+              ({ handle, post }, i) =>
+                `${i + 1}. [@${handle} — ${formatCompact(post.views)} views](${post.url})`
+            )
+            .join("\n")
       )
     );
   }

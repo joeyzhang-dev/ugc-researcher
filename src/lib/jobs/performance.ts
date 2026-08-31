@@ -139,6 +139,33 @@ export async function loadPerformanceReport(
       )
     : [];
 
+  // Transcripts, but only for the reporting week. `collapseTrialUploads` needs
+  // them to spot a trial batch, and the corpus is ~40k posts deep — fetching
+  // every transcript to answer a question about seven days would be orders of
+  // magnitude more payload for nothing.
+  const weekTranscripts = creatorIds.length
+    ? await readAllRows<{
+        shortcode: string | null;
+        transcript_text: string | null;
+        thumbnail_url: string | null;
+      }>(
+        "research_videos",
+        (from, to) =>
+          client
+            .from("research_videos")
+            .select("shortcode, transcript_text, thumbnail_url")
+            .in("research_creator_id", creatorIds)
+            .gte("posted_at", week.start.toISOString())
+            .lt("posted_at", week.end.toISOString())
+            .range(from, to)
+      )
+    : [];
+  const weekExtrasByShortcode = new Map(
+    weekTranscripts
+      .filter((t) => !!t.shortcode)
+      .map((t) => [t.shortcode as string, t] as const)
+  );
+
   // joined_at = the creator's first Launchpoint post, earliest across every
   // account the contractor holds (decided 2026-08-29).
   const joinedByContractor = new Map<string, Date>();
@@ -164,7 +191,14 @@ export async function loadPerformanceReport(
   }
 
   const videosByCreator = new Map<string, PerformanceVideo[]>();
-  for (const v of videos) {
+  for (const raw of videos) {
+    // Attach the transcript only where we fetched one (this week's posts);
+    // everything older keeps `undefined`, which the collapse treats as
+    // "stands alone".
+    const extra = raw.shortcode ? weekExtrasByShortcode.get(raw.shortcode) : undefined;
+    const v: PerformanceVideo & { research_creator_id: string } = extra
+      ? { ...raw, transcript_text: extra.transcript_text, thumbnail_url: extra.thumbnail_url }
+      : raw;
     (videosByCreator.get(v.research_creator_id) ??
       videosByCreator.set(v.research_creator_id, []).get(v.research_creator_id)!).push(v);
   }

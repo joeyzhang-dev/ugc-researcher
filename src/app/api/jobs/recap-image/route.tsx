@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { loadPerformanceReport, type PerformanceRow } from "@/lib/jobs/performance";
 import { lastCompleteWeek, parseWeek } from "@/lib/performance";
-import { CARD_WIDTH, RecapCard, cardHeight } from "@/lib/recap-card";
+import { CARD_WIDTH, RecapCard, cardHeight, topPostCount } from "@/lib/recap-card";
 import { recapImageSignature } from "@/lib/recap-image-url";
 
 export const maxDuration = 60;
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 
   return new ImageResponse(<RecapCard coach={coach} week={week} rows={rows} />, {
     width: CARD_WIDTH,
-    height: cardHeight(rows.length),
+    height: cardHeight(rows.length, topPostCount(rows)),
   });
 }
 
