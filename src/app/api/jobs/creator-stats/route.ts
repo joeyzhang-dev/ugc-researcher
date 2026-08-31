@@ -57,6 +57,9 @@ export async function GET(request: NextRequest) {
       discordUserId: row.discordUserId,
       discordChannelId: row.discordChannelId,
       coach: row.coach,
+      // Stated rather than assumed: a caller reading "108 posts" should not
+      // have to guess whether TikTok is in there. It is not.
+      platform: row.platform,
       niche: row.niche,
       archived: !!row.archivedAt,
       week: weekKey({ start: asOf, end: asOf }),

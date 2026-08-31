@@ -23,6 +23,9 @@ export interface CreatorStatsRow {
   discordChannelId: string | null;
   /** The coach team category, when their channel sits in one. */
   coach: string | null;
+  /** Always "instagram" today: it is the only platform whose posts are
+   *  ingested, so it is the only platform these numbers can describe. */
+  platform: "instagram";
   niche: string | null;
   archivedAt: string | null;
   stats: CreatorStats;
@@ -31,7 +34,17 @@ export interface CreatorStatsRow {
 const CREATOR_COLUMNS =
   "id, handle, display_name, launchpoint_name, avatar_url, profile_url, discord_user_id::text, archived_at";
 
-/** Resolve a creator by handle (with or without @), case-insensitively. */
+/**
+ * Resolve a creator by handle (with or without @), case-insensitively.
+ *
+ * Pinned to Instagram, because `research_creators` is keyed on
+ * (platform, handle) and the same handle can exist on both. Only Instagram
+ * posts are ingested — Launchpoint tracks TikTok accounts for these same
+ * people, but no TikTok video ever lands in `research_videos` — so a TikTok
+ * row has nothing behind it. Without this filter an unpinned `.limit(1)` would
+ * take whichever row came back first and quietly render an empty panel for an
+ * active creator. The digest pins the same way.
+ */
 export async function findCreatorByHandle(
   client: SupabaseClient,
   handle: string
@@ -41,6 +54,7 @@ export async function findCreatorByHandle(
   const { data, error } = await client
     .from("research_creators")
     .select(CREATOR_COLUMNS)
+    .eq("platform", "instagram")
     .ilike("handle", clean)
     .limit(1);
   if (error) throw new Error(`looking up ${clean}: ${error.message}`);
@@ -110,6 +124,7 @@ export async function loadCreatorStats(
     discordUserId: (creator.discord_user_id as string) ?? null,
     discordChannelId: channel?.channel_id ?? null,
     coach: channel?.category ?? null,
+    platform: "instagram",
     niche: channel?.niche ?? null,
     archivedAt: (creator.archived_at as string) ?? null,
     stats: creatorStats({ videos, asOf }),
