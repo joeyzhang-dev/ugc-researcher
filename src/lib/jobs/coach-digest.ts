@@ -138,6 +138,7 @@ export async function sendCoachDigests(admin: SupabaseClient, options: DigestOpt
   const guildId = process.env.DISCORD_GUILD_ID;
   if (!guildId) throw new Error("DISCORD_GUILD_ID is not set");
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://bludgc.vercel.app").replace(/\/$/, "");
+  const sendNonce = Date.now().toString(36);
 
   const report = await loadPerformanceReport(admin, week);
 
@@ -190,7 +191,9 @@ export async function sendCoachDigests(admin: SupabaseClient, options: DigestOpt
         week,
         rows: group.rows,
         appUrl,
-        imageUrl: recapImageUrl(appUrl, group.coach, week.start),
+        // Fresh per send, so a retry gets a URL Discord has not already
+        // cached a failure against.
+        imageUrl: recapImageUrl(appUrl, group.coach, week.start, sendNonce),
       });
       const payloads = [payload];
       if (!dryRun) {

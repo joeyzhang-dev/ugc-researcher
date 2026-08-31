@@ -22,20 +22,23 @@ export const dynamic = "force-dynamic";
  * requested, keyed on CRON_SECRET. Without it there is no route to enumerate
  * a team's performance by guessing a category name.
  *
- * The signature covers coach and week together, so a link leaked for one week
- * does not open any other week.
+ * The signature covers coach, week and the `n` cache-buster together, so a
+ * link leaked for one week does not open any other week, and the nonce cannot
+ * be swapped for a different one.
  */
 export async function GET(request: NextRequest) {
   const sp = request.nextUrl.searchParams;
   const coach = sp.get("coach");
   const weekParam = sp.get("week");
   const sig = sp.get("sig");
+  // Opaque cache-buster; only meaningful as part of the signature.
+  const nonce = sp.get("n") ?? "";
 
   if (!coach || !weekParam) {
     return NextResponse.json({ error: "coach and week are required" }, { status: 400 });
   }
 
-  const expected = recapImageSignature(coach, weekParam);
+  const expected = recapImageSignature(coach, weekParam, nonce);
   if (!expected) {
     return NextResponse.json({ error: "CRON_SECRET is not configured" }, { status: 503 });
   }
