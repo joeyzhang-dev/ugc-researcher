@@ -16,7 +16,7 @@ import type { CreatorStatsRow } from "@/lib/jobs/creator-stats";
 import { QUOTA_POSTS_PER_WEEK, type Bucket, type PostRef, type Window } from "@/lib/performance";
 import { bucketForViews } from "@/lib/performance";
 import { formatCompact, formatUsd } from "@/lib/format";
-import { CPM_BAND_COLOR, CPM_BAND_LABEL, PlatformMark, cpmBand } from "@/lib/card-chrome";
+import { CPM_BAND_COLOR, CPM_BAND_LABEL, PlatformMark, cpmBand, cpmRangeLabel, rangeLabel } from "@/lib/card-chrome";
 
 const C = {
   bg: "#1a1b1e",
@@ -36,8 +36,10 @@ const BUCKET_COLOR: Record<Bucket, string> = {
   bad: "#ed4245",
 };
 
+export const CARD_SUB = C.faint;
+
 export const CREATOR_CARD_WIDTH = 1200;
-export const CREATOR_CARD_HEIGHT = 900;
+export const CREATOR_CARD_HEIGHT = 950;
 
 const monthDay = (d: Date): string =>
   d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
@@ -46,11 +48,15 @@ function Stat({
   label,
   value,
   note,
+  sub,
   color,
 }: {
   label: string;
   value: string;
   note?: string;
+  /** The window this number covers. Optional, but never omitted on a figure
+   *  whose range differs from the card's own week. */
+  sub?: string;
   color?: string;
 }) {
   return (
@@ -66,6 +72,9 @@ function Stat({
           </div>
         ) : null}
       </div>
+      {sub ? (
+        <div style={{ display: "flex", fontSize: 13, color: CARD_SUB, marginTop: 1 }}>{sub}</div>
+      ) : null}
     </div>
   );
 }
@@ -184,6 +193,11 @@ export function CreatorCard({ row }: { row: CreatorStatsRow }) {
       ? `${d.usd < 0 ? "▼" : "▲"}${formatUsd(Math.abs(d.usd))}`
       : undefined;
   const band = cpmBand(cpm.cpm);
+  const span = rangeLabel(s.trend[0].week.start, s.trend[s.trend.length - 1].week.end);
+  const thisWeek = rangeLabel(
+    s.trend[s.trend.length - 1].week.start,
+    s.trend[s.trend.length - 1].week.end
+  );
 
   return (
     <div
@@ -252,13 +266,14 @@ export function CreatorCard({ row }: { row: CreatorStatsRow }) {
           label="This week"
           value={`${s.current.posts}`}
           note={`/${QUOTA_POSTS_PER_WEEK} posts`}
+          sub={thisWeek}
           color={bucket ? BUCKET_COLOR[bucket] : undefined}
         />
         <Stat
           label="Avg views"
           value={s.current.posts ? formatCompact(Math.round(s.current.avgViews ?? 0)) : "—"}
         />
-        <Stat label={`${s.trend.length}-wk posts`} value={`${s.totals.posts}`} />
+        <Stat label={`${s.trend.length}-wk posts`} value={`${s.totals.posts}`} sub={span} />
         <Stat
           label={`${s.trend.length}-wk avg views`}
           value={s.totals.posts ? formatCompact(Math.round(s.totals.views / s.totals.posts)) : "—"}
@@ -286,10 +301,15 @@ export function CreatorCard({ row }: { row: CreatorStatsRow }) {
                 : undefined
           }
           color={band ? CPM_BAND_COLOR[band] : undefined}
+          sub={cpmRangeLabel(cpm.settledWindow, cpm.projected != null)}
         />
-        <Stat label="Earned" value={formatUsd(s.money.earnedUsd)} note="all time" />
-        <Stat label="Paid posts" value={`${s.money.paidPosts}`} />
-        <Stat label="Awaiting payout" value={`${Math.max(s.money.unpaidPosts, 0)}`} note="~3wk lag" />
+        <Stat label="Earned" value={formatUsd(s.money.earnedUsd)} sub="all time" />
+        <Stat label="Paid posts" value={`${s.money.paidPosts}`} sub="all time" />
+        <Stat
+          label="Awaiting payout"
+          value={`${Math.max(s.money.unpaidPosts, 0)}`}
+          sub="settles ~3wk after posting"
+        />
         {cpm.lowSample ? <Stat label="Sample" value={`${cpm.paidPosts}`} note="low" /> : null}
       </div>
 

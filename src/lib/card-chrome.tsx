@@ -90,3 +90,34 @@ export const CPM_BAND_LABEL: Record<CpmBand, string> = {
   ok: "ok",
   poor: "needs work",
 };
+
+/* --- date ranges ---------------------------------------------------------- */
+
+const MD = (d: Date): string =>
+  d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+/** "Jul 17 – Aug 16", inclusive of the last day. Windows are half-open
+ *  `[start, end)`, so the label subtracts a millisecond — otherwise every
+ *  range reads a day longer than it is. */
+export function rangeLabel(start: Date, endExclusive: Date): string {
+  return `${MD(start)} – ${MD(new Date(endExclusive.getTime() - 1))}`;
+}
+
+/**
+ * What the CPM number actually covers, in words.
+ *
+ * The single most confusable figure on these cards: the true CPM window ends
+ * at the creator's newest PAYOUT, not at today, so two creators looking at the
+ * same card are reading different date ranges — Jas Jul 17–Aug 16, Roman
+ * Jul 5–Aug 4. Without this caption "$1.32" looks like it means "this month"
+ * to everyone, and a creator asking "why is my CPM from three weeks ago" has
+ * nothing on the card to answer them.
+ */
+export function cpmRangeLabel(
+  settledWindow: { start: Date; end: Date } | null,
+  hasProjection: boolean
+): string {
+  if (settledWindow) return `paid posts · ${rangeLabel(settledWindow.start, settledWindow.end)}`;
+  if (hasProjection) return "projected · last 30 days";
+  return "no payouts yet";
+}

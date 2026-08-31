@@ -61,7 +61,21 @@ export async function GET(request: NextRequest) {
       // diagnosis ("call or offboard") must never reach the person it is about.
       message: coaching.creator,
       tone: coaching.tone,
-      cpmNote: cpmNote(s.money.cpm30.cpm, s.money.cpm30.projected),
+      cpmNote: cpmNote(s.money.cpm30.cpm, s.money.cpm30.projected, s.money.cpm30.settledWindow),
+      // Every window the card shows, stated rather than implied.
+      windows: {
+        week: {
+          start: s.trend[s.trend.length - 1].week.start.toISOString().slice(0, 10),
+          end: new Date(s.trend[s.trend.length - 1].week.end.getTime() - 1).toISOString().slice(0, 10),
+        },
+        trendStart: s.trend[0].week.start.toISOString().slice(0, 10),
+        cpm: s.money.cpm30.settledWindow
+          ? {
+              start: s.money.cpm30.settledWindow.start.toISOString().slice(0, 10),
+              end: new Date(s.money.cpm30.settledWindow.end.getTime() - 1).toISOString().slice(0, 10),
+            }
+          : null,
+      },
       current: {
         posts: s.current.posts,
         avgViews: s.current.avgViews,

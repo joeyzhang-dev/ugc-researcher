@@ -23,10 +23,20 @@ import type { CreatorStatsRow } from "@/lib/jobs/creator-stats";
 import type { Coaching } from "@/lib/creator-coaching";
 import { QUOTA_POSTS_PER_WEEK, SPIKE_VIEWS, type PostRef, type Window } from "@/lib/performance";
 import { formatCompact, formatUsd } from "@/lib/format";
-import { CARD, CPM_BAND_COLOR, CPM_BAND_LABEL, PlatformMark, cpmBand } from "@/lib/card-chrome";
+import {
+  CARD,
+  CPM_BAND_COLOR,
+  CPM_BAND_LABEL,
+  PlatformMark,
+  cpmBand,
+  cpmRangeLabel,
+  rangeLabel,
+} from "@/lib/card-chrome";
+
+const CARD_SUB = CARD.faint;
 
 export const MY_CARD_WIDTH = 1200;
-export const MY_CARD_HEIGHT = 940;
+export const MY_CARD_HEIGHT = 1000;
 
 const TONE: Record<Coaching["tone"], string> = {
   good: CARD.good,
@@ -90,7 +100,7 @@ function QuotaBar({ posts }: { posts: number }) {
   );
 }
 
-function Tile({ label, value, note, color }: { label: string; value: string; note?: string; color?: string }) {
+function Tile({ label, value, note, sub, color }: { label: string; value: string; note?: string; sub?: string; color?: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", marginRight: 44 }}>
       <div style={{ display: "flex", fontSize: 14, color: CARD.faint, textTransform: "uppercase" }}>
@@ -104,6 +114,9 @@ function Tile({ label, value, note, color }: { label: string; value: string; not
           </div>
         ) : null}
       </div>
+      {sub ? (
+        <div style={{ display: "flex", fontSize: 13, color: CARD_SUB, marginTop: 1 }}>{sub}</div>
+      ) : null}
     </div>
   );
 }
@@ -197,6 +210,8 @@ export function MyStatsCard({ row, coaching }: { row: CreatorStatsRow; coaching:
   const cpm = s.money.cpm30;
   const band = cpmBand(cpm.cpm);
   const tone = TONE[coaching.tone];
+  const thisWeek = s.trend[s.trend.length - 1].week;
+  const span = rangeLabel(s.trend[0].week.start, thisWeek.end);
 
   return (
     <div
@@ -233,7 +248,7 @@ export function MyStatsCard({ row, coaching }: { row: CreatorStatsRow; coaching:
         <div style={{ display: "flex", flexDirection: "column", marginLeft: 18 }}>
           <div style={{ display: "flex", fontSize: 30 }}>{name}</div>
           <div style={{ display: "flex", fontSize: 17, color: CARD.dim }}>
-            your week of {monthDay(s.trend[s.trend.length - 1].week.start)}
+            your week · {rangeLabel(thisWeek.start, thisWeek.end)}
           </div>
         </div>
         <PlatformMark />
@@ -246,23 +261,30 @@ export function MyStatsCard({ row, coaching }: { row: CreatorStatsRow; coaching:
           <Tile
             label="Avg views"
             value={s.current.posts ? formatCompact(Math.round(s.current.avgViews ?? 0)) : "—"}
+            sub="this week"
           />
           <div style={{ display: "flex", marginTop: 18 }}>
-            <Tile label="Earned" value={formatUsd(s.money.earnedUsd)} note="all time" />
+            <Tile label="Earned" value={formatUsd(s.money.earnedUsd)} sub="all time" />
           </div>
         </div>
       </div>
 
       <div style={{ display: "flex", padding: "26px 40px 0 40px" }}>
-        <Tile label={`${s.trend.length}-wk posts`} value={`${s.totals.posts}`} />
+        <Tile label={`${s.trend.length}-wk posts`} value={`${s.totals.posts}`} sub={span} />
         <Tile label="Spikes 40k+" value={`${s.totals.spikes}`} color={s.totals.spikes ? CARD.good : undefined} />
         <Tile
           label="Your CPM"
           value={cpm.cpm != null ? formatUsd(cpm.cpm) : cpm.projected != null ? `≈${formatUsd(cpm.projected)}` : "—"}
           note={band ? CPM_BAND_LABEL[band] : cpm.projected != null ? "tracking" : undefined}
           color={band ? CPM_BAND_COLOR[band] : undefined}
+          sub={cpmRangeLabel(cpm.settledWindow, cpm.projected != null)}
         />
-        <Tile label="Paid posts" value={`${s.money.paidPosts}`} note={`${Math.max(s.money.unpaidPosts, 0)} pending`} />
+        <Tile
+          label="Paid posts"
+          value={`${s.money.paidPosts}`}
+          note={`${Math.max(s.money.unpaidPosts, 0)} pending`}
+          sub="all time"
+        />
       </div>
 
       <div style={{ display: "flex", height: 1, backgroundColor: CARD.line, margin: "24px 40px" }} />

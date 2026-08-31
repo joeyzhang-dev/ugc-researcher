@@ -176,16 +176,32 @@ export function diagnose(stats: CreatorStats, weeksSinceJoined: number | null = 
 /** A separate line about the money, when there is something true to say. It is
  *  appended rather than folded in, so the performance read never gets
  *  distorted by a payout that has not settled yet. */
-export function cpmNote(cpm: number | null, projected: number | null): string | null {
+export function cpmNote(
+  cpm: number | null,
+  projected: number | null,
+  /** The window `cpm` describes, so the sentence can say which 30 days it
+   *  means. The true window ends at the creator's newest payout, not today. */
+  window?: { start: Date; end: Date } | null
+): string | null {
   const band = cpmBand(cpm);
-  if (band === "great") return `Your CPM is $${cpm!.toFixed(2)} — well under the $${CPM_GREAT_USD} line. That is exactly where you want it.`;
-  if (band === "poor") return `Your CPM is $${cpm!.toFixed(2)}. Views are what pulls that number down — nothing else does.`;
-  if (band === "ok") return `Your CPM is $${cpm!.toFixed(2)}. Under $${CPM_GREAT_USD} is the target.`;
+  const span = window ? ` (${range(window.start)}–${range(new Date(window.end.getTime() - 1))})` : "";
+  if (band === "great")
+    return `Your CPM is $${cpm!.toFixed(2)}${span} — well under the $${CPM_GREAT_USD} line. That is exactly where you want it.`;
+  if (band === "poor")
+    return `Your CPM is $${cpm!.toFixed(2)}${span}. Views are what pulls that number down — nothing else does.`;
+  if (band === "ok")
+    return `Your CPM is $${cpm!.toFixed(2)}${span}. Under $${CPM_GREAT_USD} is the target.`;
   if (cpm == null && projected != null) {
-    return `No settled payouts yet, so this is tracking at about $${projected.toFixed(2)} — payouts land ~3 weeks after posting.`;
+    return (
+      `No settled payouts yet, so this is tracking at about $${projected.toFixed(2)} over the last 30 days — ` +
+      "payouts land ~3 weeks after posting."
+    );
   }
   return null;
 }
+
+const range = (d: Date): string =>
+  d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
 function fmt(n: number): string {
   const v = Math.round(n);

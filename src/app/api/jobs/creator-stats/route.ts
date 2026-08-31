@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
       quota: QUOTA_POSTS_PER_WEEK,
       readCase: coaching.case,
       message: coaching.coach,
-      cpmNote: cpmNote(cpm.cpm, cpm.projected),
+      cpmNote: cpmNote(cpm.cpm, cpm.projected, cpm.settledWindow),
       imageUrl,
       current: {
         posts: s.current.posts,

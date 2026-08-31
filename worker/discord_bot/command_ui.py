@@ -673,7 +673,11 @@ def build_stats_embed(data: dict) -> EmbedSpec:
         description="\n".join(lines),
         fields=fields,
         color=COLOR_BRAND,
-        footer=f"week of {data.get('week')}" if data.get("week") else None,
+        footer=(
+            f"week of {data.get('week')} · 8-week trend · Instagram only"
+            if data.get("week")
+            else None
+        ),
     )
 
 
@@ -713,10 +717,14 @@ def build_my_stats_embed(data: dict) -> EmbedSpec:
     if cur.get("spikes"):
         fields.append(EmbedField(name="Spikes 40k+", value=f"🚀 {cur['spikes']}", inline=True))
 
+    win = (data.get("windows") or {}).get("week") or {}
+    span = f"{win.get('start')} → {win.get('end')}" if win.get("start") else data.get("week")
     return build_embed(
         title=f"📊 Your week, {data.get('name') or data.get('handle')}",
         description="\n".join(x for x in lines if x),
         fields=fields,
         color=color,
-        footer="only you can see this",
+        # The week is named here rather than left to "this week", which means
+        # different things depending on when you happen to read the message.
+        footer=f"{span} · Instagram · only you can see this" if span else "only you can see this",
     )
