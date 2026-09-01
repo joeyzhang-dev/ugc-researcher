@@ -256,6 +256,19 @@ export function bucketForViews(avgViews: number | null): Bucket | null {
   return "decent";
 }
 
+/** Median views per post — what a *typical* post of theirs does. One viral
+ *  reel moves the mean by tens of thousands and the median by nothing, which
+ *  is the whole reason it sits beside the mean as a second rating. */
+export function medianViews(videos: PerformanceVideo[]): number | null {
+  const sorted = videos
+    .filter((v) => v.view_count != null)
+    .map((v) => v.view_count as number)
+    .sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 function avgViews(videos: PerformanceVideo[]): number | null {
   const viewed = videos.filter((v) => v.view_count != null);
   return viewed.length > 0
@@ -430,6 +443,8 @@ export interface CpmRead {
   /** Average views of the settled (paid) posts — what the bucket is judged
    *  on when the true read is usable. */
   settledAvgViews: number | null;
+  /** Median views of the same settled posts (see `medianViews`). */
+  settledMedianViews: number | null;
   /**
    * The settled month before `settledWindow` — the same `days`, ending where
    * the settled window starts — which is what "how is my CPM moving" has to
@@ -456,6 +471,8 @@ export interface CpmRead {
   /** Average views of every post in the calendar window — the bucket basis
    *  while the true read is missing or a low sample. */
   avgViews: number | null;
+  /** Median views of the calendar window's posts. */
+  medianViews: number | null;
 }
 
 /** The average views a read should be bucketed on: the settled posts when
@@ -464,6 +481,19 @@ export function bucketBasis(read: CpmRead): { avgViews: number | null; source: "
   if (read.cpm != null && !read.lowSample) return { avgViews: read.settledAvgViews, source: "true" };
   if (read.avgViews != null) return { avgViews: read.avgViews, source: "projected" };
   return { avgViews: null, source: null };
+}
+
+/**
+ * The same choice of posts as `bucketBasis`, judged on the median instead
+ * of the mean. Both ratings are shown side by side: the mean is the money
+ * view (one 656k-view reel really did make the month cheap), the median is
+ * the coaching view (that creator's typical post still does 1,900 views).
+ * Live case 2026-09-02: @stayfocusedevan, mean 52,928 → good, median
+ * 1,911 → decent.
+ */
+export function medianBucket(read: CpmRead): Bucket | null {
+  if (read.cpm != null && !read.lowSample) return bucketForViews(read.settledMedianViews);
+  return bucketForViews(read.medianViews);
 }
 
 /**
@@ -553,6 +583,7 @@ function cpmReadOver(
     settledWindow,
     lowSample: settled.length > 0 && settled.length < MIN_PAID_SAMPLE,
     settledAvgViews: avgViews(settled),
+    settledMedianViews: medianViews(settled),
     priorCpm: trueCpm(prior),
     priorPaidPosts: prior.length,
     priorWindow,
@@ -560,6 +591,7 @@ function cpmReadOver(
     projected: projectedCpm(calendar, payscale),
     posts: calendar.length,
     avgViews: avgViews(calendar),
+    medianViews: medianViews(calendar),
   };
 }
 
@@ -679,6 +711,8 @@ export interface CreatorPerformance {
    *  when the true read is usable, the calendar month otherwise. */
   bucket: Bucket | null;
   bucketSource: "true" | "projected" | null;
+  /** The same posts rated on their median views (see `medianBucket`). */
+  medianBucket: Bucket | null;
   onboarding: OnboardingRead;
   weeksSinceJoined: number | null;
   badStreak: number;
@@ -708,6 +742,7 @@ export function creatorPerformance(input: {
     projectedDelta: delta(weekly.projectedCpm, weeklyPrev.projectedCpm),
     bucket: bucketForViews(basis.avgViews),
     bucketSource: basis.source,
+    medianBucket: medianBucket(cpm30),
     onboarding: onboardingRead(videos, joinedAt, week.end, payscale),
     weeksSinceJoined: weeksSinceJoined(joinedAt, week),
     badStreak: streak,

@@ -5,6 +5,8 @@ import {
   CPM_WINDOW_DAYS,
   GOOD_AVG_VIEWS,
   WEEK_MS,
+  medianBucket,
+  medianViews,
   teamCpmRead,
   teamPerformance,
   trailingWindow,
@@ -614,5 +616,33 @@ describe("trend: settled month vs the settled month before", () => {
     expect(p.delta).toBeNull();
     // This week's 30k post projects cheaper than last week's 3k one.
     expect(p.projectedDelta!.usd).toBeLessThan(0);
+  });
+});
+
+describe("median rating", () => {
+  it("is not moved by one viral reel the way the mean is", () => {
+    // @stayfocusedevan, settled month to 2026-08-07: one 656k reel, one 158k,
+    // fourteen at ~1.5–2.8k. Mean 52,928 → good; median 1,911 → decent.
+    const at = (d: string) => `${d}T10:00:00Z`;
+    const videos = [
+      video(at("2026-08-05"), 656_546, 66.81, "viral"),
+      video(at("2026-07-25"), 158_049, 151.75, "big"),
+      ...[8279, 2818, 2570, 2056, 2022, 1912, 1861, 1658, 1590, 1541, 1534, 1484, 1475, 1458].map((views, i) =>
+        video(at(`2026-07-${String(10 + i).padStart(2, "0")}`), views, 41 + views / 1000, `s${i}`)
+      ),
+    ];
+    const p = creatorPerformance({ videos, joinedAt: null, week: WEEK });
+    expect(p.bucketSource).toBe("true");
+    expect(p.bucket).toBe("good");
+    expect(p.medianBucket).toBe("decent");
+    // 16 posts: the median is the mean of the 8th and 9th by views.
+    expect(p.cpm30.settledMedianViews).toBeCloseTo((1861 + 1912) / 2, 6);
+    expect(medianBucket(p.cpm30)).toBe(p.medianBucket);
+  });
+
+  it("median of an odd and an even set", () => {
+    expect(medianViews([video("2026-08-25T00:00:00Z", 1, null, "a"), video("2026-08-25T00:00:00Z", 100, null, "b"), video("2026-08-25T00:00:00Z", 3, null, "c")])).toBe(3);
+    expect(medianViews([video("2026-08-25T00:00:00Z", 1, null, "a"), video("2026-08-25T00:00:00Z", 3, null, "b")])).toBe(2);
+    expect(medianViews([])).toBeNull();
   });
 });

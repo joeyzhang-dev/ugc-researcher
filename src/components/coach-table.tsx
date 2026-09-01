@@ -7,7 +7,7 @@ import { compareValues, type SortDir } from "@/components/sort-header";
 import { PERFORMANCE_GRID as GRID, PerformanceRow as Row } from "@/components/performance-rows";
 import { tableWrap, th } from "@/components/ui";
 
-const SORT_KEYS = ["digest", "creator", "posts", "views", "cpm", "delta", "joined"] as const;
+const SORT_KEYS = ["digest", "median", "creator", "posts", "views", "cpm", "delta", "joined"] as const;
 type SortKey = (typeof SORT_KEYS)[number];
 
 const COLUMNS: readonly [label: string, key: SortKey, firstDir: SortDir, align: string][] = [
@@ -18,12 +18,14 @@ const COLUMNS: readonly [label: string, key: SortKey, firstDir: SortDir, align: 
   ["Change", "delta", "desc", "text-right"],
   ["Joined", "joined", "desc", "text-right"],
   ["30d rating", "digest", "asc", "text-right"],
+  ["Median rating", "median", "asc", "text-right"],
 ];
 
 function sortValue(r: PerformanceRowData, key: SortKey): string | number | null {
   const p = r.performance;
   switch (key) {
     case "digest": return p.bucket ? BUCKET_ORDER[p.bucket] : null;
+    case "median": return p.medianBucket ? BUCKET_ORDER[p.medianBucket] : null;
     case "posts": return p.weekly.posts;
     case "views": return p.weekly.avgViews;
     case "cpm": return p.cpm30.cpm ?? p.cpm30.projected;
@@ -60,7 +62,7 @@ export function CoachTable({ rows }: { rows: PerformanceRowData[] }) {
 
   return (
     <div className={tableWrap}>
-      <div className="min-w-[1000px]">
+      <div className="min-w-[1100px]">
         <div className={`${GRID} border-b border-black/[0.05] pb-1`}>
           {COLUMNS.map(([label, key, firstDir, align]) => {
             const active = sort.key === key;

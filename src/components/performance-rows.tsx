@@ -6,7 +6,7 @@ import { formatCompact, formatDateUTC, formatUsd } from "@/lib/format";
 
 /** Header and rows share one column recipe. */
 export const PERFORMANCE_GRID =
-  "grid grid-cols-[minmax(220px,1.4fr)_minmax(90px,0.6fr)_minmax(110px,0.8fr)_minmax(120px,0.9fr)_minmax(120px,0.9fr)_minmax(90px,0.6fr)_minmax(120px,0.9fr)] items-center gap-x-3";
+  "grid grid-cols-[minmax(220px,1.4fr)_minmax(90px,0.6fr)_minmax(110px,0.8fr)_minmax(120px,0.9fr)_minmax(120px,0.9fr)_minmax(90px,0.6fr)_minmax(110px,0.8fr)_minmax(110px,0.8fr)] items-center gap-x-3";
 
 /**
  * One creator's line of the weekly read. Shared by /performance (staff) and
@@ -111,6 +111,9 @@ export function PerformanceRow({
       />
       <div className="text-right">
         <BucketChip bucket={p.bucket} projected={p.bucketSource === "projected"} />
+      </div>
+      <div className="text-right">
+        <BucketChip bucket={p.medianBucket} projected={p.bucketSource === "projected"} />
       </div>
     </div>
   );

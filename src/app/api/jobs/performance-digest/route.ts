@@ -56,6 +56,7 @@ function digestLine(r: PerformanceRow) {
     channelId: r.discordChannelId,
     bucket: p.bucket,
     bucketSource: p.bucketSource,
+    medianBucket: p.medianBucket,
     flagged: p.flagged,
     badStreak: p.badStreak,
     weeksSinceJoined: p.weeksSinceJoined,

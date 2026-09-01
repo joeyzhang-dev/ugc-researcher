@@ -485,9 +485,16 @@ or `POST /api/jobs/research {"action":"launchpoint-sync"}`. Repeat until
   the latest week, and the first coach dashboard read "no new payouts" on
   every row (2026-09-02). Where no true delta exists yet, the row shows
   this week's posts against last week's on the projection, labelled.
-- **Buckets are judged on average views** (good ≥ 40k, bad ≤ 1,667 — the $2
+- **Buckets are judged on views, not CPM** (good ≥ 40k, bad ≤ 1,667 — the $2
   and $25 CPM lines for posts over 1k views). Sub-1k posts get no flat fee
   and read as a "good" $1 CPM; a 149-view creator must be bad, not best.
+  **Two ratings since 2026-09-02:** `bucket` on the *mean* (the money view —
+  it is what the CPM itself is made of) and `medianBucket` on the *median*
+  of the same posts (the coaching view). Live reason: @stayfocusedevan's
+  month had one 656k-view reel paid $66.81, so mean 52,928 → good while his
+  typical post does 1,911 → decent. "Average" in the original rule was the
+  author's word, not Joey's; he only set the 40k / 1.5k lines. The Discord
+  digest still shows the mean one; adding the median there is pending.
 - **Weeks are Monday→Monday UTC**, passed explicitly, so a re-run reproduces
   the same digest. Quota is 7 posts/week (the program's ceiling is 21).
 - **Trial-reel collapse only sees posts the loader fetched transcripts for**
