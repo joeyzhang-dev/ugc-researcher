@@ -124,13 +124,7 @@ export function PerformanceRow({
       )}
       <Cell
         value={p.weeksSinceJoined == null ? "—" : `${p.weeksSinceJoined}w`}
-        sub={
-          p.onboarding.bucket
-            ? `start: ${p.onboarding.bucket}${p.onboarding.final ? "" : " (pending)"}`
-            : p.onboarding.joinedAt
-              ? "no first-week posts"
-              : "not on Launchpoint"
-        }
+        sub={p.onboarding.joinedAt ? "" : "not on Launchpoint"}
       />
       <div className="text-right">
         <BucketChip bucket={p.bucket} projected={p.bucketSource === "projected"} />
