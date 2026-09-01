@@ -96,14 +96,14 @@ export function PerformanceRow({
           cpm == null
             ? "no posts in 30d"
             : projected
-              ? "≈ what Launchpoint will pay · nothing settled yet"
+              ? "projected"
               : `${p.cpm30.paidPosts} paid post${p.cpm30.paidPosts === 1 ? "" : "s"}${
                   p.cpm30.lowSample ? " · low sample" : ""
                 }`
         }
         title={
           projected
-            ? undefined
+            ? "Nothing in the window is paid yet — this is what Launchpoint will pay at the current views"
             : `Paid posts from the 30 days ending ${formatDateUTC(p.cpm30.settledWindow?.end.toISOString())} — Launchpoint's newest payout for this creator`
         }
         tone={projected || p.cpm30.lowSample ? "muted" : undefined}
