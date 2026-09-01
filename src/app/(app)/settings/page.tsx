@@ -359,7 +359,6 @@ export default async function SettingsPage({
               <div>
                 <label htmlFor="coach-email" className={labelClass}>Email</label>
                 <input id="coach-email" name="email" type="email" required placeholder="will@folk.com" className={inputClass} />
-                <p className="mt-1 text-[11px] text-neutral-400">No account yet? An invite email is sent.</p>
               </div>
               <div>
                 <label htmlFor="coach-category" className={labelClass}>Team</label>
