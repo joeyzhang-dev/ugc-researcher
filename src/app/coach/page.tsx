@@ -4,10 +4,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getOwnCoachTeam } from "@/lib/coach-team";
 import { loadPerformanceReport, type CoachGroup } from "@/lib/jobs/performance";
 import {
-  CPM_GOOD_MAX_USD,
-  CPM_BAD_MIN_USD,
-  GOOD_AVG_VIEWS,
-  BAD_AVG_VIEWS,
   lastCompleteWeek,
   parseWeek,
   previousWeek,
@@ -88,7 +84,6 @@ export default async function CoachPage({
     <>
       <PageHeader
         title={teamName}
-        subtitle={`Week of ${formatDateUTC(week.start.toISOString())}. Your team's CPM is the money number — dollars Launchpoint paid your creators over the views those posts got — and the bucket is judged on average views: good from ${formatCompact(GOOD_AVG_VIEWS)} a post (under ${formatUsd(CPM_GOOD_MAX_USD)}), bad at ${formatCompact(Math.round(BAD_AVG_VIEWS))} and under (over ${formatUsd(CPM_BAD_MIN_USD)}).`}
         action={
           <div className="flex items-center gap-1.5">
             <Link href={hrefWith({ week: weekKey(previousWeek(week)) })} className={weekNav} title="Previous week">‹</Link>
