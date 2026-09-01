@@ -11,10 +11,16 @@ import {
   type Window,
 } from "@/lib/performance";
 import { Card, EmptyState, KpiCard, PageHeader, tableWrap } from "@/components/ui";
+import { compareValues, parseSort, SortHeader, type SortDir } from "@/components/sort-header";
+import { BUCKET_ORDER, comparePerformance } from "@/lib/performance";
+import type { PerformanceRow as PerformanceRowData } from "@/lib/jobs/performance";
 import { BucketChip, PERFORMANCE_GRID as GRID, PerformanceRow as Row, signedPct, signedUsd } from "@/components/performance-rows";
 import { formatCompact, formatDateUTC, formatUsd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
+
+const SORT_KEYS = ["digest", "creator", "posts", "views", "cpm", "delta", "joined"] as const;
+type SortKey = (typeof SORT_KEYS)[number];
 
 /**
  * A coach's own team for one week: the pooled CPM, how the week went, and
@@ -28,9 +34,10 @@ export const dynamic = "force-dynamic";
 export default async function CoachPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week?: string; team?: string }>;
+  searchParams: Promise<{ week?: string; team?: string; sort?: string; dir?: string }>;
 }) {
-  const { week: weekParam, team: teamParam } = await searchParams;
+  const { week: weekParam, team: teamParam, sort: sortParam, dir: dirParam } = await searchParams;
+  const sort = parseSort<SortKey>(sortParam, dirParam, SORT_KEYS, { key: "digest", dir: "asc" });
   const profile = await getProfile();
   if (!profile) return null; // the layout already redirected
   const week: Window = parseWeek(weekParam) ?? lastCompleteWeek();
@@ -53,13 +60,39 @@ export default async function CoachPage({
     ? report.groups.find((g) => g.coach === category)
     : (teams.find((g) => g.coach === teamParam) ?? teams[0]);
 
-  const hrefWith = (overrides: { week?: string; team?: string | null }) => {
+  const hrefWith = (overrides: { week?: string; team?: string | null; sort?: string; dir?: string }) => {
     const sp = new URLSearchParams();
     sp.set("week", overrides.week ?? weekKey(week));
     const team = overrides.team === undefined ? (group?.coach ?? null) : overrides.team;
     if (isStaff(profile) && team) sp.set("team", team);
+    const sortKey = overrides.sort ?? sortParam;
+    const sortDir = overrides.dir ?? dirParam;
+    if (sortKey) sp.set("sort", sortKey);
+    if (sortDir) sp.set("dir", sortDir);
     return `/coach?${sp.toString()}`;
   };
+  const sortHref = (key: SortKey, dir: SortDir) => hrefWith({ sort: key, dir });
+
+  // Same recipe as /performance: bad → decent → good by default, and any
+  // explicit sort applied to the whole table, nulls sinking either way.
+  const value = (r: PerformanceRowData): string | number | null => {
+    const p = r.performance;
+    switch (sort.key) {
+      case "digest": return p.bucket ? BUCKET_ORDER[p.bucket] : null;
+      case "posts": return p.weekly.posts;
+      case "views": return p.weekly.avgViews;
+      case "cpm": return p.cpm30.cpm ?? p.cpm30.projected;
+      case "delta": return (p.delta ?? p.projectedDelta)?.usd ?? null;
+      case "joined": return p.weeksSinceJoined;
+      default: return r.launchpointName || r.displayName || r.handle;
+    }
+  };
+  const rows = [...(group?.rows ?? [])].sort(
+    (a, b) =>
+      compareValues(value(a), value(b), sort.dir) ||
+      (sort.key === "digest" ? comparePerformance(a.performance, b.performance) : 0) ||
+      a.handle.localeCompare(b.handle)
+  );
   const nextWeek: Window = { start: week.end, end: new Date(week.end.getTime() + (week.end.getTime() - week.start.getTime())) };
   const canGoForward = nextWeek.end.getTime() <= lastCompleteWeek().end.getTime();
   const isLatest = weekKey(week) === weekKey(lastCompleteWeek());
@@ -163,17 +196,33 @@ export default async function CoachPage({
           >
             <div className={tableWrap}>
               <div className="min-w-[1000px]">
-                <div className={`${GRID} border-b border-black/[0.05] pb-1 text-[11px] font-medium uppercase tracking-[0.06em] text-neutral-400`}>
-                  <span>Creator</span>
-                  <span className="text-right">Posts</span>
-                  <span className="text-right">Avg views</span>
-                  <span className="text-right">30d CPM</span>
-                  <span className="text-right">vs last week</span>
-                  <span className="text-right">Joined</span>
-                  <span className="text-right">Bucket</span>
+                <div className={`${GRID} border-b border-black/[0.05] pb-1`}>
+                  {(
+                    [
+                      ["Creator", "creator", "asc", ""],
+                      ["Posts", "posts", "desc", "text-right"],
+                      ["Avg views", "views", "desc", "text-right"],
+                      ["30d CPM", "cpm", "asc", "text-right"],
+                      ["Change", "delta", "desc", "text-right"],
+                      ["Joined", "joined", "desc", "text-right"],
+                      ["Bucket", "digest", "asc", "text-right"],
+                    ] as const
+                  ).map(([label, key, first, align]) => (
+                    <SortHeader
+                      key={key}
+                      as="div"
+                      label={label}
+                      sortKey={key}
+                      active={sort.key === key}
+                      dir={sort.dir}
+                      hrefFor={sortHref}
+                      firstDir={first}
+                      className={`!px-0 ${align}`}
+                    />
+                  ))}
                 </div>
                 <div className="divide-y divide-black/[0.05]">
-                  {group.rows.map((r) => (
+                  {rows.map((r) => (
                     <Row key={r.creatorId} row={r} showCoach={false} creatorHref={() => null} />
                   ))}
                 </div>
