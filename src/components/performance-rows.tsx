@@ -226,7 +226,6 @@ export function BucketChip({ bucket, projected }: { bucket: Bucket | null; proje
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] ring-1 ring-inset ${tone}`}
     >
       {bucket}
-      {projected && <span className="font-normal normal-case tracking-normal opacity-70">~</span>}
     </span>
   );
 }
