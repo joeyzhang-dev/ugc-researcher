@@ -89,15 +89,7 @@ export default async function CoachPage({
   const cpm = t ? (t.cpm30.cpm ?? t.cpm30.projected) : null;
   const cpmProjected = Boolean(t && t.cpm30.cpm == null && t.cpm30.projected != null);
   const d = t ? (t.delta ?? t.projectedDelta) : null;
-  const dLabel = !t
-    ? ""
-    : t.delta != null
-      ? `vs the 30 days before (to ${formatDateUTC(t.cpm30.priorWindow?.end.toISOString())}, ${t.cpm30.priorPaidPosts} paid)${t.cpm30.lowSample || t.cpm30.priorLowSample ? " · low sample" : ""}`
-      : t.projectedDelta != null
-        ? `this week's posts vs last week's (≈ ${formatUsd(t.projectedCpmPrev)}) · projected`
-        : t.cpm30.cpm != null
-          ? "no settled month before this one"
-          : "no posts to compare";
+  const dLabel = !t ? "" : t.delta != null ? "vs prior 30 days" : t.projectedDelta != null ? "this week vs last, projected" : "";
   const cpmTone = !t?.bucket ? "neutral" : t.bucket === "good" ? "emerald" : t.bucket === "bad" ? "red" : "amber";
 
   return (
@@ -139,20 +131,14 @@ export default async function CoachPage({
             <KpiCard
               label="Team CPM · 30d"
               value={cpm == null ? "—" : formatUsd(cpm)}
-              sub={
-                cpm == null
-                  ? "no posts in 30 days"
-                  : cpmProjected
-                    ? "≈ projected · nothing settled yet"
-                    : `${t.cpm30.paidPosts} paid posts · to ${formatDateUTC(t.cpm30.settledWindow?.end.toISOString())}${t.cpm30.lowSample ? " · low sample" : ""}`
-              }
+              sub={cpm == null ? "no posts in 30 days" : cpmProjected ? "projected" : `${t.cpm30.paidPosts} paid posts`}
               icon="dollar"
               tone={cpmTone}
             />
             <KpiCard
               label="CPM change · lower is better"
               value={d == null ? "—" : Math.abs(d.usd) < 0.005 ? "no change" : signedUsd(d.usd)}
-              sub={d == null || Math.abs(d.usd) < 0.005 ? dLabel : `${signedPct(d.pct)} ${dLabel}`}
+              sub={d == null ? "" : Math.abs(d.usd) < 0.005 ? dLabel : `${signedPct(d.pct)} ${dLabel}`}
               icon="trend"
               tone={d == null || Math.abs(d.usd) < 0.005 ? "neutral" : d.usd < 0 ? "emerald" : "red"}
             />
@@ -169,7 +155,6 @@ export default async function CoachPage({
               sub={
                 <span className="flex items-center gap-2">
                   {t.projectedCpm != null && <span>≈ {formatUsd(t.projectedCpm)} CPM</span>}
-                  {t.spikes > 0 && <span>{t.spikes} spike{t.spikes === 1 ? "" : "s"}</span>}
                   <BucketChip bucket={t.bucket} projected={t.bucketSource === "projected"} />
                 </span>
               }

@@ -82,49 +82,32 @@ export function PerformanceRow({
           p.weekly.posts === 0
             ? "no posts"
             : (p.weekly.avgViews ?? 0) < DEFAULT_PAYSCALE.flatFeeMinViews
-              ? `under ${formatCompact(DEFAULT_PAYSCALE.flatFeeMinViews)} · no flat fee`
-              : `≈ ${formatUsd(p.weekly.projectedCpm)} CPM${
-                  p.weekly.spikes.length > 0
-                    ? ` · ${p.weekly.spikes.length} spike${p.weekly.spikes.length === 1 ? "" : "s"}`
-                    : ""
-                }`
+              ? ""
+              : `≈ ${formatUsd(p.weekly.projectedCpm)} CPM`
         }
       />
       <Cell
         value={cpm == null ? "—" : formatUsd(cpm)}
-        sub={
-          cpm == null
-            ? "no posts in 30d"
-            : projected
-              ? "projected"
-              : `${p.cpm30.paidPosts} paid post${p.cpm30.paidPosts === 1 ? "" : "s"}${
-                  p.cpm30.lowSample ? " · low sample" : ""
-                }`
-        }
+        sub={cpm == null ? "" : projected ? "projected" : ""}
         title={
-          projected
-            ? "Nothing in the window is paid yet — this is what Launchpoint will pay at the current views"
-            : `Paid posts from the 30 days ending ${formatDateUTC(p.cpm30.settledWindow?.end.toISOString())} — Launchpoint's newest payout for this creator`
+          cpm == null
+            ? undefined
+            : projected
+              ? "Nothing in the window is paid yet — this is what Launchpoint will pay at the current views"
+              : `${p.cpm30.paidPosts} paid posts from the 30 days ending ${formatDateUTC(p.cpm30.settledWindow?.end.toISOString())}${p.cpm30.lowSample ? " · low sample" : ""}`
         }
         tone={projected || p.cpm30.lowSample ? "muted" : undefined}
       />
       {p.delta != null ? (
-        <DeltaCell
-          delta={p.delta}
-          label={`vs prior 30d${p.cpm30.lowSample || p.cpm30.priorLowSample ? " · low sample" : ""}`}
-          muted={p.cpm30.lowSample || p.cpm30.priorLowSample}
-        />
+        <DeltaCell delta={p.delta} label="" muted={p.cpm30.lowSample || p.cpm30.priorLowSample} />
       ) : p.projectedDelta != null ? (
-        <DeltaCell delta={p.projectedDelta} label="this week vs last · projected" muted={false} />
+        <DeltaCell delta={p.projectedDelta} label="projected" muted={false} />
       ) : (
-        <Cell
-          value="—"
-          sub={p.cpm30.cpm != null ? "no settled month before" : p.weekly.posts > 0 ? "no posts last week" : "no posts either week"}
-        />
+        <Cell value="—" sub="" />
       )}
       <Cell
         value={p.weeksSinceJoined == null ? "—" : `${p.weeksSinceJoined}w`}
-        sub={p.onboarding.joinedAt ? "" : "not on Launchpoint"}
+        sub=""
       />
       <div className="text-right">
         <BucketChip bucket={p.bucket} projected={p.bucketSource === "projected"} />
@@ -188,7 +171,7 @@ export function DeltaCell({
   label: string;
   muted: boolean;
 }) {
-  if (!delta) return <Cell value="—" sub="no prior read" />;
+  if (!delta) return <Cell value="—" sub="" />;
   const flat = Math.abs(delta.usd) < 0.005;
   const tone =
     muted || flat ? "text-neutral-500" : delta.usd < 0 ? "text-success" : "text-danger";
@@ -198,7 +181,7 @@ export function DeltaCell({
         {flat ? "no change" : signedUsd(delta.usd)}
       </span>
       <span className="mt-0.5 block text-[11px] leading-tight tabular-nums text-neutral-400">
-        {flat ? label : `${signedPct(delta.pct)} · ${label}`}
+        {flat ? label : label ? `${signedPct(delta.pct)} ${label}` : signedPct(delta.pct)}
       </span>
     </span>
   );
