@@ -129,7 +129,7 @@ export default async function CoachPage({
         <div className="stagger-children space-y-5">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard
-              label="Team CPM · 30d"
+              label="Coach's CPM · 30d"
               value={cpm == null ? "—" : formatUsd(cpm)}
               sub={cpm == null ? "no posts in 30 days" : cpmProjected ? "projected" : `${t.cpm30.paidPosts} paid posts`}
               icon="dollar"
