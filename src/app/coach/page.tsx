@@ -161,14 +161,6 @@ export default async function CoachPage({
         <EmptyState message={`No creators are in ${teamName} yet.`} />
       ) : (
         <div className="stagger-children space-y-5">
-          <p className="text-sm text-neutral-700">
-            <b className="text-neutral-900">{formatCompact(t.posts)}</b> posts ·{" "}
-            <b className="text-neutral-900">{t.avgViews == null ? "—" : formatCompact(Math.round(t.avgViews))}</b> avg views ·{" "}
-            <b className="text-neutral-900">{t.creators - t.belowQuota}/{t.creators}</b> hit quota ·{" "}
-            <b className="text-neutral-900">{t.spikes}</b> spike{t.spikes === 1 ? "" : "s"} ·{" "}
-            <b className="text-neutral-900">{silent.length}</b> didn’t post
-          </p>
-
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard
               label="Team CPM · 30d"
@@ -210,6 +202,54 @@ export default async function CoachPage({
               icon="eye"
             />
           </div>
+
+          <Card
+            title="Your creators"
+            subtitle={`${t.buckets.good} good · ${t.buckets.decent} decent · ${t.buckets.bad} bad${t.buckets.unread ? ` · ${t.buckets.unread} no read yet` : ""}${t.flagged ? ` · ${t.flagged} flagged for a call` : ""}. Bad first.`}
+          >
+            <div className={tableWrap}>
+              <div className="min-w-[1000px]">
+                <div className={`${GRID} border-b border-black/[0.05] pb-1`}>
+                  {(
+                    [
+                      ["Creator", "creator", "asc", ""],
+                      ["Posts", "posts", "desc", "text-right"],
+                      ["Avg views", "views", "desc", "text-right"],
+                      ["30d CPM", "cpm", "asc", "text-right"],
+                      ["Change", "delta", "desc", "text-right"],
+                      ["Joined", "joined", "desc", "text-right"],
+                      ["Bucket", "digest", "asc", "text-right"],
+                    ] as const
+                  ).map(([label, key, first, align]) => (
+                    <SortHeader
+                      key={key}
+                      as="div"
+                      label={label}
+                      sortKey={key}
+                      active={sort.key === key}
+                      dir={sort.dir}
+                      hrefFor={sortHref}
+                      firstDir={first}
+                      className={`!px-0 ${align}`}
+                    />
+                  ))}
+                </div>
+                <div className="divide-y divide-black/[0.05]">
+                  {rows.map((r) => (
+                    <Row key={r.creatorId} row={r} showCoach={false} creatorHref={() => null} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <p className="text-sm text-neutral-700">
+            <b className="text-neutral-900">{formatCompact(t.posts)}</b> posts ·{" "}
+            <b className="text-neutral-900">{t.avgViews == null ? "—" : formatCompact(Math.round(t.avgViews))}</b> avg views ·{" "}
+            <b className="text-neutral-900">{t.creators - t.belowQuota}/{t.creators}</b> hit quota ·{" "}
+            <b className="text-neutral-900">{t.spikes}</b> spike{t.spikes === 1 ? "" : "s"} ·{" "}
+            <b className="text-neutral-900">{silent.length}</b> didn’t post
+          </p>
 
           <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
             <Card title="Posting this week" subtitle={`Reels shipped, against the quota of ${QUOTA_POSTS_PER_WEEK}. Busiest first.`}>
@@ -296,46 +336,6 @@ export default async function CoachPage({
               )}
             </div>
           </div>
-
-          <Card
-            title="Your creators"
-            subtitle={`${t.buckets.good} good · ${t.buckets.decent} decent · ${t.buckets.bad} bad${t.buckets.unread ? ` · ${t.buckets.unread} no read yet` : ""}${t.flagged ? ` · ${t.flagged} flagged for a call` : ""}. Bad first.`}
-          >
-            <div className={tableWrap}>
-              <div className="min-w-[1000px]">
-                <div className={`${GRID} border-b border-black/[0.05] pb-1`}>
-                  {(
-                    [
-                      ["Creator", "creator", "asc", ""],
-                      ["Posts", "posts", "desc", "text-right"],
-                      ["Avg views", "views", "desc", "text-right"],
-                      ["30d CPM", "cpm", "asc", "text-right"],
-                      ["Change", "delta", "desc", "text-right"],
-                      ["Joined", "joined", "desc", "text-right"],
-                      ["Bucket", "digest", "asc", "text-right"],
-                    ] as const
-                  ).map(([label, key, first, align]) => (
-                    <SortHeader
-                      key={key}
-                      as="div"
-                      label={label}
-                      sortKey={key}
-                      active={sort.key === key}
-                      dir={sort.dir}
-                      hrefFor={sortHref}
-                      firstDir={first}
-                      className={`!px-0 ${align}`}
-                    />
-                  ))}
-                </div>
-                <div className="divide-y divide-black/[0.05]">
-                  {rows.map((r) => (
-                    <Row key={r.creatorId} row={r} showCoach={false} creatorHref={() => null} />
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Card>
         </div>
       )}
     </>
