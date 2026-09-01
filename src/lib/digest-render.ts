@@ -81,16 +81,13 @@ export function creatorRef(row: Pick<PerformanceRow, "handle" | "discordUserId" 
 }
 
 /** The 30d CPM, shortened to a number with an arrow only when it truly
- *  moved. `≈` marks a projection; blank when there is nothing to say. */
+ *  moved against the settled month before. `≈` marks a projection; blank
+ *  when there is nothing to say. */
 export function cpmShort(p: CreatorPerformance): string {
   const k = p.cpm30;
   if (k.cpm != null) {
-    const frontierMoved =
-      k.settledWindow != null &&
-      p.cpm30Prev.settledWindow != null &&
-      k.settledWindow.end.getTime() !== p.cpm30Prev.settledWindow.end.getTime();
     let move = "";
-    if (p.delta != null && frontierMoved && !k.lowSample && !p.cpm30Prev.lowSample && Math.abs(p.delta.usd) >= 0.005) {
+    if (p.delta != null && !k.lowSample && !k.priorLowSample && Math.abs(p.delta.usd) >= 0.005) {
       move = ` ${p.delta.usd < 0 ? "▼" : "▲"}${formatUsd(Math.abs(p.delta.usd))}`;
     }
     return `${formatUsd(k.cpm)}${move}`;

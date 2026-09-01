@@ -476,6 +476,15 @@ or `POST /api/jobs/research {"action":"launchpoint-sync"}`. Repeat until
   calendar window held one week of paid posts and swung Liam $1.49 → $12.33
   when a spike aged out. < 3 paid posts is a low sample: shown, not coloured,
   and the bad-streak defers to the month.
+- **The trend is settled month vs the settled month before it**
+  (`CpmRead.priorCpm`: the same 30 days ending where the settled window
+  starts), never "the same read a week ago". Payouts lag posting by ~3
+  weeks, so the newest paid post is always older than the reporting week
+  and a read as of last Monday sees exactly the same paid posts as one as
+  of this Monday — compared that way the true number could never move on
+  the latest week, and the first coach dashboard read "no new payouts" on
+  every row (2026-09-02). Where no true delta exists yet, the row shows
+  this week's posts against last week's on the projection, labelled.
 - **Buckets are judged on average views** (good ≥ 40k, bad ≤ 1,667 — the $2
   and $25 CPM lines for posts over 1k views). Sub-1k posts get no flat fee
   and read as a "good" $1 CPM; a 149-view creator must be bad, not best.
@@ -487,8 +496,8 @@ or `POST /api/jobs/research {"action":"launchpoint-sync"}`. Repeat until
   with `/stats`'s `TREND_WEEKS` — because `creatorPerformance` collapses
   30-day windows ending at this week *and* the previous one, plus one per
   bad-streak step. When the digest loader fetched the reporting week only
-  (2026-08-31 → 09-02), `cpm30` was one-quarter collapsed, `cpm30Prev` not
-  at all, and every trial-running creator showed a projected-CPM
+  (2026-08-31 → 09-02), `cpm30` was one-quarter collapsed, the previous
+  week's read not at all, and every trial-running creator showed a projected-CPM
   "improvement" that was the mismatch. The onboarding week is fetched
   separately for creators who joined before the horizon. Measured: 8 weeks
   is ~1,600 rows / ~1.6MB against ~420 for one week.

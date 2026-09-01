@@ -516,8 +516,8 @@ describe("transcriptHorizon", () => {
     const p = creatorPerformance({ videos, joinedAt: null, week: WEEK });
     expect(p.weekly.posts).toBe(1);
     expect(p.weekly.trialUploads).toBe(11);
+    expect(p.weeklyPrev.posts).toBe(1);
     expect(p.cpm30.posts).toBe(2);
-    expect(p.cpm30Prev.posts).toBe(1);
     expect(p.projectedDelta?.usd).toBeCloseTo(0, 6);
 
     // The bug this pins: drop the previous week's transcripts — what a
@@ -525,7 +525,7 @@ describe("transcriptHorizon", () => {
     // dollars of CPM while nothing changed.
     const halfBlind = videos.map((v) => (v.shortcode?.startsWith("prev") ? { ...v, transcript_text: null } : v));
     const q = creatorPerformance({ videos: halfBlind, joinedAt: null, week: WEEK });
-    expect(q.cpm30Prev.posts).toBe(12);
+    expect(q.weeklyPrev.posts).toBe(12);
     expect(q.projectedDelta!.usd).toBeLessThan(-1);
   });
 });
@@ -573,5 +573,46 @@ describe("team reads", () => {
     expect(team.cpm30.cpm).toBeNull();
     expect(team.bucketSource).toBe("projected");
     expect(team.bucket).toBe("good");
+  });
+});
+
+describe("trend: settled month vs the settled month before", () => {
+  it("compares the two settled months, so the latest week can still show a move", () => {
+    // Newest payout Aug 17; the settled month is Jul 18–Aug 17, the prior one
+    // Jun 18–Jul 18. Cheaper this month ($1.10) than last ($5.00).
+    const videos = [
+      video("2026-08-17T10:00:00Z", 100_000, 110, "n1"),
+      video("2026-08-01T10:00:00Z", 100_000, 110, "n2"),
+      video("2026-07-25T10:00:00Z", 100_000, 110, "n3"),
+      video("2026-07-10T10:00:00Z", 10_000, 50, "o1"),
+      video("2026-07-01T10:00:00Z", 10_000, 50, "o2"),
+      video("2026-06-25T10:00:00Z", 10_000, 50, "o3"),
+    ];
+    const p = creatorPerformance({ videos, joinedAt: null, week: WEEK });
+    expect(p.cpm30.cpm).toBeCloseTo(1.1, 6);
+    expect(p.cpm30.priorCpm).toBeCloseTo(5, 6);
+    expect(p.cpm30.priorPaidPosts).toBe(3);
+    expect(p.delta?.usd).toBeCloseTo(-3.9, 6);
+    // The old week-over-week comparison could not see this: nothing posted
+    // in the reporting week is paid yet, so both reads shared one frontier.
+    const asOfPrev = cpmRead(videos, previousWeek(WEEK).end);
+    expect(asOfPrev.settledWindow?.end.getTime()).toBe(p.cpm30.settledWindow?.end.getTime());
+  });
+
+  it("has no true delta until a second settled month exists, and falls back to the weekly projection", () => {
+    const at = (d: string) => `${d}T10:00:00Z`;
+    const videos = [
+      video(at("2026-08-10"), 50_000, 90, "p1"),
+      video(at("2026-08-08"), 50_000, 90, "p2"),
+      video(at("2026-08-05"), 50_000, 90, "p3"),
+      video(at("2026-08-26"), 30_000, null, "w1"),
+      video(at("2026-08-19"), 3_000, null, "v1"),
+    ];
+    const p = creatorPerformance({ videos, joinedAt: null, week: WEEK });
+    expect(p.cpm30.cpm).not.toBeNull();
+    expect(p.cpm30.priorPaidPosts).toBe(0);
+    expect(p.delta).toBeNull();
+    // This week's 30k post projects cheaper than last week's 3k one.
+    expect(p.projectedDelta!.usd).toBeLessThan(0);
   });
 });

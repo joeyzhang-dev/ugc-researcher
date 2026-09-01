@@ -189,7 +189,7 @@ export function CreatorCard({ row }: { row: CreatorStatsRow }) {
   // moving is not the same fact and must not wear the same arrow.
   const d = s.money.delta;
   const cpmMove =
-    d && !cpm.lowSample && !s.money.cpm30Prev.lowSample && Math.abs(d.usd) >= 0.005
+    d && !cpm.lowSample && !cpm.priorLowSample && Math.abs(d.usd) >= 0.005
       ? `${d.usd < 0 ? "▼" : "▲"}${formatUsd(Math.abs(d.usd))}`
       : undefined;
   const band = cpmBand(cpm.cpm);

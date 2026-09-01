@@ -109,7 +109,7 @@ export default async function PerformancePage({
     <>
       <PageHeader
         title="Performance"
-        subtitle={`How each creator did in the week of ${formatDateUTC(week.start.toISOString())} — posts against the quota of ${QUOTA_POSTS_PER_WEEK}, views, and the rolling 30-day CPM with its change from the week before. Bad first, so the coach sees who needs the call.`}
+        subtitle={`How each creator did in the week of ${formatDateUTC(week.start.toISOString())} — posts against the quota of ${QUOTA_POSTS_PER_WEEK}, views, and the rolling 30-day CPM with how it moved against the settled month before (or this week's posts against last week's, where nothing is paid yet). Bad first, so the coach sees who needs the call.`}
         action={
           <div className="flex items-center gap-1.5">
             <Link href={hrefWith({ week: weekKey(previousWeek(week)) })} className={weekNav} title="Previous week">
@@ -161,7 +161,7 @@ export default async function PerformancePage({
                       ["Posts", "posts", "desc", "text-right"],
                       ["Avg views", "views", "desc", "text-right"],
                       ["30d CPM", "cpm", "asc", "text-right"],
-                      ["vs last week", "delta", "desc", "text-right"],
+                      ["Trend", "delta", "desc", "text-right"],
                       ["Joined", "joined", "desc", "text-right"],
                       ["Bucket", "digest", "asc", "text-right"],
                     ] as const

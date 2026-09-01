@@ -28,8 +28,6 @@ export function PerformanceRow({
   const p = row.performance;
   const cpm = p.cpm30.cpm ?? p.cpm30.projected;
   const projected = p.cpm30.cpm == null && p.cpm30.projected != null;
-  const d = p.delta ?? p.projectedDelta;
-  const dProjected = p.delta == null && p.projectedDelta != null;
   return (
     <div className={`${PERFORMANCE_GRID} py-3 pr-1 transition-colors hover:bg-neutral-900/[0.03]`}>
       <div className="flex min-w-0 items-center gap-2.5">
@@ -106,13 +104,19 @@ export function PerformanceRow({
         }
         tone={projected || p.cpm30.lowSample ? "muted" : undefined}
       />
-      {p.delta != null &&
-      p.cpm30.settledWindow?.end.getTime() === p.cpm30Prev.settledWindow?.end.getTime() ? (
-        // Same newest payout both weeks: the true number could not have
-        // moved, and saying "→ $0.00" would read as a measured no-change.
-        <Cell value="→" sub="no new payouts" />
+      {p.delta != null ? (
+        <DeltaCell
+          delta={p.delta}
+          label={`vs prior 30d${p.cpm30.lowSample || p.cpm30.priorLowSample ? " · low sample" : ""}`}
+          muted={p.cpm30.lowSample || p.cpm30.priorLowSample}
+        />
+      ) : p.projectedDelta != null ? (
+        <DeltaCell delta={p.projectedDelta} label="this week vs last · projected" muted={false} />
       ) : (
-        <DeltaCell delta={d} projected={dProjected} muted={p.cpm30.lowSample || p.cpm30Prev.lowSample} />
+        <Cell
+          value="—"
+          sub={p.cpm30.cpm != null ? "no settled month before" : p.weekly.posts > 0 ? "no posts last week" : "no posts either week"}
+        />
       )}
       <Cell
         value={p.weeksSinceJoined == null ? "—" : `${p.weeksSinceJoined}w`}
@@ -171,14 +175,16 @@ export function Cell({
 
 /** For CPM, down is good: it costs less to reach a thousand people. A change
  *  read off fewer than three paid posts is shown but not coloured — one
- *  spike entering or leaving the sample is not a trend. */
+ *  spike entering or leaving the sample is not a trend. `label` says what
+ *  the change is against, because two different comparisons share this
+ *  cell: settled month vs prior month, and this week vs last (projected). */
 export function DeltaCell({
   delta,
-  projected,
+  label,
   muted,
 }: {
   delta: Delta | null;
-  projected: boolean;
+  label: string;
   muted: boolean;
 }) {
   if (!delta) return <Cell value="—" sub="no prior read" />;
@@ -193,7 +199,7 @@ export function DeltaCell({
       </span>
       <span className="mt-0.5 block text-[11px] leading-tight tabular-nums text-neutral-400">
         {delta.pct > 0 ? "+" : ""}
-        {delta.pct.toFixed(1)}%{projected ? " · projected" : muted ? " · low sample" : ""}
+        {delta.pct.toFixed(1)}% · {label}
       </span>
     </span>
   );

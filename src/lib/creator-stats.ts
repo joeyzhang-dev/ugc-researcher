@@ -50,7 +50,7 @@ export interface MoneyRead {
   unpaidPosts: number;
   /** The rolling 30-day read, same one the digest and /performance show. */
   cpm30: CpmRead;
-  cpm30Prev: CpmRead;
+  /** Settled month vs the settled month before it (`CpmRead.priorCpm`). */
   delta: Delta | null;
 }
 
@@ -85,14 +85,12 @@ export function moneyRead(videos: PerformanceVideo[], asOf: Date): MoneyRead {
   // almost all of it trial uploads that will never be paid separately.
   const withViews = collapseTrialUploads(videos).kept.filter((v) => (v.view_count ?? 0) > 0);
   const now = cpmRead(videos, asOf);
-  const prev = cpmRead(videos, new Date(asOf.getTime() - WEEK_MS));
   return {
     earnedUsd: paid.reduce((sum, v) => sum + (v.earnings_usd ?? 0), 0),
     paidPosts: paid.length,
     unpaidPosts: withViews.length - paid.length,
     cpm30: now,
-    cpm30Prev: prev,
-    delta: delta(now.cpm, prev.cpm),
+    delta: delta(now.cpm, now.priorCpm),
   };
 }
 

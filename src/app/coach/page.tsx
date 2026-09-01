@@ -73,7 +73,15 @@ export default async function CoachPage({
   const cpm = t ? (t.cpm30.cpm ?? t.cpm30.projected) : null;
   const cpmProjected = Boolean(t && t.cpm30.cpm == null && t.cpm30.projected != null);
   const d = t ? (t.delta ?? t.projectedDelta) : null;
-  const dProjected = Boolean(t && t.delta == null && t.projectedDelta != null);
+  const dLabel = !t
+    ? ""
+    : t.delta != null
+      ? `vs the 30 days before (to ${formatDateUTC(t.cpm30.priorWindow?.end.toISOString())}, ${t.cpm30.priorPaidPosts} paid)${t.cpm30.lowSample || t.cpm30.priorLowSample ? " · low sample" : ""}`
+      : t.projectedDelta != null
+        ? `this week's posts vs last week's (≈ ${formatUsd(t.projectedCpmPrev)}) · projected`
+        : t.cpm30.cpm != null
+          ? "no settled month before this one"
+          : "no posts to compare";
   const cpmTone = !t?.bucket ? "neutral" : t.bucket === "good" ? "emerald" : t.bucket === "bad" ? "red" : "amber";
 
   return (
@@ -127,9 +135,9 @@ export default async function CoachPage({
               tone={cpmTone}
             />
             <KpiCard
-              label="vs last week"
+              label="Trend · down is good"
               value={d == null ? "—" : `${Math.abs(d.usd) < 0.005 ? "→" : d.usd < 0 ? "▼" : "▲"} ${formatUsd(Math.abs(d.usd))}`}
-              sub={d == null ? "no prior read" : `${d.pct > 0 ? "+" : ""}${d.pct.toFixed(1)}%${dProjected ? " · projected" : ""} — down is good`}
+              sub={d == null ? dLabel : `${d.pct > 0 ? "+" : ""}${d.pct.toFixed(1)}% ${dLabel}`}
               icon="trend"
               tone={d == null || Math.abs(d.usd) < 0.005 ? "neutral" : d.usd < 0 ? "emerald" : "red"}
             />
