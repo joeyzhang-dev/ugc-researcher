@@ -89,7 +89,6 @@ export function PerformanceRow({
                     : ""
                 }`
         }
-        href={p.weekly.bestPost?.url}
       />
       <Cell
         value={cpm == null ? "—" : formatUsd(cpm)}
