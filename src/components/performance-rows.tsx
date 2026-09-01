@@ -97,9 +97,14 @@ export function PerformanceRow({
             ? "no posts in 30d"
             : projected
               ? "≈ what Launchpoint will pay · nothing settled yet"
-              : `${p.cpm30.paidPosts} paid · to ${formatDateUTC(p.cpm30.settledWindow?.end.toISOString())}${
+              : `${p.cpm30.paidPosts} paid post${p.cpm30.paidPosts === 1 ? "" : "s"}${
                   p.cpm30.lowSample ? " · low sample" : ""
                 }`
+        }
+        title={
+          projected
+            ? undefined
+            : `Paid posts from the 30 days ending ${formatDateUTC(p.cpm30.settledWindow?.end.toISOString())} — Launchpoint's newest payout for this creator`
         }
         tone={projected || p.cpm30.lowSample ? "muted" : undefined}
       />
@@ -139,16 +144,19 @@ export function Cell({
   sub,
   tone,
   href,
+  title,
 }: {
   value: string;
   sub: string;
   tone?: "ok" | "warn" | "muted";
   href?: string;
+  /** Hover detail — the precise thing the short `sub` stands for. */
+  title?: string;
 }) {
   const subClass =
     tone === "warn" ? "text-warning" : tone === "ok" ? "text-success" : "text-neutral-400";
   return (
-    <span className="text-right">
+    <span className="text-right" title={title}>
       <span
         className={`block text-[15px] font-semibold tracking-[-0.01em] tabular-nums ${
           tone === "muted" ? "text-neutral-500" : "text-neutral-900"
