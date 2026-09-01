@@ -246,7 +246,7 @@ export default async function CoachPage({
             </Card>
 
             <div className="space-y-5">
-              <Card title="Top posts this week" subtitle="Five, not one — a pattern a coach can act on.">
+              <Card title="Top posts this week">
                 {topPosts.length === 0 ? (
                   <EmptyState message="No posts this week." />
                 ) : (
