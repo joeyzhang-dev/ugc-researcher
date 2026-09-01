@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getProfile, isCoach, isStaff } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getOwnCoachTeam } from "@/lib/coach-team";
+import { getOwnCoachTeam, listTeamCategories } from "@/lib/coach-team";
 import { loadPerformanceReport, type CoachGroup } from "@/lib/jobs/performance";
 import {
   lastCompleteWeek,
@@ -51,11 +51,17 @@ export default async function CoachPage({
     }
   }
 
-  const report = await loadPerformanceReport(createAdminClient(), week);
-  const teams = report.groups.filter((g) => g.coach != null);
-  const group: CoachGroup | undefined = isCoach(profile)
-    ? report.groups.find((g) => g.coach === category)
-    : (teams.find((g) => g.coach === teamParam) ?? teams[0]);
+  // One team's worth of videos, not the roster's: this loader's cost is the
+  // video read, and a coach never needs anyone else's.
+  const admin = createAdminClient();
+  const teamNames: string[] = isCoach(profile) ? [category!] : await listTeamCategories(admin);
+  const selected = isCoach(profile)
+    ? category!
+    : (teamNames.find((t) => t === teamParam) ?? teamNames[0] ?? null);
+  const report = selected
+    ? await loadPerformanceReport(admin, week, { teams: [selected] })
+    : null;
+  const group: CoachGroup | undefined = report?.groups.find((g) => g.coach === selected);
 
   const hrefWith = (overrides: { week?: string; team?: string | null }) => {
     const sp = new URLSearchParams();
@@ -114,11 +120,11 @@ export default async function CoachPage({
         }
       />
 
-      {isStaff(profile) && teams.length > 1 && (
+      {isStaff(profile) && teamNames.length > 1 && (
         <div className="mb-5 flex flex-wrap items-center gap-2">
-          {teams.map((g) => (
-            <Link key={g.coach!} href={hrefWith({ team: g.coach })} className={chip(g.coach === group?.coach)}>
-              {g.coach!.replace(/^Coach:\s*/i, "")}
+          {teamNames.map((name) => (
+            <Link key={name} href={hrefWith({ team: name })} className={chip(name === selected)}>
+              {name.replace(/^Coach:\s*/i, "")}
             </Link>
           ))}
           <span className="ml-auto font-mono text-[11px] text-neutral-400">staff preview — this is what the coach sees</span>

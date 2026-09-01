@@ -88,9 +88,19 @@ async function readAllRows<T>(
   }
 }
 
+export interface PerformanceReportOptions {
+  /** Only these coach categories. The coach page needs one team, and the
+   *  cost of this loader is the roster's videos — ~40k rows, paged 1,000 at
+   *  a time — so reading fifteen creators' worth instead of everyone's is
+   *  the difference between 8 seconds and 2. `parked` is empty when scoped:
+   *  a parked creator has no team to be in. */
+  teams?: string[];
+}
+
 export async function loadPerformanceReport(
   client: SupabaseClient,
-  week: Window = lastCompleteWeek()
+  week: Window = lastCompleteWeek(),
+  options: PerformanceReportOptions = {}
 ): Promise<PerformanceReport> {
   type CreatorRow = {
     id: string;
@@ -113,7 +123,7 @@ export async function loadPerformanceReport(
   // Instagram only — TikTok is out of scope (decided 2026-08-29), and the
   // roster's TikTok rows (a handful, pre-dating CREATE_PLATFORMS) have no
   // videos behind them anyway.
-  const [igCreators, accounts, channels] = await Promise.all([
+  const [allIgCreators, accounts, channels] = await Promise.all([
     readAllRows<CreatorRow>("research_creators", (from, to) =>
       client
         .from("research_creators")
@@ -134,6 +144,29 @@ export async function loadPerformanceReport(
         .range(from, to)
     ),
   ]);
+
+  // creator → coach comes from the category of their coaching channel.
+  const coachByCreator = new Map<string, { coach: string; channelId: string }>();
+  const parkedCreators = new Set<string>();
+  for (const ch of channels) {
+    if (!ch.research_creator_id || !ch.category) continue;
+    if (PARKED_CATEGORY.test(ch.category)) {
+      parkedCreators.add(ch.research_creator_id);
+      continue;
+    }
+    if (TEAM_CATEGORY.test(ch.category) && !coachByCreator.has(ch.research_creator_id)) {
+      coachByCreator.set(ch.research_creator_id, { coach: ch.category, channelId: ch.channel_id });
+    }
+  }
+
+  // Scope BEFORE the video read — that read is the whole cost of this loader.
+  const teams = options.teams ? new Set(options.teams) : null;
+  const igCreators = teams
+    ? allIgCreators.filter((c) => {
+        const team = coachByCreator.get(c.id);
+        return team != null && teams.has(team.coach);
+      })
+    : allIgCreators;
 
   const creatorIds = igCreators.map((c) => c.id);
   const videos = creatorIds.length
@@ -221,20 +254,6 @@ export async function loadPerformanceReport(
       .filter((t) => !!t.shortcode)
       .map((t) => [t.shortcode as string, t] as const)
   );
-
-  // creator → coach comes from the category of their coaching channel.
-  const coachByCreator = new Map<string, { coach: string; channelId: string }>();
-  const parkedCreators = new Set<string>();
-  for (const ch of channels) {
-    if (!ch.research_creator_id || !ch.category) continue;
-    if (PARKED_CATEGORY.test(ch.category)) {
-      parkedCreators.add(ch.research_creator_id);
-      continue;
-    }
-    if (TEAM_CATEGORY.test(ch.category) && !coachByCreator.has(ch.research_creator_id)) {
-      coachByCreator.set(ch.research_creator_id, { coach: ch.category, channelId: ch.channel_id });
-    }
-  }
 
   const videosByCreator = new Map<string, PerformanceVideo[]>();
   for (const raw of videos) {
