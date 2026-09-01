@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { isArchived } from "@/lib/roster-archive";
 import type { ResearchAppCreator, ResearchCreator, ResearchVideo } from "@/lib/types";
 import {
   consistencyLabel,
@@ -92,8 +93,11 @@ export default async function OverviewPage({
   const inWorkspace = new Set(
     memberships.filter((m) => !appFilter || m.app_id === appFilter).map((m) => m.research_creator_id)
   );
+  // Archived creators drop out here too, not just on /creators. They would
+  // otherwise dominate the stale-creator card by construction — a retired
+  // creator is permanently "not posting", which is noise, not a prompt.
   const creators = ((creatorsData ?? []) as ResearchCreator[]).filter(
-    (c) => (appFilter ? inWorkspace.has(c.id) : true)
+    (c) => !isArchived(c) && (appFilter ? inWorkspace.has(c.id) : true)
   );
   const creatorById = new Map(creators.map((c) => [c.id, c]));
 

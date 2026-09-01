@@ -46,10 +46,14 @@ export async function creatorsInScope(
 ): Promise<{ id: string; last_scraped_at: string | null; kind: ResearchCreatorKind }[]> {
   if (scope.kinds.length === 0) return [];
 
+  // Archived creators are excluded in the query, not the caller: every bulk
+  // enqueue path runs through here, and a retired creator costing a scrape on
+  // every cycle is half the reason the flag exists.
   const { data, error } = await supabase
     .from("research_creators")
     .select("id, kind, last_scraped_at")
-    .in("kind", scope.kinds);
+    .in("kind", scope.kinds)
+    .is("archived_at", null);
   if (error) throw new Error(error.message);
 
   let rows = (data ?? []) as { id: string; kind: ResearchCreatorKind; last_scraped_at: string | null }[];

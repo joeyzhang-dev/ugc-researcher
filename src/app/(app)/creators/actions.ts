@@ -149,3 +149,37 @@ export async function removeFromCampaign(membershipId: string) {
   if (error) throw new Error(error.message);
   revalidatePath("/creators");
 }
+
+/**
+ * Retire a creator: hide them from the default roster and stop scraping them.
+ *
+ * Deliberately not a delete. Their videos, transcripts, script assignments and
+ * Launchpoint history stay exactly where they are — the roster is a working
+ * list, and everything this pool exists to study is still worth keeping after
+ * someone leaves the program. Unarchive puts the row straight back.
+ */
+export async function archiveCreator(formData: FormData) {
+  await requireAdmin();
+  const creatorId = String(formData.get("creatorId") ?? "");
+  if (!creatorId) fail("Missing creator id.");
+  const reason = String(formData.get("reason") ?? "").trim() || null;
+  const { error } = await createAdminClient()
+    .from("research_creators")
+    .update({ archived_at: new Date().toISOString(), archived_reason: reason })
+    .eq("id", creatorId);
+  if (error) fail(error.message);
+  revalidatePath("/creators");
+}
+
+/** Put an archived creator back on the roster (and back in the scrape queue). */
+export async function unarchiveCreator(formData: FormData) {
+  await requireAdmin();
+  const creatorId = String(formData.get("creatorId") ?? "");
+  if (!creatorId) fail("Missing creator id.");
+  const { error } = await createAdminClient()
+    .from("research_creators")
+    .update({ archived_at: null, archived_reason: null })
+    .eq("id", creatorId);
+  if (error) fail(error.message);
+  revalidatePath("/creators");
+}

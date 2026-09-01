@@ -11,15 +11,20 @@ import type {
   ResearchVideo,
 } from "@/lib/types";
 import { rosterRowStats, type DayCell } from "@/lib/roster-stats";
+import {
+  isArchived, quietBand, quietDays, splitArchived, type QuietBand,
+} from "@/lib/roster-archive";
 import { ALL_APPS } from "@/lib/workspace";
 import { getWorkspace } from "@/lib/workspace/server";
 import {
   addRosterCreator,
+  archiveCreator,
   assignToCampaign,
   createApp,
   createCampaign,
   removeFromCampaign,
   setNiche,
+  unarchiveCreator,
 } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
 import {
@@ -52,10 +57,13 @@ export default async function OurCreatorsPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    error?: string; days?: string; sort?: string; dir?: string;
+    error?: string; days?: string; sort?: string; dir?: string; archived?: string;
   }>;
 }) {
-  const { error, days: daysParam, sort: sortParam, dir: dirParam } = await searchParams;
+  const {
+    error, days: daysParam, sort: sortParam, dir: dirParam, archived: archivedParam,
+  } = await searchParams;
+  const showArchived = archivedParam === "1";
   const days = parseDays(daysParam);
   const sort = parseSort<SortKey>(sortParam, dirParam, SORT_KEYS, {
     key: "views",
@@ -68,12 +76,13 @@ export default async function OurCreatorsPage({
   const appFilter = workspace === ALL_APPS ? null : workspace;
 
   const hrefWith = (overrides: {
-    days?: string | null; sort?: string | null; dir?: string | null;
+    days?: string | null; sort?: string | null; dir?: string | null; archived?: string | null;
   }) => {
     const sp = new URLSearchParams();
     if (days) sp.set("days", String(days));
     if (sortParam) sp.set("sort", sortParam);
     if (dirParam) sp.set("dir", dirParam);
+    if (showArchived) sp.set("archived", "1");
     for (const [k, v] of Object.entries(overrides)) {
       if (v == null) sp.delete(k);
       else sp.set(k, v);
@@ -217,8 +226,13 @@ export default async function OurCreatorsPage({
         lpPay && lpPay.earnings > 0 && lpPay.views > 0
           ? (lpPay.earnings * 1000) / lpPay.views
           : null;
+      // Days since this person last posted ANYWHERE Launchpoint tracks — not
+      // since their last ingested video, which is Instagram-only and would
+      // read a TikTok-active creator as silent.
+      const quiet = quietDays(lpLast?.at ?? null);
       return {
         m, c, app, stats, videoCount: creatorVideos.length, joined, available, lpLast, lpPay, cpm,
+        quiet,
       };
     })
     .sort((a, b) => {
@@ -241,8 +255,14 @@ export default async function OurCreatorsPage({
   // Group the (already-sorted) rows by app so each app reads as its own band
   // rather than repeating an "App" column on every line. Groups follow the app
   // list order; a membership whose app was deleted lands in an "unknown" band.
+  const { visible: visibleRows, archivedCount } = splitArchived(
+    rows,
+    showArchived,
+    (r) => r.c
+  );
+
   const rowsByApp = new Map<string, typeof rows>();
-  for (const r of rows) {
+  for (const r of visibleRows) {
     (rowsByApp.get(r.m.app_id) ??
       rowsByApp.set(r.m.app_id, []).get(r.m.app_id)!).push(r);
   }
@@ -256,7 +276,7 @@ export default async function OurCreatorsPage({
       orderedGroups.push({ appId, app: undefined, groupRows });
     }
   }
-  const creatorCount = new Set(rows.map((r) => r.c.id)).size;
+  const creatorCount = new Set(visibleRows.map((r) => r.c.id)).size;
 
   return (
     <>
@@ -344,15 +364,31 @@ export default async function OurCreatorsPage({
               : `${creatorCount} creator${creatorCount === 1 ? "" : "s"} across ${orderedGroups.length} app${orderedGroups.length === 1 ? "" : "s"}`
           }
           action={
-            <ScrapeAllButton
-              kinds={["roster"]}
-              appId={appFilter}
-              queued={queuedCount}
-              label={appFilter ? "Scrape this workspace" : "Scrape all"}
-            />
+            <div className="flex items-center gap-2">
+              {/* Only offered once something is actually archived — an empty
+                  toggle would just be a dead control. */}
+              {archivedCount > 0 && (
+                <Link
+                  href={hrefWith({ archived: showArchived ? null : "1" })}
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ring-1 ring-inset transition ${
+                    showArchived
+                      ? "bg-neutral-900/[0.05] text-neutral-900 ring-hairline"
+                      : "text-neutral-500 ring-hairline hover:bg-neutral-900/[0.03] hover:text-neutral-900"
+                  }`}
+                >
+                  {showArchived ? "Hide" : "Show"} {archivedCount} archived
+                </Link>
+              )}
+              <ScrapeAllButton
+                kinds={["roster"]}
+                appId={appFilter}
+                queued={queuedCount}
+                label={appFilter ? "Scrape this workspace" : "Scrape all"}
+              />
+            </div>
           }
         >
-          {rows.length === 0 ? (
+          {visibleRows.length === 0 ? (
             <EmptyState message="No roster creators yet — add one above (pick the app they promote and tag their niche)." />
           ) : (
             <div className={tableWrap}>
@@ -415,7 +451,7 @@ export default async function OurCreatorsPage({
                             )}
                           </div>
                         )}
-                        {group.groupRows.map(({ m, c, stats, videoCount, joined, available, lpLast, lpPay, cpm }) => (
+                        {group.groupRows.map(({ m, c, stats, videoCount, joined, available, lpLast, lpPay, cpm, quiet }) => (
                           <details key={m.id} className="group/row">
                             <summary
                               className={`${GRID} cursor-pointer select-none list-none py-3 pr-1 transition-colors hover:bg-neutral-900/[0.03] [&::-webkit-details-marker]:hidden`}
@@ -454,6 +490,13 @@ export default async function OurCreatorsPage({
                                     <span className="truncate font-mono text-[11px] text-neutral-400">
                                       @{c.handle}
                                     </span>
+                                    {isArchived(c) ? (
+                                      <span className="inline-flex shrink-0 items-center rounded-md bg-neutral-900/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 ring-1 ring-inset ring-hairline">
+                                        archived
+                                      </span>
+                                    ) : (
+                                      <QuietChip days={quiet} />
+                                    )}
                                   </span>
                                 </span>
                               </div>
@@ -572,6 +615,41 @@ export default async function OurCreatorsPage({
                                     </form>
                                   )}
                                 </span>
+
+                                {/* Retire / restore. Sits last in the action row:
+                                    it is rare, and it should not sit next to the
+                                    campaign controls it has nothing to do with. */}
+                                {isArchived(c) ? (
+                                  <form action={unarchiveCreator} className="flex items-center gap-1.5">
+                                    <input type="hidden" name="creatorId" value={c.id} />
+                                    <span className="text-[11px] text-neutral-400">
+                                      Archived {formatDate(c.archived_at)}
+                                      {c.archived_reason ? ` · ${c.archived_reason}` : ""}
+                                    </span>
+                                    <button
+                                      type="submit"
+                                      className="rounded-md px-1.5 py-0.5 text-xs font-medium text-neutral-500 ring-1 ring-inset ring-hairline transition hover:bg-surface hover:text-neutral-900"
+                                    >
+                                      Restore
+                                    </button>
+                                  </form>
+                                ) : (
+                                  <form action={archiveCreator} className="flex items-center gap-1">
+                                    <input type="hidden" name="creatorId" value={c.id} />
+                                    <input
+                                      name="reason"
+                                      placeholder="reason…"
+                                      className="w-28 rounded-md bg-transparent px-1.5 py-0.5 text-sm text-neutral-700 transition placeholder:text-neutral-400 hover:bg-surface focus:bg-surface focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent/45"
+                                    />
+                                    <button
+                                      type="submit"
+                                      className="rounded-md px-1.5 py-0.5 text-xs font-medium text-neutral-400 transition hover:bg-danger/[0.08] hover:text-danger"
+                                      title="Hide from the roster and stop scraping. Nothing is deleted."
+                                    >
+                                      Archive
+                                    </button>
+                                  </form>
+                                )}
                               </div>
                               {c.status === "failed" && c.error_message && (
                                 <p className="mt-2 break-words pl-[52px] text-xs text-danger">
@@ -671,6 +749,30 @@ function MetricCell({
 }
 
 /** Label/value pair inside the fold-out. */
+/**
+ * How long a creator has been quiet, as a chip.
+ *
+ * Shown only once it crosses the quiet threshold — a chip on every actively
+ * posting creator would be noise, and the point of this is to make the archive
+ * candidates findable, not to annotate the whole roster.
+ */
+function QuietChip({ days }: { days: number | null }) {
+  const band: QuietBand = quietBand(days);
+  if (band === "fresh" || band === "unknown") return null;
+  const tone =
+    band === "dormant"
+      ? "bg-danger/[0.1] text-danger ring-danger/[0.22]"
+      : "bg-warning/[0.12] text-warning ring-warning/[0.24]";
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium tabular-nums ring-1 ring-inset ${tone}`}
+      title={`No post on any Launchpoint-tracked platform in ${days} days`}
+    >
+      quiet {days}d
+    </span>
+  );
+}
+
 function RowFact({ label, value }: { label: string; value: string }) {
   return (
     <span className="flex items-baseline gap-1.5">
