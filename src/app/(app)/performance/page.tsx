@@ -163,7 +163,7 @@ export default async function PerformancePage({
                       ["30d CPM", "cpm", "asc", "text-right"],
                       ["Trend", "delta", "desc", "text-right"],
                       ["Joined", "joined", "desc", "text-right"],
-                      ["Bucket", "digest", "asc", "text-right"],
+                      ["30d rating", "digest", "asc", "text-right"],
                     ] as const
                   ).map(([label, key, first, align]) => (
                     <SortHeader

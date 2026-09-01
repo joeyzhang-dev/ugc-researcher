@@ -17,7 +17,7 @@ const COLUMNS: readonly [label: string, key: SortKey, firstDir: SortDir, align: 
   ["30d CPM", "cpm", "asc", "text-right"],
   ["Change", "delta", "desc", "text-right"],
   ["Joined", "joined", "desc", "text-right"],
-  ["Bucket", "digest", "asc", "text-right"],
+  ["30d rating", "digest", "asc", "text-right"],
 ];
 
 function sortValue(r: PerformanceRowData, key: SortKey): string | number | null {
