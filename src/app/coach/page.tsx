@@ -179,7 +179,23 @@ export default async function CoachPage({
 
           <Card
             title="Your creators"
-            subtitle={`${t.buckets.good} good · ${t.buckets.decent} decent · ${t.buckets.bad} bad${t.buckets.unread ? ` · ${t.buckets.unread} no read yet` : ""}${t.flagged ? ` · ${t.flagged} flagged for a call` : ""}. Bad first.`}
+            subtitle={
+              <span className="flex flex-wrap items-center gap-1.5">
+                <BucketCount count={t.buckets.bad} bucket="bad" />
+                <BucketCount count={t.buckets.decent} bucket="decent" />
+                <BucketCount count={t.buckets.good} bucket="good" />
+                {t.buckets.unread > 0 && (
+                  <span className="rounded-full bg-neutral-900/[0.06] px-2 py-0.5 text-[11px] font-semibold text-neutral-500">
+                    {t.buckets.unread} no read yet
+                  </span>
+                )}
+                {t.flagged > 0 && (
+                  <span className="rounded-full bg-danger/[0.1] px-2 py-0.5 text-[11px] font-semibold text-danger ring-1 ring-inset ring-danger/[0.22]">
+                    {t.flagged} flagged for a call
+                  </span>
+                )}
+              </span>
+            }
           >
             <CoachTable rows={group.rows} />
           </Card>
@@ -290,3 +306,19 @@ const chip = (active: boolean) =>
   `rounded-full px-3 py-1 text-xs font-medium transition-colors ${
     active ? "bg-neutral-900 text-white" : "bg-neutral-900/[0.04] text-neutral-600 hover:bg-neutral-900/[0.08]"
   }`;
+
+/** "1 bad" as a chip in the bucket's colour — the same three colours the
+ *  Bucket column uses, so the summary and the rows read as one thing. */
+function BucketCount({ count, bucket }: { count: number; bucket: "good" | "decent" | "bad" }) {
+  const tone =
+    bucket === "good"
+      ? "bg-success/[0.1] text-success ring-success/[0.22]"
+      : bucket === "bad"
+        ? "bg-danger/[0.1] text-danger ring-danger/[0.22]"
+        : "bg-warning/[0.1] text-warning ring-warning/[0.22]";
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] ring-1 ring-inset ${tone}`}>
+      {count} {bucket}
+    </span>
+  );
+}
