@@ -27,11 +27,12 @@ export type PerformanceVideo = Pick<
   ResearchVideo,
   "shortcode" | "url" | "posted_at" | "view_count" | "earnings_usd"
 > & {
-  /** Only populated for videos inside the reporting week — it is all the
-   *  trial-reel collapse needs, and pulling transcripts for the whole corpus
-   *  would multiply the loader's payload for no gain. */
+  /** Only populated for videos inside `transcriptHorizon` (plus a creator's
+   *  onboarding week) — that is every window the collapse is applied to,
+   *  and pulling transcripts for the whole ~40k-post corpus would multiply
+   *  the loader's payload for no gain. Absent, the post stands alone. */
   transcript_text?: string | null;
-  /** As above: week-window posts only, for the top-posts strip. */
+  /** As above: horizon posts only, for the top-posts strip. */
   thumbnail_url?: string | null;
 };
 
@@ -125,6 +126,31 @@ export function lastCompleteWeek(now: Date = new Date()): Window {
 
 export function previousWeek(w: Window): Window {
   return { start: new Date(w.start.getTime() - WEEK_MS), end: new Date(w.end.getTime() - WEEK_MS) };
+}
+
+/**
+ * How far back a loader must attach transcripts for the trial-reel collapse
+ * to mean the same thing in every window `creatorPerformance` reads.
+ *
+ * The collapse only sees a post's words where the loader fetched them; a post
+ * without a transcript stands alone. So the horizon decides which windows are
+ * actually collapsed. `cpm30` reaches 30 days back from the week's end,
+ * `cpm30Prev` 37, and a bad streak of `BAD_STREAK_FLAG` weeks reads a 30-day
+ * window ending two weeks earlier still — 51 days. Eight weeks (56) covers
+ * all of them with a week to spare, and is also the trend `/stats` draws, so
+ * the coach digest and the creator's own panel collapse the same posts.
+ *
+ * Before this existed (2026-08-31 → 2026-09-02) the digest loader fetched the
+ * reporting week only: `cpm30` was collapsed for one week of its four,
+ * `cpm30Prev` not at all, and a creator running trials showed a projected-CPM
+ * "improvement" that was nothing but the mismatch.
+ */
+export const TRANSCRIPT_HORIZON_WEEKS = 8;
+
+/** The `TRANSCRIPT_HORIZON_WEEKS` ending with `week` — the posts a loader
+ *  must carry transcripts for. */
+export function transcriptHorizon(week: Window): Window {
+  return { start: new Date(week.end.getTime() - TRANSCRIPT_HORIZON_WEEKS * WEEK_MS), end: week.end };
 }
 
 /** `YYYY-MM-DD` of a window's Monday — the URL/API key for a week. */
@@ -445,6 +471,45 @@ export function cpmRead(
   // twenty times — leaving it raw drags the average toward the trial noise
   // floor and hands each upload its own flat-fee projection.
   const calendar = collapseTrialUploads(inWindow(videos, trailingWindow(asOf, days))).kept;
+  return cpmReadOver(videos, calendar, asOf, days, payscale);
+}
+
+/**
+ * The same read over a whole team: every member's videos pooled.
+ *
+ * A ratio of sums, exactly like a creator's — the team's paid dollars over
+ * the views those dollars bought — so a coach's number is the money number,
+ * not an average of ten CPMs where a 149-view creator's "$1.00" would count
+ * as much as a 400k-view one's. The settled window ends at the TEAM's newest
+ * payout.
+ *
+ * Trial batches are collapsed per creator, never across them: one script is
+ * handed to several creators, so two creators reading the same words are two
+ * posts, and pooling before collapsing would fold one creator's reel into
+ * another's.
+ */
+export function teamCpmRead(
+  videosByCreator: PerformanceVideo[][],
+  asOf: Date,
+  days: number = CPM_WINDOW_DAYS,
+  payscale: Payscale = DEFAULT_PAYSCALE
+): CpmRead {
+  const calendar = videosByCreator.flatMap(
+    (videos) => collapseTrialUploads(inWindow(videos, trailingWindow(asOf, days))).kept
+  );
+  return cpmReadOver(videosByCreator.flat(), calendar, asOf, days, payscale);
+}
+
+/** Shared body of `cpmRead` / `teamCpmRead`: `calendar` is the already
+ *  collapsed set for the projection, `videos` the raw set the settled read
+ *  is taken from. */
+function cpmReadOver(
+  videos: PerformanceVideo[],
+  calendar: PerformanceVideo[],
+  asOf: Date,
+  days: number,
+  payscale: Payscale
+): CpmRead {
   const frontier = videos
     .filter((v) => isPaid(v) && postedAt(v) != null && postedAt(v)! < asOf.getTime())
     .reduce<number | null>((max, v) => (max == null || postedAt(v)! > max ? postedAt(v)! : max), null);
@@ -637,4 +702,81 @@ export function comparePerformance(a: CreatorPerformance, b: CreatorPerformance)
   const da = (a.delta ?? a.projectedDelta)?.usd ?? Number.NEGATIVE_INFINITY;
   const db = (b.delta ?? b.projectedDelta)?.usd ?? Number.NEGATIVE_INFINITY;
   return db - da;
+}
+
+/* --- teams ---------------------------------------------------------------- */
+
+/**
+ * One coach's team for one week — the coach's own read, built from the same
+ * per-creator reads the digest and /performance show, so the team's numbers
+ * and its members' never disagree.
+ *
+ * "Is my team good" is answered the way a creator's is: the pooled true CPM
+ * where enough of the team's posts have settled, the pooled projection
+ * otherwise, and the bucket on average views (see `bucketForViews`). Bucket
+ * counts sit beside it because a $3 team can be two stars carrying eight
+ * strugglers, and the coach's job is the eight.
+ */
+export interface TeamPerformance {
+  week: Window;
+  creators: number;
+  /** This week: reels shipped (trial batches collapsed per creator). */
+  posts: number;
+  quota: number;
+  belowQuota: number;
+  views: number;
+  avgViews: number | null;
+  /** What this week's posts will cost per 1k views — the leading indicator. */
+  projectedCpm: number | null;
+  spikes: number;
+  trialUploads: number;
+  /** Pooled rolling 30-day read as of the week's end, and one week earlier. */
+  cpm30: CpmRead;
+  cpm30Prev: CpmRead;
+  delta: Delta | null;
+  projectedDelta: Delta | null;
+  bucket: Bucket | null;
+  bucketSource: "true" | "projected" | null;
+  /** How many creators sit in each bucket; `unread` had no read at all. */
+  buckets: Record<Bucket | "unread", number>;
+  flagged: number;
+}
+
+export function teamPerformance(input: {
+  members: { performance: CreatorPerformance; videos: PerformanceVideo[] }[];
+  week: Window;
+  payscale?: Payscale;
+}): TeamPerformance {
+  const payscale = input.payscale ?? DEFAULT_PAYSCALE;
+  const { members, week } = input;
+  const videosByCreator = members.map((m) => m.videos);
+  const weekPosts = videosByCreator.flatMap((v) => collapseTrialUploads(inWindow(v, week)).kept);
+  const weekly = members.map((m) => m.performance.weekly);
+  const views = weekly.reduce((sum, w) => sum + w.views, 0);
+  const posts = weekly.reduce((sum, w) => sum + w.posts, 0);
+  const cpm30 = teamCpmRead(videosByCreator, week.end, CPM_WINDOW_DAYS, payscale);
+  const cpm30Prev = teamCpmRead(videosByCreator, previousWeek(week).end, CPM_WINDOW_DAYS, payscale);
+  const basis = bucketBasis(cpm30);
+  const buckets: TeamPerformance["buckets"] = { good: 0, decent: 0, bad: 0, unread: 0 };
+  for (const m of members) buckets[m.performance.bucket ?? "unread"]++;
+  return {
+    week,
+    creators: members.length,
+    posts,
+    quota: members.length * QUOTA_POSTS_PER_WEEK,
+    belowQuota: weekly.filter((w) => w.belowQuota).length,
+    views,
+    avgViews: posts > 0 ? views / posts : null,
+    projectedCpm: projectedCpm(weekPosts, payscale),
+    spikes: weekly.reduce((sum, w) => sum + w.spikes.length, 0),
+    trialUploads: weekly.reduce((sum, w) => sum + w.trialUploads, 0),
+    cpm30,
+    cpm30Prev,
+    delta: delta(cpm30.cpm, cpm30Prev.cpm),
+    projectedDelta: delta(cpm30.projected, cpm30Prev.projected),
+    bucket: bucketForViews(basis.avgViews),
+    bucketSource: basis.source,
+    buckets,
+    flagged: members.filter((m) => m.performance.flagged).length,
+  };
 }

@@ -14,6 +14,7 @@
 
 import {
   DEFAULT_PAYSCALE,
+  TRANSCRIPT_HORIZON_WEEKS,
   collapseTrialUploads,
   WEEK_MS,
   cpmRead,
@@ -29,8 +30,11 @@ import {
 } from "@/lib/performance";
 
 /** How many weeks of history the trend shows. Eight is a program quarter and
- *  fits the card without the bars turning into hairlines. */
-export const TREND_WEEKS = 8;
+ *  fits the card without the bars turning into hairlines. It is also the
+ *  transcript horizon the digest loader uses, on purpose: the `/stats` loader
+ *  fetches transcripts for exactly these weeks, so tying the two keeps the
+ *  coach's numbers and the creator's own collapsed over the same posts. */
+export const TREND_WEEKS = TRANSCRIPT_HORIZON_WEEKS;
 
 export interface WeekPoint {
   week: Window;

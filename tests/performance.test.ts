@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   BAD_AVG_VIEWS,
+  BAD_STREAK_FLAG,
+  CPM_WINDOW_DAYS,
   GOOD_AVG_VIEWS,
+  WEEK_MS,
+  teamCpmRead,
+  teamPerformance,
+  trailingWindow,
+  transcriptHorizon,
   badStreak,
   bucketBasis,
   bucketForViews,
@@ -475,5 +482,96 @@ describe("collapseTrialUploads", () => {
     // The average is the published reel's views, not dragged to the trial floor.
     expect(read.avgViews).toBe(80000);
     expect(read.spikes).toHaveLength(1);
+  });
+});
+
+describe("transcriptHorizon", () => {
+  it("covers every window creatorPerformance collapses, including a flag-length streak", () => {
+    const horizon = transcriptHorizon(WEEK);
+    expect(horizon.end.getTime()).toBe(WEEK.end.getTime());
+    // cpm30 this week, cpm30Prev, and one 30-day window per streak step up
+    // to the flag: the deepest one is what the horizon must still reach.
+    const deepest = trailingWindow(
+      new Date(WEEK.end.getTime() - BAD_STREAK_FLAG * WEEK_MS),
+      CPM_WINDOW_DAYS
+    );
+    expect(horizon.start.getTime()).toBeLessThanOrEqual(deepest.start.getTime());
+  });
+
+  it("with transcripts across the horizon, identical trial weeks show no projected change", () => {
+    // Two weeks that are the same: one real reel that did 30k, uploaded as a
+    // 12-copy trial batch at ~2k each. Only the transcripts make them the same
+    // post — and only if the loader attached them to BOTH weeks.
+    // Different words each week, or the 30-day window folds them into one.
+    const trialWeek = (monday: Date, tag: string, words: string): PerformanceVideo[] =>
+      Array.from({ length: 12 }, (_, i) => ({
+        ...video(new Date(monday.getTime() + i * 3_600_000).toISOString(), i === 0 ? 30_000 : 2_000 + i, null, `${tag}${i}`),
+        transcript_text: words,
+      }));
+    const prev = previousWeek(WEEK);
+    const videos = [
+      ...trialWeek(WEEK.start, "cur", "morning routine that fixed my focus in seven days flat"),
+      ...trialWeek(prev.start, "prev", "three apps i deleted and why my sleep came back overnight"),
+    ];
+    const p = creatorPerformance({ videos, joinedAt: null, week: WEEK });
+    expect(p.weekly.posts).toBe(1);
+    expect(p.weekly.trialUploads).toBe(11);
+    expect(p.cpm30.posts).toBe(2);
+    expect(p.cpm30Prev.posts).toBe(1);
+    expect(p.projectedDelta?.usd).toBeCloseTo(0, 6);
+
+    // The bug this pins: drop the previous week's transcripts — what a
+    // week-only loader did — and the same creator "improves" by a few
+    // dollars of CPM while nothing changed.
+    const halfBlind = videos.map((v) => (v.shortcode?.startsWith("prev") ? { ...v, transcript_text: null } : v));
+    const q = creatorPerformance({ videos: halfBlind, joinedAt: null, week: WEEK });
+    expect(q.cpm30Prev.posts).toBe(12);
+    expect(q.projectedDelta!.usd).toBeLessThan(-1);
+  });
+});
+
+describe("team reads", () => {
+  it("pools a team's CPM as a ratio of sums, not a mean of member CPMs", () => {
+    // A 400k-view star paid $440 ($1.10) and a 1,000-view creator paid $41
+    // ($41.00). The mean of the two CPMs is $21; the money says $1.20.
+    const star = [video("2026-08-10T10:00:00Z", 400_000, 440, "star")];
+    const small = [video("2026-08-11T10:00:00Z", 1_000, 41, "small")];
+    const read = teamCpmRead([star, small], WEEK.end);
+    expect(read.paidPosts).toBe(2);
+    expect(read.cpm).toBeCloseTo((481 * 1000) / 401_000, 6);
+  });
+
+  it("collapses trial batches per creator, never across creators sharing a script", () => {
+    const words = "the one script both of them were handed this week";
+    const at = (i: number) => new Date(WEEK.start.getTime() + i * 3_600_000).toISOString();
+    // Creator A ran a trial: three uploads of one reel. Creator B posted the
+    // same script once. That is two reels, not one.
+    const a = [0, 1, 2].map((i) => ({ ...video(at(i), 2_000 + i, null, `a${i}`), transcript_text: words }));
+    const b = [{ ...video(at(5), 9_000, null, "b0"), transcript_text: words }];
+    expect(teamCpmRead([a, b], WEEK.end).posts).toBe(2);
+    // Pooled first, the same words would have folded B's reel into A's batch.
+    expect(teamCpmRead([[...a, ...b]], WEEK.end).posts).toBe(1);
+  });
+
+  it("sums the week and counts buckets from the members' own reads", () => {
+    const at = (i: number) => new Date(WEEK.start.getTime() + i * 3_600_000).toISOString();
+    const good = Array.from({ length: 7 }, (_, i) => video(at(i), 50_000, null, `g${i}`));
+    const quiet = [video(at(1), 800, null, "q0")];
+    const members = [good, quiet].map((videos) => ({
+      videos,
+      performance: creatorPerformance({ videos, joinedAt: null, week: WEEK }),
+    }));
+    const team = teamPerformance({ members, week: WEEK });
+    expect(team.creators).toBe(2);
+    expect(team.posts).toBe(8);
+    expect(team.quota).toBe(14);
+    expect(team.belowQuota).toBe(1);
+    expect(team.spikes).toBe(7);
+    expect(team.buckets).toEqual({ good: 1, decent: 0, bad: 1, unread: 0 });
+    // Nothing is paid, so the team is read on its projection, on average
+    // views — and the star carries it.
+    expect(team.cpm30.cpm).toBeNull();
+    expect(team.bucketSource).toBe("projected");
+    expect(team.bucket).toBe("good");
   });
 });
