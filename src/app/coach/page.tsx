@@ -167,11 +167,6 @@ export default async function CoachPage({
             <b className="text-neutral-900">{t.creators - t.belowQuota}/{t.creators}</b> hit quota ·{" "}
             <b className="text-neutral-900">{t.spikes}</b> spike{t.spikes === 1 ? "" : "s"} ·{" "}
             <b className="text-neutral-900">{silent.length}</b> didn’t post
-            {t.trialUploads > 0 && (
-              <span className="block text-xs text-neutral-400">
-                {formatCompact(t.trialUploads)} trial-reel uploads excluded — posts and views count published reels only
-              </span>
-            )}
           </p>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -198,7 +193,7 @@ export default async function CoachPage({
             <KpiCard
               label="Posts this week"
               value={`${t.posts}/${t.quota}`}
-              sub={`${t.belowQuota} of ${t.creators} below quota${t.trialUploads ? ` · ${t.trialUploads} trial uploads folded` : ""}`}
+              sub={`${t.belowQuota} of ${t.creators} below quota`}
               icon="play"
               tone={t.belowQuota > 0 ? "amber" : "emerald"}
             />
