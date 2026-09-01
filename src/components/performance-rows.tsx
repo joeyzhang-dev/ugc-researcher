@@ -198,15 +198,13 @@ export function DeltaCell({
   const flat = Math.abs(delta.usd) < 0.005;
   const tone =
     muted || flat ? "text-neutral-500" : delta.usd < 0 ? "text-success" : "text-danger";
-  const arrow = flat ? "→" : delta.usd < 0 ? "▼" : "▲";
   return (
-    <span className="text-right">
+    <span className="text-right" title="Change in CPM. Lower is better: it costs less to reach a thousand people.">
       <span className={`block text-[15px] font-semibold tracking-[-0.01em] tabular-nums ${tone}`}>
-        {arrow} {formatUsd(Math.abs(delta.usd))}
+        {flat ? "no change" : signedUsd(delta.usd)}
       </span>
       <span className="mt-0.5 block text-[11px] leading-tight tabular-nums text-neutral-400">
-        {delta.pct > 0 ? "+" : ""}
-        {delta.pct.toFixed(1)}% · {label}
+        {flat ? label : `${signedPct(delta.pct)} · ${label}`}
       </span>
     </span>
   );
@@ -231,4 +229,13 @@ export function BucketChip({ bucket, projected }: { bucket: Bucket | null; proje
       {projected && <span className="font-normal normal-case tracking-normal opacity-70">~</span>}
     </span>
   );
+}
+
+/** "−$1.69" / "+$1.69" — a real minus sign, never an arrow. */
+export function signedUsd(usd: number): string {
+  return `${usd < 0 ? "−" : "+"}${formatUsd(Math.abs(usd))}`;
+}
+
+export function signedPct(pct: number): string {
+  return `${pct < 0 ? "−" : "+"}${Math.abs(pct).toFixed(1)}%`;
 }

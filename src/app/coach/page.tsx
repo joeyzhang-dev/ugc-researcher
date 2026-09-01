@@ -11,7 +11,7 @@ import {
   type Window,
 } from "@/lib/performance";
 import { Card, EmptyState, KpiCard, PageHeader, tableWrap } from "@/components/ui";
-import { BucketChip, PERFORMANCE_GRID as GRID, PerformanceRow as Row } from "@/components/performance-rows";
+import { BucketChip, PERFORMANCE_GRID as GRID, PerformanceRow as Row, signedPct, signedUsd } from "@/components/performance-rows";
 import { formatCompact, formatDateUTC, formatUsd } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -130,9 +130,9 @@ export default async function CoachPage({
               tone={cpmTone}
             />
             <KpiCard
-              label="Trend · down is good"
-              value={d == null ? "—" : `${Math.abs(d.usd) < 0.005 ? "→" : d.usd < 0 ? "▼" : "▲"} ${formatUsd(Math.abs(d.usd))}`}
-              sub={d == null ? dLabel : `${d.pct > 0 ? "+" : ""}${d.pct.toFixed(1)}% ${dLabel}`}
+              label="CPM change · lower is better"
+              value={d == null ? "—" : Math.abs(d.usd) < 0.005 ? "no change" : signedUsd(d.usd)}
+              sub={d == null || Math.abs(d.usd) < 0.005 ? dLabel : `${signedPct(d.pct)} ${dLabel}`}
               icon="trend"
               tone={d == null || Math.abs(d.usd) < 0.005 ? "neutral" : d.usd < 0 ? "emerald" : "red"}
             />
