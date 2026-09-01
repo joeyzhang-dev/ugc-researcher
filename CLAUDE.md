@@ -133,6 +133,18 @@ Rules for new migrations in this repo:
   after every pull and discover every 15 min. (AI channel summaries were
   removed 2026-08-20 — the `research_discord_summaries` table still exists but
   nothing reads or writes it.)
+- `worker/discord_bot/folk_links.py` — [CREATOR-PROVISION] mints the creator's
+  folk tracking link during `/onboard`, via folk-web's create-only endpoint
+  `POST /api/admin/creators/provision`. Needs **`FOLK_ADMIN_TOKEN`** (and
+  optionally `FOLK_API_URL`, default `https://www.folk.com`) as Fly secrets on
+  `bludgc-workers`; without the token it self-skips and onboarding reports a
+  warning rather than failing. `/onboard` is the only hook early enough to
+  matter: Launchpoint does not list a creator until after their first post
+  (all 119 tracked accounts have >=1), and the link has to go IN that post.
+  The endpoint is idempotent on the Discord snowflake, which is why the id is
+  sent as a **string** - a JSON number is an IEEE double and silently corrupts
+  the low digits, and a corrupted id deduplicates against nothing, so every
+  re-onboard would mint a second link for the same person.
 - `worker/discord_bot/` + `worker/run_discord_bot.py` — the "mach ugc"
   gateway bot (discord.py, lives in `worker/.venv`): slash commands
   `/onboard /offboard /link /creator /creators /health /help` + real-time

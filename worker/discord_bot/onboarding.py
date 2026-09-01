@@ -120,6 +120,11 @@ class OnboardOutcome:
     welcome_posted: bool = False
     checklist_posted: bool = False
     crm_synced: bool = False
+    # [CREATOR-PROVISION] The folk tracking link this creator should put in
+    # their posts. Absent when provisioning was skipped or failed; the reason
+    # lands in ``warnings`` so onboarding still succeeds without it.
+    folk_link: Optional[str] = None
+    folk_link_status: Optional[str] = None
     error: Optional[str] = None
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
@@ -384,6 +389,7 @@ async def execute_onboarding(
     fetch_member: Optional[Callable[[int], Awaitable[Any]]] = None,
     sync_crm: Optional[Callable[[int, str, str, str, int, Optional[str]], None]] = None,
     get_channel_owner: Optional[Callable[[int], Optional[int]]] = None,
+    provision_link: Optional[Callable[..., Any]] = None,
     reason: str = "creator onboarding via /onboard",
 ) -> OnboardOutcome:
     """Create the channel, grant the role, and post the welcome message.
@@ -565,6 +571,32 @@ async def execute_onboarding(
         except Exception as exc:  # noqa: BLE001 - CRM sync must not fail onboarding
             warnings.append(f"couldn't record the creator in the CRM: {exc}")
 
+    # [CREATOR-PROVISION] Mint (or recover) the creator's folk tracking link.
+    # Deliberately last and deliberately non-fatal: the channel, role and
+    # welcome message are the things a creator cannot be onboarded without,
+    # and folk-web being down must not undo any of them. A failure becomes a
+    # warning the operator can act on, and re-running /onboard is safe because
+    # the endpoint is idempotent on the Discord id.
+    folk_link = None
+    folk_link_status = None
+    if provision_link is not None:
+        try:
+            result = provision_link(
+                discord_user_id=int(getattr(member, "id", 0)),
+                display_name=display_name,
+                discord_username=getattr(member, "name", None),
+                niche=channel_niche,
+            )
+            folk_link_status = getattr(result, "status", None)
+            folk_link = getattr(result, "url", None)
+            if folk_link_status in ("needs_link", "error", "skipped"):
+                warnings.append(
+                    f"no folk link: {getattr(result, 'detail', None) or folk_link_status}"
+                )
+        except Exception as exc:  # noqa: BLE001 - link minting must not fail onboarding
+            folk_link_status = "error"
+            warnings.append(f"couldn't create the folk tracking link: {exc}")
+
     return OnboardOutcome(
         ok=True,
         channel_id=int(getattr(channel, "id", 0)) or None,
@@ -581,6 +613,8 @@ async def execute_onboarding(
         welcome_posted=welcome_posted,
         checklist_posted=checklist_posted,
         crm_synced=crm_synced,
+        folk_link=folk_link,
+        folk_link_status=folk_link_status,
         warnings=tuple(warnings),
     )
 
@@ -617,6 +651,12 @@ def render_outcome(outcome: OnboardOutcome, creator_role_name: str) -> str:
 
     if outcome.crm_synced:
         lines.append("✅ tracked in the CRM")
+    # [CREATOR-PROVISION] Show the link itself, not just that it worked: the
+    # operator is about to paste it to the creator.
+    if outcome.folk_link and outcome.folk_link_status == "created":
+        lines.append(f"✅ folk link **{outcome.folk_link}**")
+    elif outcome.folk_link and outcome.folk_link_status == "existing":
+        lines.append(f"ℹ️ folk link already existed: **{outcome.folk_link}**")
 
     lines.extend(f"⚠️ {w}" for w in outcome.warnings)
     return "\n".join(lines)

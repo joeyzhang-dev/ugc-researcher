@@ -17,6 +17,7 @@ import discord
 from discord import app_commands
 
 from discord_bot import socials, store, webapi
+from discord_bot.folk_links import provision_folk_link
 from discord_bot.permissions import command_is_open, may_run_commands, staff_only_message
 from discord_bot.command_ui import (
     EmbedSpec,
@@ -311,6 +312,9 @@ def register_commands(
             creator_role_name=cfg.creator_role_name,
             creator_role_id=cfg.creator_role_id,
             welcome_links=cfg.welcome_links,
+            # [CREATOR-PROVISION] Mint the creator's folk tracking link as
+            # part of onboarding, so they have it before their first post.
+            provision_link=provision_folk_link,
             launchpoint_bot_id=cfg.launchpoint_bot_id,
             excluded_category_ids=cfg.excluded_category_ids,
             niche_role_ids=cfg.niche_role_ids,
