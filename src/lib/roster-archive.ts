@@ -77,3 +77,35 @@ export function splitArchived<T>(
     archivedCount,
   };
 }
+
+/**
+ * The Discord category creators are moved into when they stop creating.
+ *
+ * This is the *other* retirement signal, and it is the one operators actually
+ * use: `/offboard` drags the coaching channel into "Not Creating 🚫" and the
+ * category is what everyone reads off the sidebar. Matched loosely because the
+ * live category name carries an emoji ("Not Creating 🚫") that nobody types
+ * consistently, and an exact-string test would fail open — the expensive
+ * direction, since failing open here means pinging someone we cut.
+ */
+export const PARKED_CATEGORY = /not creating/i;
+
+export function isParkedCategory(category: string | null | undefined): boolean {
+  return !!category && PARKED_CATEGORY.test(category);
+}
+
+/**
+ * Everything that means "we stopped working with this creator", in one test.
+ *
+ * The two signals are recorded in different places by different actors — the
+ * archive flag by the web app, the parked category by the Discord bot — and
+ * neither implies the other for rows that predate `/offboard` writing both.
+ * Any send that pings a creator has to honour both or it will reach someone
+ * who was cut, which is the one mistake here that cannot be taken back.
+ */
+export function isRetired(
+  creator: Archivable,
+  channelCategory: string | null | undefined
+): boolean {
+  return isArchived(creator) || isParkedCategory(channelCategory);
+}

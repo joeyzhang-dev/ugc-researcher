@@ -3,6 +3,8 @@ import {
   DORMANT_AFTER_DAYS,
   QUIET_AFTER_DAYS,
   isArchived,
+  isParkedCategory,
+  isRetired,
   quietBand,
   quietDays,
   splitArchived,
@@ -96,5 +98,44 @@ describe("splitArchived", () => {
     );
     expect(visible).toHaveLength(1);
     expect(archivedCount).toBe(0);
+  });
+});
+
+describe("isParkedCategory", () => {
+  it("matches the live category, emoji and all", () => {
+    expect(isParkedCategory("Not Creating 🚫")).toBe(true);
+  });
+
+  it("ignores case and surrounding text, since the emoji is not typed consistently", () => {
+    expect(isParkedCategory("not creating")).toBe(true);
+    expect(isParkedCategory("  Not Creating  ")).toBe(true);
+  });
+
+  it("does not match a coach team or a niche category", () => {
+    expect(isParkedCategory("Coach: Will's Team")).toBe(false);
+    expect(isParkedCategory("Creators: 💸 Finance General")).toBe(false);
+  });
+
+  it("is false for a channel with no category at all", () => {
+    expect(isParkedCategory(null)).toBe(false);
+    expect(isParkedCategory(undefined)).toBe(false);
+    expect(isParkedCategory("")).toBe(false);
+  });
+});
+
+describe("isRetired", () => {
+  // The gap this closes: /offboard only ever moved the channel, so a cut
+  // creator kept a null archived_at and stayed a live recap target.
+  it("is true on the parked category alone, with no archive flag", () => {
+    expect(isRetired({ archived_at: null }, "Not Creating 🚫")).toBe(true);
+  });
+
+  it("is true on the archive flag alone, with a live coaching channel", () => {
+    expect(isRetired({ archived_at: "2026-08-30T00:00:00Z" }, "Coach: Will's Team")).toBe(true);
+  });
+
+  it("is false only when neither signal is set", () => {
+    expect(isRetired({ archived_at: null }, "Coach: Will's Team")).toBe(false);
+    expect(isRetired({ archived_at: null }, null)).toBe(false);
   });
 });

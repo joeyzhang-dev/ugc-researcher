@@ -30,6 +30,7 @@ import { diagnose, cpmNote } from "@/lib/creator-coaching";
 import { creatorCardUrl, myCardUrl, dailyCardUrl, warmRecapImage } from "@/lib/recap-image-url";
 import { QUOTA_POSTS_PER_WEEK, lastCompleteWeek, weekKey, type Window } from "@/lib/performance";
 import { formatCompact, formatUsd } from "@/lib/format";
+import { isArchived, isParkedCategory } from "@/lib/roster-archive";
 
 export interface CreatorSendResult {
   sent: { handle: string; channelId: string; kind: string; messageId: string }[];
@@ -65,12 +66,6 @@ interface Target {
   channelId: string;
 }
 
-/**
- * Creators eligible for a scheduled send: on the roster, not archived, with a
- * linked Discord account AND a tracked channel to post into. Any of those
- * missing is a skip with a reason, never a guess — posting someone's earnings
- * into the wrong channel is unrecoverable.
- */
 /** Discord ids currently in the guild, or null when the lookup failed.
  *
  *  A stored discord_user_id can outlive the account's membership — the person
@@ -90,6 +85,88 @@ async function guildMemberIds(): Promise<Set<string> | null> {
   }
 }
 
+export interface EligibilityInput {
+  creators: {
+    id: string;
+    handle: string;
+    discord_user_id: string | null;
+    archived_at: string | null;
+  }[];
+  channels: { channel_id: string; research_creator_id: string | null; category: string | null }[];
+  /** Discord ids currently in the guild, or null when the lookup failed. */
+  memberIds: Set<string> | null;
+}
+
+/**
+ * The send gate, pure so it can be tested without a database.
+ *
+ * Eligible means: on the roster, still working with us, with a linked
+ * Discord account AND a live channel to post into. Any of those missing is
+ * a skip with a reason, never a guess — posting someone's earnings into the
+ * wrong channel is unrecoverable.
+ *
+ * Two independent things mean "we stopped working with this creator", and a
+ * send has to honour both: `archived_at`, set in the app, and the
+ * "Not Creating 🚫" Discord category, set by `/offboard` moving the channel.
+ * Gating on the flag alone is what pinged six cut creators with a daily recap
+ * on 2026-09-01 — their channels had moved months earlier and nothing had
+ * written the flag.
+ *
+ * A creator holding BOTH a parked channel and a live team channel is not
+ * parked: the team channel is the current one and the parked row is the old
+ * channel left behind, exactly as `loadPerformanceReport` reads it.
+ */
+export function sendEligibility(input: EligibilityInput): {
+  targets: Target[];
+  skipped: CreatorSendResult["skipped"];
+} {
+  const liveByCreator = new Map<string, string>();
+  const parkedCreators = new Set<string>();
+  for (const c of input.channels) {
+    if (!c.research_creator_id) continue;
+    if (isParkedCategory(c.category)) {
+      parkedCreators.add(c.research_creator_id);
+      continue;
+    }
+    if (!liveByCreator.has(c.research_creator_id)) {
+      liveByCreator.set(c.research_creator_id, c.channel_id);
+    }
+  }
+
+  const targets: Target[] = [];
+  const skipped: CreatorSendResult["skipped"] = [];
+  for (const c of input.creators) {
+    const handle = c.handle;
+    if (isArchived(c)) {
+      skipped.push({ handle, reason: "archived" });
+      continue;
+    }
+    if (!c.discord_user_id) {
+      skipped.push({ handle, reason: "no linked Discord account" });
+      continue;
+    }
+    const channelId = liveByCreator.get(c.id);
+    if (!channelId) {
+      skipped.push({
+        handle,
+        reason: parkedCreators.has(c.id) ? "parked in Not Creating" : "no tracked coaching channel",
+      });
+      continue;
+    }
+    if (input.memberIds && !input.memberIds.has(c.discord_user_id)) {
+      skipped.push({ handle, reason: "no longer in the server" });
+      continue;
+    }
+    targets.push({
+      creatorId: c.id,
+      handle,
+      discordUserId: c.discord_user_id,
+      channelId,
+    });
+  }
+  return { targets, skipped };
+}
+
 async function targets(
   admin: SupabaseClient,
   memberIds: Set<string> | null
@@ -99,46 +176,22 @@ async function targets(
     .select("id, handle, discord_user_id::text, archived_at")
     .eq("platform", "instagram")
     .eq("kind", "roster")
-    .is("archived_at", null)
     .limit(1000);
   if (error) throw new Error(`loading creators: ${error.message}`);
 
+  // `category` is not decoration: it is the only place `/offboard` records
+  // that we cut someone, so it has to come back with the channel.
   const { data: channels } = await admin
     .from("research_discord_channels")
-    .select("channel_id::text, research_creator_id")
+    .select("channel_id::text, research_creator_id, category")
     .eq("is_tracked", true)
     .limit(1000);
-  const channelByCreator = new Map(
-    (channels ?? [])
-      .filter((c) => c.research_creator_id)
-      .map((c) => [c.research_creator_id as string, c.channel_id as string])
-  );
 
-  const out: Target[] = [];
-  const skipped: CreatorSendResult["skipped"] = [];
-  for (const c of creators ?? []) {
-    const handle = c.handle as string;
-    if (!c.discord_user_id) {
-      skipped.push({ handle, reason: "no linked Discord account" });
-      continue;
-    }
-    const channelId = channelByCreator.get(c.id as string);
-    if (!channelId) {
-      skipped.push({ handle, reason: "no tracked coaching channel" });
-      continue;
-    }
-    if (memberIds && !memberIds.has(c.discord_user_id as string)) {
-      skipped.push({ handle, reason: "no longer in the server" });
-      continue;
-    }
-    out.push({
-      creatorId: c.id as string,
-      handle,
-      discordUserId: c.discord_user_id as string,
-      channelId,
-    });
-  }
-  return { targets: out, skipped };
+  return sendEligibility({
+    creators: (creators ?? []) as EligibilityInput["creators"],
+    channels: (channels ?? []) as EligibilityInput["channels"],
+    memberIds,
+  });
 }
 
 async function ledgerKeys(admin: SupabaseClient, kind: string): Promise<Set<string>> {

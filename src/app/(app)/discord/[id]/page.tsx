@@ -13,11 +13,11 @@ import { formatDateTime } from "@/lib/format";
 import { NICHE_PALETTE } from "../../scripts/cal";
 import { DiscordLink } from "@/components/discord-link";
 import { channelUrl, cleanSnippet, messageUrl, ROLE_CHIP, ROLE_SENDER } from "@/lib/discord-render";
+import { isParkedCategory } from "@/lib/roster-archive";
 import { DISCORD_DEPRECATED, DiscordDeprecatedNotice } from "../deprecated";
 
 export const dynamic = "force-dynamic";
 
-const NOT_CREATING = "Not Creating 🚫";
 const FEED_LIMIT = 300;
 
 const ROLES: readonly DiscordAuthorRole[] = ["creator", "coach", "launchpoint", "unknown"];
@@ -166,7 +166,7 @@ export default async function DiscordChannelPage({
               >
                 {channel.channel_name}
               </DiscordLink>
-              <StatusBadge status={channel.category === NOT_CREATING ? "Not creating" : "Creating"} />
+              <StatusBadge status={isParkedCategory(channel.category) ? "Not creating" : "Creating"} />
               {channel.niche && (
                 <span
                   className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${nicheClass(channel.niche)}`}

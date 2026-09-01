@@ -18,14 +18,13 @@ import {
   type PerformanceVideo,
   type Window,
 } from "@/lib/performance";
+import { isArchived, isParkedCategory } from "@/lib/roster-archive";
 
 /** Discord categories that are coach teams look like "Coach: Will's Team".
  *  The pull worker uses the same "team" test (`_TEAM_CATEGORY`) to tell a
  *  coach category from a niche one. */
 const TEAM_CATEGORY = /\bteam\b/i;
 
-/** Creators parked here are skipped for now (decided 2026-08-29). */
-const PARKED_CATEGORY = /not creating/i;
 
 export interface PerformanceRow {
   creatorId: string;
@@ -59,7 +58,8 @@ export interface PerformanceReport {
   /** Coach groups in name order, the coachless group last. Rows inside each
    *  are in digest order (bad → decent → good, worst rise first). */
   groups: CoachGroup[];
-  /** Creators parked in "Not Creating" — listed so the skip is visible. */
+  /** Creators we have stopped working with — archived, or parked in
+   *  "Not Creating". Listed so the skip is visible rather than a silent gap. */
   parked: { creatorId: string; handle: string }[];
   totals: { creators: number; belowQuota: number; flagged: number };
 }
@@ -94,6 +94,7 @@ export async function loadPerformanceReport(
     profile_url: string | null;
     discord_user_id: string | null;
     launchpoint_creator_id: string | null;
+    archived_at: string | null;
   };
   type AccountRow = { contractor_id: string; first_post_at: string | null };
   type ChannelRow = {
@@ -111,7 +112,7 @@ export async function loadPerformanceReport(
       client
         .from("research_creators")
         .select(
-          "id, handle, display_name, launchpoint_name, avatar_url, profile_url, discord_user_id::text, launchpoint_creator_id"
+          "id, handle, display_name, launchpoint_name, avatar_url, profile_url, discord_user_id::text, launchpoint_creator_id, archived_at"
         )
         .eq("kind", "roster")
         .eq("platform", "instagram")
@@ -181,7 +182,7 @@ export async function loadPerformanceReport(
   const parkedCreators = new Set<string>();
   for (const ch of channels) {
     if (!ch.research_creator_id || !ch.category) continue;
-    if (PARKED_CATEGORY.test(ch.category)) {
+    if (isParkedCategory(ch.category)) {
       parkedCreators.add(ch.research_creator_id);
       continue;
     }
@@ -207,9 +208,11 @@ export async function loadPerformanceReport(
   const parked: PerformanceReport["parked"] = [];
   for (const c of igCreators) {
     // A creator both parked and in a team keeps the team — the team channel
-    // is the live one; "Not Creating" is where old channels go.
+    // is the live one; "Not Creating" is where old channels go. The archive
+    // flag has no such escape hatch: it is a decision someone recorded, so it
+    // parks the creator whatever their channel still says.
     const team = coachByCreator.get(c.id) ?? null;
-    if (!team && parkedCreators.has(c.id)) {
+    if (isArchived(c) || (!team && parkedCreators.has(c.id))) {
       parked.push({ creatorId: c.id, handle: c.handle });
       continue;
     }

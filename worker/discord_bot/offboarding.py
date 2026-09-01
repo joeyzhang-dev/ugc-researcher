@@ -569,7 +569,7 @@ def render_offboard_outcome(outcome: OffboardOutcome, creator_role_name: str) ->
         lines.append("✅ kicked the member")
 
     if outcome.crm_synced:
-        lines.append("✅ marked paused in the CRM")
+        lines.append("✅ marked paused in the CRM and archived on the roster (no more recaps)")
 
     lines.extend(f"⚠️ {w}" for w in outcome.warnings)
     return "\n".join(lines)

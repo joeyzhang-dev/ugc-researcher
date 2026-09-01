@@ -14,12 +14,12 @@ import { NICHE_PALETTE } from "../scripts/cal";
 import { DiscordLink } from "@/components/discord-link";
 import { channelUrl, cleanSnippet, messageUrl, ROLE_CHIP, ROLE_SENDER } from "@/lib/discord-render";
 import { creatorNameFromChannel } from "@/lib/discord-channels";
+import { isParkedCategory } from "@/lib/roster-archive";
 import { linkChannelToCreator } from "./actions";
 import { DISCORD_DEPRECATED, DiscordDeprecatedNotice } from "./deprecated";
 
 export const dynamic = "force-dynamic";
 
-const NOT_CREATING = "Not Creating 🚫";
 const SNAPSHOT_MESSAGES = 5;
 
 /** Consolidated view of the Folk UGC Discord (the old discord-crm dashboard):
@@ -133,7 +133,7 @@ export default async function DiscordPage({
     .map((ch) => {
       const creator = ch.research_creator_id ? creatorById.get(ch.research_creator_id) : undefined;
       const stats = statsByChannel.get(ch.channel_id) ?? { count: 0, recent: [], last: null };
-      const paused = ch.category === NOT_CREATING;
+      const paused = isParkedCategory(ch.category);
       const name = creatorNameFromChannel(ch.channel_name ?? "");
       return { ch, creator, stats, paused, name };
     })
@@ -149,7 +149,7 @@ export default async function DiscordPage({
     )
     .sort((a, b) => (b.stats.last ?? "").localeCompare(a.stats.last ?? ""));
 
-  const creating = channels.filter((c) => c.category !== NOT_CREATING).length;
+  const creating = channels.filter((c) => !isParkedCategory(c.category)).length;
   const linked = channels.filter((c) => c.research_creator_id).length;
   const pausedCount = channels.length - creating;
   const unlinked = channels.length - linked;
@@ -160,7 +160,7 @@ export default async function DiscordPage({
   let active = 0;
   let stalled = 0;
   for (const ch of channels) {
-    if (ch.category === NOT_CREATING) continue;
+    if (isParkedCategory(ch.category)) continue;
     const last = statsByChannel.get(ch.channel_id)?.last ?? null;
     if (last && nowMs - new Date(last).getTime() < WEEK_MS) active += 1;
     else stalled += 1;

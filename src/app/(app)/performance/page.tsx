@@ -212,7 +212,8 @@ export default async function PerformancePage({
 
         {report.parked.length > 0 && (
           <p className="text-xs text-neutral-400">
-            Skipped {report.parked.length} parked in “Not Creating”:{" "}
+            Skipped {report.parked.length} retired — archived, or parked in “Not
+            Creating”:{" "}
             {report.parked.map((p) => `@${p.handle}`).join(", ")}
           </p>
         )}

@@ -535,6 +535,24 @@ posted in over 30 days.**
   a row vanishing without anyone choosing it is the exact failure the
   "Unassigned" band was added to prevent (6547bae). Launchpoint's stamp can run
   hours ahead of our clock, so the count floors at 0.
+- **Two things mean "we stopped working with this creator", and every send
+  must honour both.** `archived_at` is written by the app; the
+  `Not Creating 🚫` Discord category is written by `/offboard` moving the
+  channel. Neither implied the other, and the recap sender gated only on the
+  flag — so on 2026-09-01 six offboarded creators got a daily recap pinged at
+  them in the channel they had been moved out of (ledgered, and again the day
+  before; 12 parked creators were live targets in total). `isRetired` in
+  `src/lib/roster-archive.ts` is now the single test, and `/offboard` writes
+  BOTH: `store.offboard_creator_channel` PATCHes the channel category and then
+  archives the linked creator with `archived_at=is.null` so a re-run cannot
+  move the original date. The channel move is visible to a human, which is why
+  the missing half went unnoticed for so long — it looked done.
+  **A creator holding both a parked channel and a live team channel is not
+  retired**: the team channel is the current one. `sendEligibility`
+  (`src/lib/jobs/creator-digest.ts`, pure and unit-tested) and
+  `loadPerformanceReport` read it the same way. The archive flag has no such
+  escape hatch — it is a decision someone recorded, so it parks the creator
+  whatever their channel still says.
 - **Launchpoint cannot supply this.** Checked live against
   `GET /analytics/accounts`: all 117 tracked accounts report `programCount: 1`
   and `contractCount: 0`, dormant ones included. There is no upstream lifecycle

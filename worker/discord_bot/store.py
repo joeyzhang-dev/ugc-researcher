@@ -121,7 +121,20 @@ def channel_creator_handle(channel_id: int) -> Optional[str]:
 
 
 def offboard_creator_channel(channel_id: int) -> bool:
-    """Mark a channel paused the same way discover reads it from the category.
+    """Mark a channel paused, and archive the creator behind it.
+
+    Both halves are needed, because the app and the bot record "we stopped
+    working with this person" in different places:
+
+      category         — what Discord shows, and what the coach digest reads
+                         to park someone out of the weekly report.
+      archived_at      — what the app reads: the scrape queue, the /creators
+                         roster, and the daily/weekly recaps that ping the
+                         creator directly.
+
+    Writing only the category is what let six offboarded creators keep
+    receiving a daily recap on 2026-09-01 — in the very channel they had been
+    moved out of. The channel move is visible to a human, so it looked done.
 
     The niche stays: it is carried by the channel's track emoji now, and
     discover would re-derive it from the name on the next run anyway.
@@ -132,7 +145,27 @@ def offboard_creator_channel(channel_id: int) -> bool:
         {"category": PAUSED_CATEGORY},
         prefer="return=representation",
     )
-    return bool(updated)
+    if not updated:
+        return False
+
+    creator_id = (updated[0] or {}).get("research_creator_id")
+    if creator_id:
+        # `archived_at=is.null` makes a re-run idempotent: the stamp records
+        # when we cut them, and a second /offboard must not move that date
+        # forward to today.
+        pull.sb(
+            "PATCH",
+            f"research_creators?id=eq.{creator_id}&archived_at=is.null",
+            {
+                # ...Z, never isoformat()'s +00:00 — see CLAUDE.md; a literal
+                # '+' decodes as a space if this value ever reaches a filter.
+                "archived_at": datetime.now(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
+                "archived_reason": "offboarded in Discord",
+            },
+        )
+    return True
 
 
 def parse_instagram(raw: str) -> Optional[tuple[str, str]]:
