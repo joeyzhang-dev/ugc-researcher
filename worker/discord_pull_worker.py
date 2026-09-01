@@ -160,9 +160,12 @@ def discord_get(path: str):
 
 CREATOR_PREFIXES: tuple[str, ...] = ("coaching-", "coachking-", "influencer-")
 EXCLUDE_CATEGORIES = frozenset({"👤・Creators"})
-# Live convention 2026-08-20: a creator channel is ``<track-emoji><name>``
-# (``✝️jas``, ``🤍anna🌸``, ``🌱austin-gavin``) — the emoji alone carries the
-# niche. This map is the entire niche vocabulary: classification, name
+# Live convention 2026-08-26: a creator channel is
+# ``<track-emoji><first>-<last>`` (``✝️jas-alcantara``, ``🤍anna-lyashenko``) —
+# the emoji alone carries the niche. Full names replaced the first-name form
+# (``✝️jas``, ``🤍anna🌸``) once Launchpoint gave us the real names: two Annas,
+# two Madisons and two Jacobs were being told apart by a decorative emoji tail.
+# Both forms still parse; VERIFIED_HANDLES carries a key per form. This map is the entire niche vocabulary: classification, name
 # derivation, /onboard's track choices and the bot's channel names all derive
 # from it, so adding a niche is adding ONE line here (the value must match
 # research_scripts.niche verbatim) and restarting the bot/worker.
@@ -212,7 +215,52 @@ _LEADING_NON_WORD = re.compile(r"^[^0-9a-z]+")
 # Verified Discord channel name -> roster handle (evidence: display names +
 # channel content, checked 2026-08-04). vincent is lockedinwvinny, NOT
 # nick.vincenttt — a coach message in coaching-vincent links lockedinwvinny.
+#
+# Keyed on the *derived* name, so the live ``<emoji><first>-<last>`` convention
+# (2026-08-26, once Launchpoint gave us full names) needs its own entry per
+# channel — ``jas-alcantara``, not ``jas``. Deriving a first-name key by
+# splitting on the hyphen would be wrong, not merely lossy: two Annas, two
+# Madisons and two Jacobs share a first name, and the full name is the only
+# thing that separates them. The single-word keys below are kept for the
+# legacy ``coaching-*`` channels and for historical names.
 VERIFIED_HANDLES = {
+    # Live convention: <emoji><first>-<last>.
+    "adriel-donfeh": "adriel.motivates",
+    "amrin-jahan": "amrinrants",
+    "anna-florek": "floyaps_",
+    "anna-lyashenko": "annalockedinn",
+    "ayomide-hakeem": "keem.motivates",
+    "ben-uncanin": "ben.lockedinnn",
+    "cole-adair": "colemotivatesyou",
+    "daeglan-oshea": "daeglan.motivates",
+    "daniel-chang": "lockedin.daniel",
+    "evan-quintero": "stayfocusedevan",
+    "grace-goldstein": "gglockedinn",
+    # Three Jacobs (Kebede, Kyle, Libiran) and a "dre" who is Noah-andre on
+    # Launchpoint. Names are verbatim from Launchpoint, nicknames included
+    # nowhere, so the channel always matches the payout record.
+    "jacob-kebede": "aheadwithjacob",
+    "jacob-kyle": "jakelocks.in",
+    "jas-alcantara": "wisdomwjas",
+    "kiru-belete": "lockinwithkiru",
+    "leah-filter": "lockedinwleah",
+    "liam-christianson": "lockedwliam",
+    "madison-moon": "justttmadsthings",
+    "madison-pier": "wisdomwithmadi",
+    "matt-petrella": "lockinwithmatt",
+    "miles-pfaller": "therealmiless",
+    "nick-salvatore": "nick.vincenttt",
+    "nino-aguilar": "faithwithnino",
+    # @dresdistrict was his personal account, archived 2026-08-31 when the two
+    # were separated; Launchpoint pays @morrismotivatesyou.
+    "noah-andre-terry": "morrismotivatesyou",
+    "richky-lim": "lockedinwithrichky",
+    "roman-marron": "rodoeswork",
+    "sarah-jiang": "copingwitharah",
+    "tatiana-arreola": "tatianaluvsjesus3",
+    "vincent-lei": "lockedinwvinny",
+    "vinh-vu": "lockedin.lin",
+    # Legacy single-word names (coaching-* channels, pre-2026-08-26 history).
     "amrin": "amrinrants",
     "ann": "ann.isbuilding",
     "anna": "floyaps_",
@@ -633,6 +681,25 @@ def cmd_pull(once: bool) -> None:
 
 # --- enrich (ported from discord-crm's enrich_discord_crm.py) ---------------
 
+def _name_needles(derived: str) -> tuple[str, ...]:
+    """Substrings to look for in a Discord username, most specific first.
+
+    ``richky-lim`` yields ``("richky-lim", "richky", "lim")``: nobody's handle
+    contains the hyphenated full name, so a channel renamed to the
+    ``<emoji><first>-<last>`` convention would match nothing on the full string
+    alone and fall through to the volume tiebreaker — which is the coach in any
+    channel where the creator is quieter than their coach. Tokens under three
+    characters are dropped as too loose to identify anyone.
+    """
+    parts = [derived] + [t for t in derived.split("-") if len(t) >= 3]
+    seen, needles = set(), []
+    for part in parts:
+        if part and part not in seen:
+            seen.add(part)
+            needles.append(part)
+    return tuple(needles)
+
+
 def _identify_creator(channel_name: str, authors: list[dict], exclude_ids: set[int]):
     """The discord_user_id of the channel's creator, or None.
 
@@ -647,10 +714,17 @@ def _identify_creator(channel_name: str, authors: list[dict], exclude_ids: set[i
     ]
     if not humans:
         return None
-    named = [
-        a for a in humans
-        if derived and any(derived in (a.get(k) or "").lower() for k in ("username", "global_name"))
-    ]
+    # First needle that matches anyone wins. Scoped to one channel's authors,
+    # so a first name is safe here even though it is ambiguous across the guild
+    # (two Annas never post in each other's channels).
+    named: list[dict] = []
+    for needle in _name_needles(derived):
+        named = [
+            a for a in humans
+            if any(needle in (a.get(k) or "").lower() for k in ("username", "global_name"))
+        ]
+        if named:
+            break
     pool = named if named else humans
     return max(pool, key=lambda a: a["count"])["author_id"]
 

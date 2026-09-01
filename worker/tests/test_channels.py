@@ -18,8 +18,12 @@ for var, dummy in {
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from discord_pull_worker import (  # noqa: E402
+    VERIFIED_HANDLES,
+    _identify_creator,
+    _name_needles,
     classify_creator_channels,
     derive_creator_name,
+    match_roster,
     split_track_channel,
 )
 
@@ -189,6 +193,62 @@ class DeriveCreatorName(unittest.TestCase):
 
     def test_plain_names_pass_through(self):
         self.assertEqual(derive_creator_name("aidan-melograna"), "aidan-melograna")
+
+
+class FullNameConvention(unittest.TestCase):
+    """2026-08-26: ``<emoji><first>-<last>``, verbatim from Launchpoint.
+
+    The rename exists to separate people a first name cannot: two Annas, two
+    Madisons, three Jacobs. Every lookup keyed on the derived name has to keep
+    working on the full form.
+    """
+
+    def test_full_names_parse_like_first_names(self):
+        self.assertEqual(
+            split_track_channel("🤍anna-lyashenko"),
+            ("Female General Self-Improvement", "anna-lyashenko"),
+        )
+        self.assertEqual(derive_creator_name("✝️jas-alcantara"), "jas-alcantara")
+        self.assertEqual(derive_creator_name("🌱noah-andre-terry"), "noah-andre-terry")
+
+    def test_same_first_name_resolves_to_different_creators(self):
+        # The whole point of the rename: 🤍anna vs 🤍anna🌸 used to differ only
+        # by a decorative emoji, and 🌱jacob vs 🌱jake by a nickname.
+        roster = {
+            "floyaps_": "id-florek",
+            "annalockedinn": "id-lyashenko",
+            "aheadwithjacob": "id-kebede",
+            "jakelocks.in": "id-kyle",
+        }
+        self.assertEqual(match_roster("anna-florek", roster), "id-florek")
+        self.assertEqual(match_roster("anna-lyashenko", roster), "id-lyashenko")
+        self.assertEqual(match_roster("jacob-kebede", roster), "id-kebede")
+        self.assertEqual(match_roster("jacob-kyle", roster), "id-kyle")
+
+    def test_every_renamed_channel_has_a_verified_handle(self):
+        # A missing entry does not break an existing link (DB links win in
+        # cmd_discover) but it does silently stop re-linking, so pin the set.
+        for name in ("jas-alcantara", "anna-florek", "anna-lyashenko",
+                     "madison-moon", "madison-pier", "jacob-kebede",
+                     "jacob-kyle", "noah-andre-terry", "ben-uncanin",
+                     "daeglan-oshea"):
+            self.assertIn(name, VERIFIED_HANDLES, name)
+
+    def test_needles_fall_back_to_name_tokens(self):
+        # No Discord username contains "richky-lim", so identification has to
+        # try the tokens or it drops to the volume tiebreaker (i.e. the coach).
+        self.assertEqual(_name_needles("richky-lim"), ("richky-lim", "richky", "lim"))
+        self.assertEqual(_name_needles("jas"), ("jas",))
+        self.assertEqual(_name_needles("ben-u"), ("ben-u", "ben"))
+
+    def test_creator_beats_a_louder_coach_after_the_rename(self):
+        authors = [
+            {"author_id": 1, "username": "coachwill", "global_name": "Will",
+             "is_bot": False, "webhook_id": None, "count": 400},
+            {"author_id": 2, "username": "richkylim", "global_name": "Richky",
+             "is_bot": False, "webhook_id": None, "count": 12},
+        ]
+        self.assertEqual(_identify_creator("🌱richky-lim", authors, set()), 2)
 
 
 if __name__ == "__main__":
