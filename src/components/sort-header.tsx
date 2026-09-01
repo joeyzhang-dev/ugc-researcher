@@ -62,6 +62,37 @@ export function SortHeader<K extends string>({
   as?: "th" | "div";
 }) {
   const nextDir: SortDir = active ? (dir === "asc" ? "desc" : "asc") : firstDir;
+  // In a right-aligned column the arrow goes BEFORE the label: with it after,
+  // the arrow sat flush with the numbers below and pushed the letters left of
+  // them. The label's edge, not the arrow's, is what has to line up.
+  const arrowFirst = /\btext-right\b/.test(className);
+  const arrow = active ? (
+    <svg
+      aria-hidden
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      className="shrink-0"
+    >
+      <path d={dir === "asc" ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
+    </svg>
+  ) : (
+    <svg
+      aria-hidden
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      className="shrink-0 text-neutral-300 opacity-0 transition-opacity group-hover:opacity-100"
+    >
+      <path d="m8 9 4-4 4 4M8 15l4 4 4-4" />
+    </svg>
+  );
   return (
     <Tag
       className={`${th} ${className}`}
@@ -77,34 +108,9 @@ export function SortHeader<K extends string>({
           active ? "font-semibold text-neutral-900" : "hover:text-neutral-700"
         }`}
       >
+        {arrowFirst && arrow}
         {label}
-        {active ? (
-          <svg
-            aria-hidden
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            className="shrink-0"
-          >
-            <path d={dir === "asc" ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"} />
-          </svg>
-        ) : (
-          <svg
-            aria-hidden
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            className="shrink-0 text-neutral-300 opacity-0 transition-opacity group-hover:opacity-100"
-          >
-            <path d="m8 9 4-4 4 4M8 15l4 4 4-4" />
-          </svg>
-        )}
+        {!arrowFirst && arrow}
       </Link>
     </Tag>
   );
