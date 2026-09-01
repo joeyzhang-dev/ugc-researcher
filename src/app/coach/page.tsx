@@ -136,7 +136,7 @@ export default async function CoachPage({
               tone={cpmTone}
             />
             <KpiCard
-              label="CPM change · lower is better"
+              label="CPM change"
               value={d == null ? "—" : Math.abs(d.usd) < 0.005 ? "no change" : signedUsd(d.usd)}
               sub={d == null ? "" : Math.abs(d.usd) < 0.005 ? dLabel : `${signedPct(d.pct)} ${dLabel}`}
               icon="trend"
