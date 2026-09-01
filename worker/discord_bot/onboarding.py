@@ -271,6 +271,7 @@ def build_onboarding_checklist_message(links: WelcomeLinks) -> str:
         f"- **start warmup process:** <#{links.warmup}>\n"
         "    + send screenshots of time management as proof\n"
         f"- **<#{links.setup_ig_dms}> automation:** with your creator link\n"
+        f"- **get folk access:** <#{links.folk_access}>\n"
         "- **start filming scripts:** we want to hit the ground running with posts\n\n"
         "## *Other Important Information*\n"
         f"- Demos: <#{links.demos}> & <#{links.demo_maker}> or create your own in Folk\n"

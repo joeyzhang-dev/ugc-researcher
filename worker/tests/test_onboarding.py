@@ -76,8 +76,8 @@ class BuildWelcomeMessage(unittest.TestCase):
         from discord_bot.onboarding import build_onboarding_checklist_message
 
         msg = build_onboarding_checklist_message(self._links())
-        # Eight distinct channels, every one as <#id>.
-        self.assertEqual(msg.count("<#"), 8)
+        # Nine distinct channels, every one as <#id>.
+        self.assertEqual(msg.count("<#"), 9)
         self.assertNotIn("#\u30fb", msg)  # no literal "#emoji・name" text
         self.assertIn("## today", msg)
         self.assertIn("Payouts:", msg)
