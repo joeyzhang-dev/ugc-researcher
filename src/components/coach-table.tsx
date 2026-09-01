@@ -87,9 +87,16 @@ export function CoachTable({ rows }: { rows: PerformanceRowData[] }) {
               <div key={key} className={`${th} !px-0 ${align}`}>
                 <button
                   type="button"
-                  onClick={() => toggle(key, firstDir)}
+                  // Blur on click: a mouse click leaves the button focused
+                  // and some browsers draw the focus outline for it — the
+                  // border flash on every sort. Keyboard focus keeps a ring
+                  // via focus-visible.
+                  onClick={(e) => {
+                    toggle(key, firstDir);
+                    e.currentTarget.blur();
+                  }}
                   title={`Sort by ${label.toLowerCase()}`}
-                  className={`group inline-flex items-center gap-1 transition-colors ${
+                  className={`group inline-flex items-center gap-1 rounded-sm outline-none transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
                     active ? "font-semibold text-neutral-900" : "hover:text-neutral-700"
                   }`}
                 >
