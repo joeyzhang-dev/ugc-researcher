@@ -132,6 +132,34 @@ def sort_niche_categories(categories: Sequence, excluded_ids: frozenset[int] = f
     return select_niche_categories(categories, excluded_ids)[:MAX_CHOICES]
 
 
+def build_track_choices(
+    entries: Sequence[niches.Niche], current: str, max_choices: int = MAX_CHOICES
+) -> list[app_commands.Choice[str]]:
+    """Track autocomplete choices: filtered niches plus the legacy escape
+    hatch, which must never be the choice a cap silently deletes.
+
+    ``legacy`` is the only way to onboard a creator outside the tracked
+    vocabulary, so its slot is reserved BEFORE the niche list is capped, not
+    appended after -- appending after a plain ``choices[:max_choices]`` slice
+    is exactly the bug: once active niches alone reach Discord's 25-choice
+    per-option ceiling, `legacy` sits past index 24 and silently vanishes
+    from the picker. Reserving the slot first means it is always present and
+    the total is always <= max_choices, however many niches /settings grows
+    the roster to.
+    """
+    needle = (current or "").strip().lower()
+    if needle:
+        entries = [n for n in entries if needle in n.name.lower()]
+    choices = [
+        app_commands.Choice(name=f"{n.emoji or ''} {n.name}".strip()[:100], value=n.name)
+        for n in entries
+    ]
+    legacy_choice = app_commands.Choice(
+        name="coaching- (legacy, niche set later)", value="legacy"
+    )
+    return choices[: max(max_choices - 1, 0)] + [legacy_choice]
+
+
 async def fetch_niche_categories(client, guild_id: int, excluded_ids: frozenset[int] = frozenset()) -> list:
     """Fetch the guild's creator-channel categories over HTTP — setup_hook runs
     before the gateway connects, so the channel cache is empty."""
@@ -399,17 +427,7 @@ def register_commands(
         # registered with Discord once at startup, so a niche added in
         # /settings would need a bot restart to appear. This does not.
         entries = await asyncio.to_thread(niches.active_niches)
-        needle = (current or "").strip().lower()
-        if needle:
-            entries = [n for n in entries if needle in n.name.lower()]
-        choices = [
-            app_commands.Choice(name=f"{n.emoji or ''} {n.name}".strip()[:100], value=n.name)
-            for n in entries
-        ]
-        choices.append(
-            app_commands.Choice(name="coaching- (legacy, niche set later)", value="legacy")
-        )
-        return choices[:MAX_CHOICES]
+        return build_track_choices(entries, current, MAX_CHOICES)
 
     # ---- /offboard ----------------------------------------------------
 
