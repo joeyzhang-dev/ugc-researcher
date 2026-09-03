@@ -41,13 +41,20 @@ export async function loadNiches(client: SupabaseClient): Promise<Niche[]> {
   }));
 }
 
-export function nicheEmojiMap(niches: Niche[]): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const n of niches) if (n.emoji) map.set(n.name, n.emoji);
-  return map;
+/**
+ * `name -> emoji`, for the pages that render niche pills.
+ *
+ * A plain record rather than a Map because half the pills live in client
+ * components (`scripts-explorer`, `creator-picker`), and a server component
+ * hands this across the boundary as a prop.
+ */
+export function nicheEmojis(niches: Niche[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const n of niches) if (n.emoji) out[n.name] = n.emoji;
+  return out;
 }
 
-export function nicheLabel(name: string, emojis: Map<string, string>): string {
-  const emoji = emojis.get(name);
+export function nicheLabel(name: string, emojis: Record<string, string>): string {
+  const emoji = emojis[name];
   return emoji ? `${emoji} ${name}` : name;
 }

@@ -1,26 +1,44 @@
 """Channel naming for /onboard under the live convention."""
-import os
-import sys
 import unittest
-from pathlib import Path
 
-for var, dummy in {
-    "NEXT_PUBLIC_SUPABASE_URL": "http://localhost",
-    "SUPABASE_SERVICE_ROLE_KEY": "test",
-    "DISCORD_BOT_TOKEN": "test",
-    "DISCORD_GUILD_ID": "1",
-}.items():
-    os.environ.setdefault(var, dummy)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Env vars, sys.path and a hermetic niche vocabulary. Import it before any
+# worker module: it is what keeps the suite off the network.
+import nichefixture  # noqa: F401
 
 from discord_bot.onboarding import build_channel_name  # noqa: E402
 
-import niches  # noqa: E402
+from nichefixture import row, use_niches  # noqa: E402
+
+CROSS_VS = "\u271d\ufe0f"
 
 
 class BuildChannelName(unittest.TestCase):
+    """The prefix comes from research_niches, and these tests can tell.
+
+    Every niche name here that the fixture also seeds into
+    ``niches.FALLBACK_NICHES`` would answer identically if ``build_channel_name``
+    stopped reading the table altogether -- which is how this class used to pass
+    while silently making a live Supabase call. ``Fixture Fitness`` exists to
+    close that: it has no seed entry, so only a real read produces its emoji.
+    """
+
+    def test_the_prefix_comes_from_the_table_not_the_seed(self):
+        self.assertEqual(
+            build_channel_name("Malik Jones", niche="Fixture Fitness"), "💪malik-jones"
+        )
+
+    def test_a_seeded_niche_missing_from_the_table_gets_no_emoji(self):
+        # The other direction: a niche that IS in FALLBACK_NICHES but not in
+        # the vocabulary must fall back to coaching-, or the code is answering
+        # from the hardcoded seed rather than the table.
+        with use_niches([row("Fixture Fitness", "💪")]):
+            self.assertEqual(
+                build_channel_name("Sarah", niche="Female General Self-Improvement"),
+                "coaching-sarah",
+            )
+
     def test_track_niche_sets_the_emoji_prefix(self):
-        self.assertEqual(build_channel_name("Nino", niche="Christian"), "✝️nino")
+        self.assertEqual(build_channel_name("Nino", niche="Christian"), f"{CROSS_VS}nino")
         self.assertEqual(
             build_channel_name("Sarah", niche="Female General Self-Improvement"),
             "🤍sarah",
@@ -38,21 +56,23 @@ class BuildChannelName(unittest.TestCase):
 
 
 class ChannelNameFollowsTheTable(unittest.TestCase):
-    def tearDown(self):
-        niches.configure(fetch=None, clock=None)
-        niches.reset_cache()
+    """Adding a niche in /settings must name channels without a code change."""
 
     def test_a_new_niche_names_the_channel_with_its_emoji(self):
-        niches.reset_cache()
-        niches.configure(fetch=lambda: [
-            {"name": "Fitness", "emoji": "💪", "discord_role_id": None, "is_active": True},
-        ], clock=None)
-        self.assertEqual(build_channel_name("Malik Jones", niche="Fitness"), "💪malik-jones")
+        with use_niches([row("Knitting", "🧶")]):
+            self.assertEqual(build_channel_name("Ann Lee", niche="Knitting"), "🧶ann-lee")
+
+    def test_an_archived_niche_leaves_the_naming_picker(self):
+        # active_niches() drives /onboard; track_bases() (classification) still
+        # reads every row, which test_niches pins separately.
+        with use_niches([row("Knitting", "🧶", active=False)]):
+            self.assertEqual(build_channel_name("Ann Lee", niche="Knitting"), "coaching-ann-lee")
 
     def test_an_unknown_niche_falls_back_to_the_legacy_prefix(self):
-        niches.reset_cache()
-        niches.configure(fetch=lambda: [], clock=None)
-        self.assertEqual(build_channel_name("Malik Jones", niche="Nope"), "coaching-malik-jones")
+        with use_niches([row("Knitting", "🧶")]):
+            self.assertEqual(
+                build_channel_name("Malik Jones", niche="Nope"), "coaching-malik-jones"
+            )
 
 
 

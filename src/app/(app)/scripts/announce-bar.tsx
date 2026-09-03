@@ -13,9 +13,11 @@ import type { SendTarget } from "./send-bar";
  */
 export function AnnounceBar({
   targets,
+  nicheEmojis,
   onClose,
 }: {
   targets: SendTarget[];
+  nicheEmojis: Record<string, string>;
   onClose: () => void;
 }) {
   const [message, setMessage] = useState("");
@@ -100,6 +102,7 @@ export function AnnounceBar({
           <CreatorPicker
             targets={targets}
             picked={picked}
+            nicheEmojis={nicheEmojis}
             onToggleCreator={toggleCreator}
             onToggleNiche={toggleNiche}
           />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { nicheLabel } from "@/lib/niches";
 import { SEND_BLOCKER_LABEL, type SendTarget } from "@/lib/send-targets";
 
 const CHIP =
@@ -19,11 +20,15 @@ const CHIP =
 export function CreatorPicker({
   targets,
   picked,
+  nicheEmojis,
   onToggleCreator,
   onToggleNiche,
 }: {
   targets: SendTarget[];
   picked: Set<string>;
+  /** name -> emoji from research_niches, dealt by the server component. A
+   *  client component cannot call loadNiches itself. */
+  nicheEmojis: Record<string, string>;
   onToggleCreator: (id: string) => void;
   onToggleNiche: (members: SendTarget[]) => void;
 }) {
@@ -61,7 +66,7 @@ export function CreatorPicker({
                   : "bg-neutral-500/[0.06] text-neutral-700 ring-hairline hover:bg-neutral-500/[0.12]"
               } ${sendable.length === 0 ? "cursor-default opacity-40" : ""}`}
             >
-              {niche}
+              {nicheLabel(niche, nicheEmojis)}
               <span className={`ml-1.5 tabular-nums ${allIn ? "text-white/60" : "text-neutral-400"}`}>
                 {sendable.length}
               </span>

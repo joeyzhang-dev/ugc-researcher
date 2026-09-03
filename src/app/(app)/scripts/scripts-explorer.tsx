@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ResearchScoreChip } from "@/components/research-panel";
 import { Segmented, StatusBadge, table, tableWrap, td, th, trHover } from "@/components/ui";
 import { formatCompact, formatDateUTC, formatPercent } from "@/lib/format";
+import { nicheLabel } from "@/lib/niches";
 import { HoldRateChip } from "@/components/retention-view";
 import { weekKeyUTC, weekLabel } from "./cal";
 import { assignScriptNumbers } from "./doc";
@@ -168,6 +169,7 @@ export function ScriptsExplorer({
   totalScripts,
   hasAnyScripts,
   nicheColorIndex,
+  nicheEmojis,
   initialStatus,
   initialNiches,
   initialSents,
@@ -181,6 +183,10 @@ export function ScriptsExplorer({
   hasAnyScripts: boolean;
   /** Palette index per niche, dealt server-side from the full known-niche list. */
   nicheColorIndex: Record<string, number>;
+  /** name -> emoji from research_niches. Dealt server-side for the same
+   *  reason as the palette: this is a client component and cannot read the
+   *  table itself. A niche with no row renders bare, exactly as before. */
+  nicheEmojis: Record<string, string>;
   initialStatus: string;
   initialNiches: string[];
   initialSents: string[];
@@ -433,7 +439,7 @@ export function ScriptsExplorer({
                     dead ? "cursor-default opacity-40" : ""
                   }`}
                 >
-                  {n}
+                  {nicheLabel(n, nicheEmojis)}
                 </button>
               );
             })}
@@ -487,6 +493,7 @@ export function ScriptsExplorer({
             <ScriptsDocView
               rows={filtered}
               colorOf={colorOf}
+              nicheEmojis={nicheEmojis}
               knownNiches={Object.keys(nicheColorIndex).sort()}
               currentAppId={currentAppId}
               selectedIds={selectedIds}
@@ -526,7 +533,7 @@ export function ScriptsExplorer({
                       <span
                         className={`absolute left-2 top-2 max-w-[70%] truncate rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(r.niche).overlay}`}
                       >
-                        {r.niche}
+                        {nicheLabel(r.niche, nicheEmojis)}
                       </span>
                     )}
                   </span>
@@ -640,7 +647,9 @@ export function ScriptsExplorer({
                                           className="flex items-center gap-2 text-left text-[12px] font-medium text-neutral-500"
                                         >
                                           <Chevron open={groupOpen} small />
-                                          {group.niche === UNGROUPED ? "No niche" : group.niche}
+                                          {group.niche === UNGROUPED
+                                            ? "No niche"
+                                            : nicheLabel(group.niche, nicheEmojis)}
                                           <span className="tabular-nums text-neutral-400">
                                             {group.rows.length}
                                           </span>
@@ -669,7 +678,7 @@ export function ScriptsExplorer({
                                   <span
                                     className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(r.niche).tag}`}
                                   >
-                                    {r.niche}
+                                    {nicheLabel(r.niche, nicheEmojis)}
                                   </span>
                                 ) : (
                                   <span className="text-neutral-300">—</span>
@@ -739,13 +748,18 @@ export function ScriptsExplorer({
         <SendBar
           scriptIds={[...selectedIds]}
           targets={sendTargets}
+          nicheEmojis={nicheEmojis}
           onClear={() => setSelectedIds(new Set())}
         />
       )}
       {/* The script send bar wins the bottom slot — an active selection means
           a send is in progress, so the announcer waits its turn. */}
       {announceOpen && selectedIds.size === 0 && (
-        <AnnounceBar targets={sendTargets} onClose={() => setAnnounceOpen(false)} />
+        <AnnounceBar
+          targets={sendTargets}
+          nicheEmojis={nicheEmojis}
+          onClose={() => setAnnounceOpen(false)}
+        />
       )}
     </div>
   );

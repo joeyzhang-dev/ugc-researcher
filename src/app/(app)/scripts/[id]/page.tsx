@@ -24,6 +24,7 @@ import {
   inputClass, labelClass, secondaryButtonClass,
 } from "@/components/ui";
 import { formatCompact, formatDate } from "@/lib/format";
+import { loadNiches, nicheEmojis, nicheLabel } from "@/lib/niches";
 import { ResearchVideoPanel, type PanelSegment } from "@/components/research-panel";
 import { ResearchVideoTile } from "@/components/research-video-tile";
 import { NicheCombobox } from "@/components/niche-combobox";
@@ -93,6 +94,10 @@ export default async function ScriptDetailPage({
       ].filter((n): n is string => !!n)
     ),
   ].sort();
+
+  // The niche pill carries its track emoji, same as /discord and /scripts. A
+  // niche with no row in research_niches renders bare.
+  const nicheEmojiByName = nicheEmojis(await loadNiches(supabase));
 
   // Only the assigned creators' libraries are needed, but the whole library
   // per creator is required — lift is measured against their own baseline.
@@ -222,7 +227,7 @@ export default async function ScriptDetailPage({
         <StatusBadge status={script.status} />
         {script.niche && (
           <span className="rounded-md bg-violet-500/[0.1] px-1.5 py-0.5 text-[11px] font-medium text-violet-700 ring-1 ring-inset ring-violet-500/[0.2]">
-            {script.niche}
+            {nicheLabel(script.niche, nicheEmojiByName)}
           </span>
         )}
         <span>{apps.find((a: ResearchApp) => a.id === script.app_id)?.name ?? "No app"}</span>

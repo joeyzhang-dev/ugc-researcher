@@ -1,18 +1,10 @@
 """Finding the creator channel for /offboard across naming generations."""
 import asyncio
-import os
-import sys
 import unittest
-from pathlib import Path
 
-for var, dummy in {
-    "NEXT_PUBLIC_SUPABASE_URL": "http://localhost",
-    "SUPABASE_SERVICE_ROLE_KEY": "test",
-    "DISCORD_BOT_TOKEN": "test",
-    "DISCORD_GUILD_ID": "1",
-}.items():
-    os.environ.setdefault(var, dummy)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Env vars, sys.path and a hermetic niche vocabulary. Import it before any
+# worker module: it is what keeps the suite off the network.
+import nichefixture  # noqa: F401
 
 from discord_bot.command_ui import build_offboard_message_embed  # noqa: E402
 from discord_bot.offboarding import (  # noqa: E402

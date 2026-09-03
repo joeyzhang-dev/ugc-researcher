@@ -16,10 +16,12 @@ export type { SendTarget };
 export function SendBar({
   scriptIds,
   targets,
+  nicheEmojis,
   onClear,
 }: {
   scriptIds: string[];
   targets: SendTarget[];
+  nicheEmojis: Record<string, string>;
   onClear: () => void;
 }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -99,6 +101,7 @@ export function SendBar({
           <CreatorPicker
             targets={targets}
             picked={picked}
+            nicheEmojis={nicheEmojis}
             onToggleCreator={toggleCreator}
             onToggleNiche={toggleNiche}
           />

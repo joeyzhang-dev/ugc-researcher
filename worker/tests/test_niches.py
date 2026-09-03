@@ -2,11 +2,10 @@
 
 Run: python3 -m unittest discover worker/tests
 """
-import sys
 import unittest
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Env vars, sys.path and the shared hermetic vocabulary.
+import nichefixture  # noqa: F401
 
 import niches  # noqa: E402
 
@@ -26,6 +25,14 @@ def row(name, emoji=None, role=None, active=True):
     return {"name": name, "emoji": emoji, "discord_role_id": role, "is_active": active}
 
 
+# U+FE0F and U+200D as escapes: they are invisible in a source file, and the
+# rainbow flag below only tests base-length shadowing because it really is a
+# multi-codepoint sequence.
+CROSS = "\u271d"
+CROSS_VS = "\u271d\ufe0f"
+RAINBOW = "\U0001f3f3\ufe0f\u200d\U0001f308"
+
+
 class NicheCache(unittest.TestCase):
     def setUp(self):
         self.clock = FakeClock()
@@ -33,8 +40,12 @@ class NicheCache(unittest.TestCase):
         niches.reset_cache()
 
     def tearDown(self):
-        niches.configure(fetch=None, clock=None)
-        niches.reset_cache()
+        # The fixture, never the real reader: `niches` keeps its reader in a
+        # module global, so restoring fetch=None here re-arms a live HTTP read
+        # for every test module that runs after this one. This module is the
+        # one place that configures `niches` directly -- it is the unit under
+        # test -- and it still has to hand the fixture back.
+        nichefixture.install()
 
     def use(self, rows_or_error):
         def fetch():
@@ -45,21 +56,21 @@ class NicheCache(unittest.TestCase):
         niches.configure(fetch=fetch, clock=self.clock)
 
     def test_reads_once_inside_the_ttl(self):
-        self.use([row("Christian", "✝️")])
+        self.use([row("Christian", CROSS_VS)])
         niches.load_niches()
         self.clock.advance(niches.CACHE_TTL_SECONDS - 1)
         niches.load_niches()
         self.assertEqual(len(self.calls), 1)
 
     def test_refetches_after_the_ttl(self):
-        self.use([row("Christian", "✝️")])
+        self.use([row("Christian", CROSS_VS)])
         niches.load_niches()
         self.clock.advance(niches.CACHE_TTL_SECONDS + 1)
         niches.load_niches()
         self.assertEqual(len(self.calls), 2)
 
     def test_a_failed_read_keeps_the_last_good_list(self):
-        self.use([row("Christian", "✝️"), row("Hustle", "🌱")])
+        self.use([row("Christian", CROSS_VS), row("Hustle", "🌱")])
         good = niches.load_niches()
         self.assertEqual([n.name for n in good], ["Christian", "Hustle"])
 
@@ -69,7 +80,7 @@ class NicheCache(unittest.TestCase):
 
     def test_an_empty_read_keeps_the_last_good_list(self):
         # An empty vocabulary is a silent discovery stall, not a valid answer.
-        self.use([row("Christian", "✝️")])
+        self.use([row("Christian", CROSS_VS)])
         niches.load_niches()
         self.use([])
         self.clock.advance(niches.CACHE_TTL_SECONDS + 1)
@@ -93,17 +104,21 @@ class TrackBases(unittest.TestCase):
         niches.reset_cache()
 
     def tearDown(self):
-        niches.configure(fetch=None, clock=None)
-        niches.reset_cache()
+        # The fixture, never the real reader: `niches` keeps its reader in a
+        # module global, so restoring fetch=None here re-arms a live HTTP read
+        # for every test module that runs after this one. This module is the
+        # one place that configures `niches` directly -- it is the unit under
+        # test -- and it still has to hand the fixture back.
+        nichefixture.install()
 
     def use(self, rows):
         niches.configure(fetch=lambda: rows, clock=self.clock)
 
     def test_strips_variation_selectors_so_the_two_crosses_are_one_track(self):
-        self.assertEqual(niches.strip_emoji_base("✝️"), niches.strip_emoji_base("✝"))
+        self.assertEqual(niches.strip_emoji_base(CROSS_VS), niches.strip_emoji_base(CROSS))
 
     def test_longest_base_first_so_a_short_emoji_cannot_shadow_a_long_one(self):
-        self.use([row("Short", "🌱"), row("Long", "🏳️‍🌈")])
+        self.use([row("Short", "🌱"), row("Long", RAINBOW)])
         bases = [base for base, _ in niches.track_bases()]
         self.assertEqual(bases, sorted(bases, key=len, reverse=True))
 
@@ -113,7 +128,7 @@ class TrackBases(unittest.TestCase):
         self.assertEqual(niches.track_bases(), (("🌱", "Retired"),))
 
     def test_archived_niches_leave_the_picker(self):
-        self.use([row("Live", "✝️"), row("Retired", "🌱", active=False)])
+        self.use([row("Live", CROSS_VS), row("Retired", "🌱", active=False)])
         self.assertEqual([n.name for n in niches.active_niches()], ["Live"])
 
     def test_a_niche_without_an_emoji_is_not_a_track(self):
@@ -121,7 +136,7 @@ class TrackBases(unittest.TestCase):
         self.assertEqual(niches.track_bases(), ())
 
     def test_role_id_for_reads_the_record(self):
-        self.use([row("Christian", "✝️", role=123)])
+        self.use([row("Christian", CROSS_VS, role=123)])
         self.assertEqual(niches.role_id_for("Christian"), 123)
         self.assertIsNone(niches.role_id_for("Nope"))
         self.assertIsNone(niches.role_id_for(None))

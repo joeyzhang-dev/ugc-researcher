@@ -1,10 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { discordConfigured, listGuildChannels, renameChannel } from "@/lib/discord";
-import { planNicheChannelRenames } from "@/lib/niche-channel-rename";
+import { normalizeNicheEmoji, planNicheChannelRenames } from "@/lib/niche-channel-rename";
 
 /** Pages that render a niche pill or the manager itself. */
 const NICHE_PATHS = ["/settings", "/discord", "/scripts"];
@@ -12,11 +13,16 @@ const revalidateNichePaths = () => NICHE_PATHS.forEach((p) => revalidatePath(p))
 
 const clean = (v: FormDataEntryValue | null) => String(v ?? "").trim();
 
+/** An emoji with every space removed, not merely trimmed — see
+ *  normalizeNicheEmoji: interior whitespace is what lets a row evade the
+ *  emoji-base unique index while colliding in track_bases(). */
+const cleanEmoji = (v: FormDataEntryValue | null) => normalizeNicheEmoji(clean(v));
+
 export async function createNiche(formData: FormData) {
   await requireAdmin();
   const name = clean(formData.get("name"));
   if (!name) return;
-  const emoji = clean(formData.get("emoji")) || null;
+  const emoji = cleanEmoji(formData.get("emoji")) || null;
   const roleId = clean(formData.get("discordRoleId")) || null;
 
   const { error } = await createAdminClient().from("research_niches").insert({
@@ -51,7 +57,7 @@ export async function updateNiche(formData: FormData) {
   const { error } = await admin
     .from("research_niches")
     .update({
-      emoji: clean(formData.get("emoji")) || null,
+      emoji: cleanEmoji(formData.get("emoji")) || null,
       discord_role_id: clean(formData.get("discordRoleId")) || null,
     })
     .eq("id", id);
@@ -74,17 +80,44 @@ export async function setNicheActive(formData: FormData) {
 }
 
 /**
- * Rename every live channel on a niche's old emoji to its new one.
+ * Step one of a rename: put the old and new emoji in the URL so /settings can
+ * render the full old→new list.
  *
- * Explicit and confirmed, never a side effect of editing the emoji: it is
- * visible to every creator in those channels, and Discord's 2-updates-per-
+ * Two steps rather than one because the spec's gate is a *preview*, not a
+ * count. A count says how many creators will see their channel renamed; it
+ * does not say which channels, and Discord's 2-updates-per-10-minutes-per-
+ * channel limit makes an undo slow enough that "which" has to be answered
+ * before the write, not after.
+ */
+export async function previewNicheChannelRenames(formData: FormData) {
+  await requireAdmin();
+  const fromEmoji = clean(formData.get("fromEmoji"));
+  const toEmoji = cleanEmoji(formData.get("toEmoji"));
+  // redirect() throws to unwind, so it must never sit inside a try block.
+  if (!fromEmoji || !toEmoji) redirect("/settings#niches");
+  redirect(
+    `/settings?renameFrom=${encodeURIComponent(fromEmoji)}` +
+      `&renameTo=${encodeURIComponent(toEmoji)}#niches`
+  );
+}
+
+/**
+ * Rename every live channel on one emoji to another.
+ *
+ * Explicit and confirmed, never a side effect of editing a niche's emoji: it
+ * is visible to every creator in those channels, and Discord's 2-updates-per-
  * 10-minutes-per-channel limit makes a bulk rename slow and a repeat rename a
  * stall. Failures are reported per channel and never retried in a loop.
+ *
+ * The source emoji comes from the live channel list rather than from a niche
+ * row, which is what makes this reachable after the niche's emoji has already
+ * been changed — the case where the channels are stranded and the rename is
+ * the only way back.
  */
 export async function renameNicheChannels(formData: FormData) {
   await requireAdmin();
   const fromEmoji = clean(formData.get("fromEmoji"));
-  const toEmoji = clean(formData.get("toEmoji"));
+  const toEmoji = cleanEmoji(formData.get("toEmoji"));
   const guildId = process.env.DISCORD_GUILD_ID;
   if (!fromEmoji || !toEmoji || !guildId || !discordConfigured()) return;
 
@@ -99,4 +132,7 @@ export async function renameNicheChannels(formData: FormData) {
   }
   if (failed.length) throw new Error(`renamed ${plan.length - failed.length}/${plan.length}; failed: ${failed.join("; ")}`);
   revalidateNichePaths();
+  // Drop the preview params, or the confirmed plan stays on screen offering
+  // to redo a rename Discord will now rate-limit.
+  redirect("/settings#niches");
 }

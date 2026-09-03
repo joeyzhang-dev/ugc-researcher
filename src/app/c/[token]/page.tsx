@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { inspoStoragePath } from "@/lib/inspo-media";
+import { loadNiches, nicheEmojis, nicheLabel } from "@/lib/niches";
 import { NICHE_PALETTE } from "@/app/(app)/scripts/cal";
 import { assignScriptNumbers } from "@/app/(app)/scripts/doc";
 import { CopyButton } from "@/app/c/copy-button";
@@ -126,13 +127,17 @@ async function load(token: string) {
     displayName: creator.display_name,
     weeks: groupScriptsByWeek(scripts),
     videos,
+    // research_niches is staff-read under RLS, but this page already renders
+    // with the service-role client (the share token is the credential), so
+    // the pills resolve here exactly as they do on /scripts.
+    nicheEmojis: nicheEmojis(await loadNiches(db)),
   };
 }
 
 export default async function CreatorPortalPage({ params }: Props) {
   const data = await load((await params).token);
   if (!data) notFound();
-  const { handle, weeks, videos } = data;
+  const { handle, weeks, videos, nicheEmojis: nicheEmojiByName } = data;
   const total = weeks.reduce((n, w) => n + w.scripts.length, 0);
 
   // Same positional color dealing as the scripts pages: stable per page,
@@ -171,7 +176,13 @@ export default async function CreatorPortalPage({ params }: Props) {
 
         <div className="space-y-6">
           {weeks.map((week) => (
-            <WeekSection key={week.key} week={week} videos={videos} nicheColor={nicheColor} />
+            <WeekSection
+            key={week.key}
+            week={week}
+            videos={videos}
+            nicheColor={nicheColor}
+            nicheEmojis={nicheEmojiByName}
+          />
           ))}
         </div>
 
@@ -187,10 +198,12 @@ function WeekSection({
   week,
   videos,
   nicheColor,
+  nicheEmojis,
 }: {
   week: PortalWeek;
   videos: Map<string, string>;
   nicheColor: (niche: string | null) => (typeof NICHE_PALETTE)[number] | null;
+  nicheEmojis: Record<string, string>;
 }) {
   return (
     <section>
@@ -208,6 +221,7 @@ function WeekSection({
             index={i}
             videoUrl={s.inspoUrl ? videos.get(s.inspoUrl) ?? null : null}
             color={nicheColor(s.niche)}
+            nicheEmojis={nicheEmojis}
           />
         ))}
       </div>
@@ -239,11 +253,13 @@ function ScriptCard({
   index,
   videoUrl,
   color,
+  nicheEmojis,
 }: {
   script: PortalScript;
   index: number;
   videoUrl: string | null;
   color: (typeof NICHE_PALETTE)[number] | null;
+  nicheEmojis: Record<string, string>;
 }) {
   const copyText = [s.hook, s.body].filter(Boolean).join("\n\n");
   return (
@@ -255,7 +271,7 @@ function ScriptCard({
           </span>
           {s.niche && color && (
             <span className={`truncate rounded-full px-2 py-0.5 text-[10px] font-medium ${color.row}`}>
-              {s.niche}
+              {nicheLabel(s.niche, nicheEmojis)}
             </span>
           )}
         </span>

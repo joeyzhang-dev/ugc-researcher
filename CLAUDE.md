@@ -585,13 +585,26 @@ fallback chain).
   a new creator, but `track_bases()` reads every row, archived included —
   otherwise the existing channels on that emoji would go unclassifiable the
   moment someone archived it.
-- **Emoji uniqueness is on the variation-selector-stripped base, in both SQL
-  and Python.** `niche_emoji_base()` (the migration) and `strip_emoji_base()`
-  (`worker/niches.py`) both drop U+FE0F and U+200D before comparing, so `✝️`
-  and `✝` collide as one track in the unique index and in
-  `discord_pull_worker.py`'s `split_track_channel` alike. Letting the two
-  diverge would make channel discovery non-deterministic with nothing
-  reporting an error.
+- **Emoji uniqueness is on the variation-selector-stripped base, and there
+  are THREE implementations of that rule.** `niche_emoji_base()` (the
+  migration), `strip_emoji_base()` (`worker/niches.py`) and `emojiBase()`
+  (`src/lib/niche-channel-rename.ts`) all drop U+FE0F and U+200D before
+  comparing, so a cross with the U+FE0F variation selector and one without
+  it collide as one track in the unique index, in
+  `discord_pull_worker.py`'s `split_track_channel`, and in the channel-rename
+  plan alike. Letting them diverge would make channel discovery
+  non-deterministic with nothing reporting an error. The SQL one is the odd
+  member: it does not trim whitespace, while the other two do — so
+  `createNiche`/`updateNiche` run the emoji through `normalizeNicheEmoji()`
+  (all whitespace removed, not merely trimmed) and a padded emoji can never
+  be stored.
+- **Pills render through `nicheLabel`** (`src/lib/niches.ts`) on /discord,
+  /discord/[id], /scripts (table, gallery, Doc, filter row and the send /
+  announce pickers) and the public creator portal. The emoji map is a plain
+  record dealt by the server component, because half those pills live in
+  client components that cannot call `loadNiches` themselves; the portal can,
+  since it already renders with the service-role client. A niche with no row
+  renders bare.
 - **A rename cascades through `rename_niche()`.** PostgREST cannot span
   `research_scripts`, `research_app_creators`, `research_discord_channels`
   and `research_niches` in one transaction, so the function does — a rename
@@ -600,8 +613,17 @@ fallback chain).
 - **Channel renames are previewed and confirmed, never automatic.** Discord
   rate-limits channel updates to 2 per 10 minutes per channel, and a rename
   is visible to every creator in the channel, so `planNicheChannelRenames`
-  (`src/lib/niche-channel-rename.ts`) only produces the plan — a human
-  confirms it in /settings.
+  (`src/lib/niche-channel-rename.ts`) only produces the plan — /settings
+  renders every old→new name and a human confirms it.
+- **The rename controls are keyed on live Discord, never on the niche row.**
+  `liveEmojiBases()` groups the guild's creator channels by their leading
+  emoji and marks the niche claiming each one, so an emoji that no niche
+  claims gets its own row and a warning. That case is exactly what editing a
+  niche's emoji creates, and it is otherwise silent: `track_bases()` stops
+  mapping the old base, `split_track_channel` returns None, and `discover`
+  (upsert-only) skips those channels without raising. A control keyed on the
+  niche's *stored* emoji disappeared at precisely that moment, leaving no way
+  back short of remembering the old emoji.
 
 ## Scheduled work
 
@@ -657,8 +679,16 @@ Discord: `DISCORD_BOT_TOKEN` (the mach ugc bot) + `DISCORD_GUILD_ID`; the
 ## Verify
 
 `npm run typecheck` · `npm test` ·
-`python3 -m py_compile worker/transcribe_worker.py worker/discord_pull_worker.py` ·
+`python3 -m unittest discover worker/tests` ·
+`python3 -m py_compile worker/transcribe_worker.py worker/discord_pull_worker.py worker/niches.py` ·
 `worker/.venv/bin/python -m py_compile worker/discord_bot/*.py worker/run_discord_bot.py`
+
+The worker suite is hermetic and must stay that way — `worker/tests/nichefixture.py`
+installs the niche vocabulary process-wide and replaces `niches._default_fetch`
+with a guard, because a test that reaches the real reader hits production and
+still passes (the seed answers the same three tracks). Check it by pointing
+`NEXT_PUBLIC_SUPABASE_URL` at an unroutable address: the run must stay under a
+second.
 
 Hosted image: `docker build -f worker/Dockerfile -t bludgc-workers:test .` then
 `docker run --rm -e NEXT_PUBLIC_SUPABASE_URL=x -e SUPABASE_SERVICE_ROLE_KEY=x

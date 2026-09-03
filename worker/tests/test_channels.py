@@ -2,20 +2,11 @@
 
 Run: python3 -m unittest discover worker/tests
 """
-import os
-import sys
 import unittest
-from pathlib import Path
 
-# The worker module reads its env at import time; tests need none of it live.
-for var, dummy in {
-    "NEXT_PUBLIC_SUPABASE_URL": "http://localhost",
-    "SUPABASE_SERVICE_ROLE_KEY": "test",
-    "DISCORD_BOT_TOKEN": "test",
-    "DISCORD_GUILD_ID": "1",
-}.items():
-    os.environ.setdefault(var, dummy)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Env vars, sys.path and a hermetic niche vocabulary. Import it before any
+# worker module: it is what keeps the suite off the network.
+import nichefixture  # noqa: F401
 
 from discord_pull_worker import (  # noqa: E402
     VERIFIED_HANDLES,
@@ -27,24 +18,16 @@ from discord_pull_worker import (  # noqa: E402
     split_track_channel,
 )
 
-import niches  # noqa: E402
+from nichefixture import row, use_niches  # noqa: E402
 
+CROSS = "\u271d"
+CROSS_VS = "\u271d\ufe0f"
 
-LIVE_TRACKS = [
-    {"name": "Christian", "emoji": "✝️", "discord_role_id": None, "is_active": True},
-    {"name": "Female General Self-Improvement", "emoji": "🤍", "discord_role_id": None, "is_active": True},
-    {"name": "General Motivation / Hustle", "emoji": "🌱", "discord_role_id": None, "is_active": True},
-]
-
-
-def setUpModule():
-    niches.reset_cache()
-    niches.configure(fetch=lambda: list(LIVE_TRACKS), clock=None)
-
-
-def tearDownModule():
-    niches.configure(fetch=None, clock=None)
-    niches.reset_cache()
+# The vocabulary comes from nichefixture, installed process-wide on import.
+# This module deliberately does NOT configure or restore `niches` itself: the
+# reader is a module global, so a tearDown here changes what every later test
+# module sees, and restoring the real reader is what used to leave
+# test_onboarding making a live Supabase call.
 
 
 def text_channel(cid, name, parent_id=None):
@@ -59,7 +42,7 @@ class SplitTrackChannel(unittest.TestCase):
     """The one parser behind classification, naming and renames."""
 
     def test_emoji_only_names(self):
-        self.assertEqual(split_track_channel("✝️jas"), ("Christian", "jas"))
+        self.assertEqual(split_track_channel(f"{CROSS_VS}jas"), ("Christian", "jas"))
         self.assertEqual(
             split_track_channel("🤍emma"), ("Female General Self-Improvement", "emma")
         )
@@ -69,11 +52,11 @@ class SplitTrackChannel(unittest.TestCase):
         )
 
     def test_variation_selector_is_optional(self):
-        # ✝ without FE0F is the same track as ✝️ with it.
-        self.assertEqual(split_track_channel("✝jas"), ("Christian", "jas"))
+        # The cross without U+FE0F is the same track as the cross with it.
+        self.assertEqual(split_track_channel(f"{CROSS}jas"), ("Christian", "jas"))
 
     def test_legacy_niche_word_is_dropped(self):
-        self.assertEqual(split_track_channel("✝️christian-jas"), ("Christian", "jas"))
+        self.assertEqual(split_track_channel(f"{CROSS_VS}christian-jas"), ("Christian", "jas"))
         self.assertEqual(
             split_track_channel("🤍improvement-anna🌸"),
             ("Female General Self-Improvement", "anna🌸"),
@@ -85,13 +68,13 @@ class SplitTrackChannel(unittest.TestCase):
 
     def test_creator_actually_named_after_a_track_word(self):
         # No dash after the word means the word IS the creator's name.
-        self.assertEqual(split_track_channel("✝️christian"), ("Christian", "christian"))
+        self.assertEqual(split_track_channel(f"{CROSS_VS}christian"), ("Christian", "christian"))
 
     def test_non_track_names_return_none(self):
         self.assertIsNone(split_track_channel("coaching-ann"))
         self.assertIsNone(split_track_channel("🦄kim-lee"))
         self.assertIsNone(split_track_channel("folk-branding"))
-        self.assertIsNone(split_track_channel("✝️"))  # bare emoji, no name
+        self.assertIsNone(split_track_channel(CROSS_VS))  # bare emoji, no name
 
     def test_decorative_separator_after_the_emoji_is_not_a_creator_channel(self):
         # Server furniture puts punctuation after its emoji (🌱・guide);
@@ -105,7 +88,7 @@ class EmojiOnlyConvention(unittest.TestCase):
 
     def test_track_emoji_alone_carries_the_niche(self):
         rows = self.classify(
-            text_channel(1, "✝️jas"),
+            text_channel(1, f"{CROSS_VS}jas"),
             text_channel(2, "🤍emma"),
             text_channel(3, "🌱cole"),
         )
@@ -128,7 +111,7 @@ class EmojiOnlyConvention(unittest.TestCase):
 
     def test_legacy_niche_word_still_parses_during_the_rename(self):
         rows = self.classify(
-            text_channel(1, "✝️christian-jas"),
+            text_channel(1, f"{CROSS_VS}christian-jas"),
             text_channel(2, "🤍improvement-anna🌸"),
             text_channel(3, "🌱improvement-terai"),
         )
@@ -160,14 +143,14 @@ class EmojiOnlyConvention(unittest.TestCase):
         rows = self.classify(
             text_channel(1, "📃・creator-brief"),
             text_channel(2, "🙏-double-dip-method"),
-            text_channel(3, "🗣️・app-feedback"),
+            text_channel(3, "\U0001f5e3\ufe0f\u30fbapp-feedback"),
         )
         self.assertEqual(rows, [])
 
     def test_coach_team_category_rides_along(self):
         rows = self.classify(
             category(9, "Coach: Will's Team"),
-            text_channel(1, "✝️jas", parent_id="9"),
+            text_channel(1, f"{CROSS_VS}jas", parent_id="9"),
         )
         self.assertEqual(rows[0]["niche"], "Christian")
         self.assertEqual(rows[0]["category"], "Coach: Will's Team")
@@ -202,12 +185,12 @@ class DeriveCreatorName(unittest.TestCase):
         self.assertEqual(derive_creator_name("influencer-breezy"), "breezy")
 
     def test_emoji_only_names(self):
-        self.assertEqual(derive_creator_name("✝️jas"), "jas")
+        self.assertEqual(derive_creator_name(f"{CROSS_VS}jas"), "jas")
         self.assertEqual(derive_creator_name("🤍anna🌸"), "anna")
         self.assertEqual(derive_creator_name("🌱ben-u"), "ben-u")
 
     def test_legacy_track_words(self):
-        self.assertEqual(derive_creator_name("✝️christian-jas"), "jas")
+        self.assertEqual(derive_creator_name(f"{CROSS_VS}christian-jas"), "jas")
         self.assertEqual(derive_creator_name("🌱improvement-austin-gavin"), "austin-gavin")
 
     def test_plain_names_pass_through(self):
@@ -227,7 +210,7 @@ class FullNameConvention(unittest.TestCase):
             split_track_channel("🤍anna-lyashenko"),
             ("Female General Self-Improvement", "anna-lyashenko"),
         )
-        self.assertEqual(derive_creator_name("✝️jas-alcantara"), "jas-alcantara")
+        self.assertEqual(derive_creator_name(f"{CROSS_VS}jas-alcantara"), "jas-alcantara")
         self.assertEqual(derive_creator_name("🌱noah-andre-terry"), "noah-andre-terry")
 
     def test_same_first_name_resolves_to_different_creators(self):
@@ -271,42 +254,36 @@ class FullNameConvention(unittest.TestCase):
 
 
 class ClassificationFollowsTheTable(unittest.TestCase):
-    """Adding a niche in /settings must classify without a code change."""
+    """Adding a niche in /settings must classify without a code change.
 
-    def tearDown(self):
-        # Restore the module fixture, NOT the real reader. This class runs
-        # alphabetically first among this module's test classes, so every
-        # test after it here -- and every later test module in the same
-        # `unittest discover` run -- depends on niches still being configured
-        # with LIVE_TRACKS. Restoring fetch=None here would make the rest of
-        # the suite fall through to a real (and here, unreachable) Supabase
-        # call on its next cache miss.
-        niches.configure(fetch=lambda: list(LIVE_TRACKS), clock=None)
-        niches.reset_cache()
-
-    def use(self, rows):
-        niches.reset_cache()
-        niches.configure(fetch=lambda: rows, clock=None)
+    `use_niches` restores the shared fixture on exit, never the real reader --
+    the vocabulary is a process global, so what this class leaves behind is
+    what every later test in the run sees.
+    """
 
     def test_a_niche_added_to_the_table_classifies_immediately(self):
-        self.use([
-            {"name": "Fitness", "emoji": "💪", "discord_role_id": None, "is_active": True},
-        ])
-        self.assertEqual(split_track_channel("💪malik-jones"), ("Fitness", "malik-jones"))
+        with use_niches([row("Knitting", "\U0001f9f6")]):
+            self.assertEqual(split_track_channel("\U0001f9f6ann-lee"), ("Knitting", "ann-lee"))
 
     def test_a_niche_absent_from_the_table_does_not_classify(self):
-        self.use([
-            {"name": "Fitness", "emoji": "💪", "discord_role_id": None, "is_active": True},
-        ])
-        self.assertIsNone(split_track_channel("✝️jas-alcantara"))
+        with use_niches([row("Knitting", "\U0001f9f6")]):
+            self.assertIsNone(split_track_channel(f"{CROSS_VS}jas-alcantara"))
 
     def test_an_archived_niche_still_classifies(self):
-        self.use([
-            {"name": "Retired", "emoji": "🌱", "discord_role_id": None, "is_active": False},
-        ])
-        rows = classify_creator_channels([text_channel(1, "🌱ethan-lau", parent_id="9"),
-                                          category(9, "Coach: Joey's Team")])
-        self.assertEqual(rows[0]["niche"], "Retired")
+        with use_niches([row("Retired", "\U0001f331", active=False)]):
+            rows = classify_creator_channels([
+                text_channel(1, "\U0001f331ethan-lau", parent_id="9"),
+                category(9, "Coach: Joey's Team"),
+            ])
+            self.assertEqual(rows[0]["niche"], "Retired")
+
+    def test_the_fixture_is_restored_afterwards(self):
+        # The guard on the rule above: if a context manager ever stopped
+        # restoring, the next test module in the run would go looking for a
+        # live reader instead.
+        with use_niches([row("Knitting", "\U0001f9f6")]):
+            pass
+        self.assertEqual(split_track_channel(f"{CROSS_VS}jas"), ("Christian", "jas"))
 
 
 if __name__ == "__main__":

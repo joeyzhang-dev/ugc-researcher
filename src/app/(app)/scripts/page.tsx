@@ -20,6 +20,7 @@ import { ScriptsExplorer, type ScriptRow } from "./scripts-explorer";
 import type { SendTarget } from "./send-bar";
 import { buildSendTargets, type SendTargetInput } from "@/lib/send-targets";
 import { loadViewCurves, videoSelect } from "@/lib/video-metrics";
+import { loadNiches, nicheEmojis } from "@/lib/niches";
 
 export const dynamic = "force-dynamic";
 // Server actions invoked from this page inherit this budget — a full-batch
@@ -161,6 +162,11 @@ export default async function ScriptsPage({
   // its color no matter which filters are engaged.
   const nicheColorIndex = Object.fromEntries(knownNiches.map((n, i) => [n, i]));
 
+  // The pills carry the track emoji, same as /discord. Read here rather than
+  // in the explorer because that is a client component; a niche with no row
+  // in research_niches (the 61 finance scripts) renders bare, as before.
+  const nicheEmojiByName = nicheEmojis(await loadNiches(supabase));
+
   const scopedCreators = creators.filter((c) =>
     !appFilter
       ? true
@@ -210,6 +216,7 @@ export default async function ScriptsPage({
         totalScripts={inWorkspace.length}
         hasAnyScripts={allScripts.length > 0}
         nicheColorIndex={nicheColorIndex}
+        nicheEmojis={nicheEmojiByName}
         initialStatus={statusFilter ?? ""}
         initialNiches={nicheFilters}
         initialSents={sentFilters}

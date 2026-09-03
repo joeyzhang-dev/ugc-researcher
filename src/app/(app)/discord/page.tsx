@@ -14,7 +14,7 @@ import { NICHE_PALETTE } from "../scripts/cal";
 import { DiscordLink } from "@/components/discord-link";
 import { channelUrl, cleanSnippet, messageUrl, ROLE_CHIP, ROLE_SENDER } from "@/lib/discord-render";
 import { creatorNameFromChannel } from "@/lib/discord-channels";
-import { loadNiches, nicheEmojiMap, nicheLabel } from "@/lib/niches";
+import { loadNiches, nicheEmojis, nicheLabel } from "@/lib/niches";
 import { isParkedCategory } from "@/lib/roster-archive";
 import { linkChannelToCreator } from "./actions";
 import { DISCORD_DEPRECATED, DiscordDeprecatedNotice } from "./deprecated";
@@ -64,7 +64,7 @@ export default async function DiscordPage({
     supabase.from("research_scripts").select("niche"),
     supabase.from("research_app_creators").select("niche"),
   ]);
-  const nicheEmojis = nicheEmojiMap(await loadNiches(supabase));
+  const nicheEmojiByName = nicheEmojis(await loadNiches(supabase));
   // Name-map inputs, same priority as the old dashboard: roster creator name
   // first, then the user's server display name, then the enrolled-role note.
   const [{ data: rosterIdsData }, { data: roleNotesData }] = await Promise.all([
@@ -306,7 +306,7 @@ export default async function DiscordPage({
                       <span
                         className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${nicheClass(ch.niche)}`}
                       >
-                        {nicheLabel(ch.niche, nicheEmojis)}
+                        {nicheLabel(ch.niche, nicheEmojiByName)}
                       </span>
                     )}
                   </div>

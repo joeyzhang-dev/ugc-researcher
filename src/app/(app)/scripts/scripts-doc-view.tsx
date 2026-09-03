@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ResearchScoreChip } from "@/components/research-panel";
 import { SubmitButton } from "@/components/submit-button";
 import { NicheCombobox } from "@/components/niche-combobox";
+import { nicheLabel } from "@/lib/niches";
 import { createScript } from "./actions";
 import { buildDocGrid } from "./doc";
 import { currentWeekKeyUTC, weekKeyUTC, weekLabel } from "./cal";
@@ -163,6 +164,7 @@ function ComposerCell({ niche, appId }: { niche: string | null; appId: string | 
 export function ScriptsDocView({
   rows,
   colorOf,
+  nicheEmojis,
   knownNiches,
   currentAppId,
   selectedIds,
@@ -170,6 +172,8 @@ export function ScriptsDocView({
 }: {
   rows: ScriptRow[];
   colorOf: (niche: string) => NichePalette;
+  /** name -> emoji from research_niches, dealt server-side. */
+  nicheEmojis: Record<string, string>;
   /** Full known-niche list, for starting a fresh row in the current week. */
   knownNiches: string[];
   /** Workspace app new scripts are filed under (null = no app). */
@@ -258,7 +262,7 @@ export function ScriptsDocView({
                             <span
                               className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${colorOf(row.niche).tag}`}
                             >
-                              {row.niche}
+                              {nicheLabel(row.niche, nicheEmojis)}
                             </span>
                           ) : (
                             <span className="text-[11px] text-neutral-400">No niche</span>

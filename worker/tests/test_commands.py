@@ -11,19 +11,11 @@ clean run; the real coverage only runs under the venv interpreter below.
 
 Run: worker/.venv/bin/python -m unittest discover worker/tests -v
 """
-import os
-import sys
 import unittest
-from pathlib import Path
 
-for var, dummy in {
-    "NEXT_PUBLIC_SUPABASE_URL": "http://localhost",
-    "SUPABASE_SERVICE_ROLE_KEY": "test",
-    "DISCORD_BOT_TOKEN": "test",
-    "DISCORD_GUILD_ID": "1",
-}.items():
-    os.environ.setdefault(var, dummy)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Env vars, sys.path and a hermetic niche vocabulary. Import it before any
+# worker module: it is what keeps the suite off the network.
+import nichefixture  # noqa: F401
 
 try:
     import discord  # noqa: F401
@@ -33,7 +25,11 @@ except ImportError:
         "run with worker/.venv/bin/python"
     )
 
+import inspect  # noqa: E402
+import re  # noqa: E402
+
 import niches  # noqa: E402
+from discord_bot import commands as commands_module  # noqa: E402
 from discord_bot.commands import MAX_CHOICES, build_track_choices  # noqa: E402
 
 
@@ -71,6 +67,29 @@ class BuildTrackChoices(unittest.TestCase):
     def test_legacy_survives_when_the_needle_matches_nothing(self):
         result = build_track_choices(fake_niches(30), "no-such-niche-xyz", MAX_CHOICES)
         self.assertEqual([c.value for c in result], ["legacy"])
+
+
+class NicheCachePrimedOffTheEventLoop(unittest.TestCase):
+    """The niche cache is primed deliberately, not by accident.
+
+    `build_channel_name()` -> `niche_channel_prefixes()` -> `load_niches()` is
+    a SYNCHRONOUS https read on a cache miss, and both orchestrators call it
+    from inside the gateway coroutine -- long enough to miss a heartbeat. It
+    used to be safe only because `await asyncio.to_thread(niches.role_id_for,
+    ...)` happened to be evaluated while building the call's arguments, so
+    reordering or dropping that argument would silently have put the blocking
+    read back on the loop. This pins the explicit prime instead.
+    """
+
+    def test_each_orchestrator_is_preceded_by_its_own_prime(self):
+        src = inspect.getsource(commands_module)
+        marks = [(m.start(), "prime") for m in re.finditer(r"await _prime_niches\(\)", src)]
+        marks.append((src.index("await execute_onboarding("), "onboard"))
+        marks.append((src.index("await execute_offboarding("), "offboard"))
+        self.assertEqual(
+            [kind for _, kind in sorted(marks)],
+            ["prime", "onboard", "prime", "offboard"],
+        )
 
 
 if __name__ == "__main__":

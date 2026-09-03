@@ -11,10 +11,10 @@ import { SubmitButton } from "@/components/submit-button";
 import { ScrapeAllButton } from "@/components/scrape-all-button";
 import { ScheduleFields } from "@/components/schedule-fields";
 import { LaunchpointSync } from "@/components/launchpoint-sync";
-import { NicheManager } from "@/components/niche-manager";
+import { NicheManager, type RenamePreview } from "@/components/niche-manager";
 import { readLaunchpointStatus } from "../launchpoint-actions";
 import { discordConfigured, listGuildChannels } from "@/lib/discord";
-import { countNicheChannels } from "@/lib/niche-channel-rename";
+import { liveEmojiBases, planNicheChannelRenames, type LiveEmojiBase } from "@/lib/niche-channel-rename";
 import {
   Card, EmptyState, KpiCard, PageHeader, StatusBadge,
   inputClass, labelClass, table, tableWrap, td, th, trHover,
@@ -27,7 +27,16 @@ import type { ResearchCreator } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 /** Scraping settings: what gets pulled, how often, and a manual trigger. */
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  // A channel rename is previewed before it runs, and the pair being previewed
+  // rides the URL so the confirm step is a plain reload rather than client
+  // state — the plan the admin confirms is then recomputed from live Discord,
+  // never from something the browser held onto.
+  searchParams: Promise<{ renameFrom?: string; renameTo?: string }>;
+}) {
+  const { renameFrom, renameTo } = await searchParams;
   const profile = await getProfile();
   const isAdmin = profile?.role === "admin";
   const supabase = await createClient();
@@ -73,19 +82,33 @@ export default async function SettingsPage() {
     if (r.niche) channelCounts.set(r.niche, (channelCounts.get(r.niche) ?? 0) + 1);
   }
 
-  // Live Discord channel counts per stored emoji, for the rename preview.
+  // The emoji actually on live Discord channels, and whether a niche still
+  // claims each one. Read from Discord rather than from nicheList on purpose:
+  // the state that needs a control is the one where they disagree — an emoji
+  // edited in the table above leaves its old channels behind, unclassifiable
+  // and silently skipped by discover, and a control keyed on the niche's
+  // stored emoji vanishes at exactly that moment.
+  //
   // A Discord outage or an unset guild id must leave the rest of /settings
-  // working — the rename control simply does not render.
-  const liveEmojiCounts = new Map<string, number>();
+  // working, so failure degrades to an explicit "not reachable" note.
+  let liveBases: LiveEmojiBase[] = [];
+  let renamePreview: RenamePreview | null = null;
+  let discordReachable = false;
   if (discordConfigured() && process.env.DISCORD_GUILD_ID) {
     try {
       const guildChannels = await listGuildChannels(process.env.DISCORD_GUILD_ID);
-      for (const n of nicheList) {
-        if (!n.emoji) continue;
-        liveEmojiCounts.set(n.emoji, countNicheChannels(guildChannels, n.emoji));
+      discordReachable = true;
+      liveBases = liveEmojiBases(guildChannels, nicheList);
+      if (renameFrom && renameTo) {
+        renamePreview = {
+          fromEmoji: renameFrom,
+          toEmoji: renameTo,
+          steps: planNicheChannelRenames(guildChannels, renameFrom, renameTo),
+        };
       }
     } catch {
-      // Leave the counts empty; the rename control simply does not render.
+      // discordReachable stays false; the manager says so instead of showing
+      // an empty list that reads like "no channels have an emoji".
     }
   }
 
@@ -280,13 +303,20 @@ export default async function SettingsPage() {
 
       <div className="mt-5">
         <Card
+          id="niches"
           title="Niches"
           subtitle="The track vocabulary: the emoji that prefixes a creator's channel, the niche written on their scripts, and the Discord role /onboard grants."
         >
           {!isAdmin ? (
             <EmptyState message="Only admins can change niches." />
           ) : (
-            <NicheManager niches={nicheList} channelCounts={channelCounts} liveEmojiCounts={liveEmojiCounts} />
+            <NicheManager
+              niches={nicheList}
+              channelCounts={channelCounts}
+              liveBases={liveBases}
+              discordReachable={discordReachable}
+              preview={renamePreview}
+            />
           )}
         </Card>
       </div>

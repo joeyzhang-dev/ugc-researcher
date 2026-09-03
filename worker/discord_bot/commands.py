@@ -46,6 +46,21 @@ from discord_bot.offboarding import execute_offboarding, render_offboard_outcome
 
 import niches
 
+# `niches` reads research_niches over synchronous HTTP on a cache miss.
+# execute_onboarding and execute_offboarding both call build_channel_name(),
+# which reaches niche_channel_prefixes() -> load_niches() from inside the
+# gateway's own coroutine -- a blocking TLS round trip there is enough to miss
+# a heartbeat and have Discord drop the connection. So the cache is primed off
+# the event loop FIRST, on purpose. It used to be primed only as a side effect
+# of `await asyncio.to_thread(niches.role_id_for, ...)` happening to be
+# evaluated while building the call's arguments; that was an accident of
+# evaluation order, and reordering or removing that argument would have put a
+# blocking read back on the loop with nothing to show for it. Do not fold this
+# back into an argument list.
+async def _prime_niches() -> None:
+    await asyncio.to_thread(niches.load_niches)
+
+
 logger = logging.getLogger(__name__)
 
 MAX_CHOICES = 25  # Discord's cap on predefined choices per option
@@ -331,6 +346,9 @@ def register_commands(
         async def fetch_member(user_id: int):
             return interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
 
+        # Off the loop, before execute_onboarding names the channel.
+        await _prime_niches()
+
         outcome = await execute_onboarding(
             guild=interaction.guild,
             member=username,
@@ -346,9 +364,9 @@ def register_commands(
             provision_link=provision_folk_link,
             launchpoint_bot_id=cfg.launchpoint_bot_id,
             excluded_category_ids=cfg.excluded_category_ids,
-            niche_role_id=await asyncio.to_thread(
-                niches.role_id_for, None if track == "legacy" else track
-            ),
+            # Cache is warm from _prime_niches above, so this is an
+            # in-process lookup rather than another read.
+            niche_role_id=niches.role_id_for(None if track == "legacy" else track),
             build_overwrite=_to_overwrite,
             fetch_member=fetch_member,
             sync_crm=onboard_crm_sync,
@@ -458,17 +476,18 @@ def register_commands(
         async def kick_member(*, member, reason):
             await member.kick(reason=reason)
 
+        # Off the loop: execute_offboarding rebuilds the legacy channel name.
+        await _prime_niches()
+
         outcome = await execute_offboarding(
             guild=interaction.guild,
             member=target,
             kick=kick == "yes",
             creator_role_name=cfg.creator_role_name,
             creator_role_id=cfg.creator_role_id,
-            niche_role_ids=[
-                n.discord_role_id
-                for n in await asyncio.to_thread(niches.load_niches)
-                if n.discord_role_id
-            ],
+            # Every niche, archived included: an offboarded creator must lose
+            # the role of a track that has since been retired. Cache is warm.
+            niche_role_ids=[n.discord_role_id for n in niches.load_niches() if n.discord_role_id],
             move_channel=move_channel,
             grant_channel_access=grant_channel_access,
             remove_role=remove_role,
