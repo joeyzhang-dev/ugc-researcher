@@ -125,7 +125,10 @@ Rules for new migrations in this repo:
   plus subcommands: `discover` (creator channels are `<track-emoji><name>`,
   e.g. `✝️jas-alcantara` (first-last verbatim from Launchpoint since
   2026-08-26; `✝️jas` and the `🤍anna🌸` disambiguator were the old form and
-  still parse) — `TRACK_EMOJI_NICHES` is the emoji→niche source of truth;
+  still parse) — the niche vocabulary is `research_niches`, managed from
+  /settings and read through `worker/niches.py` (60s cache; falls back to the
+  last good list, then to a hardcoded seed — never empty, because an empty
+  vocabulary silently stops channel discovery rather than failing);
   categories are coach teams),
   `enrich` (creator discord ids, coach/launchpoint roles, re-attribution),
   `sync` (launchpoint `## Script N/M` messages → `research_scripts` +
@@ -564,6 +567,41 @@ handle, no Launchpoint link, still scraped) holds the app membership while
 same for `@vicklockedin` vs `@lockinwithvick`. Archiving the dead row hides it
 but does not move its videos or assignments. See the rename note under
 **Launchpoint**.
+
+## Niches
+
+The niche track vocabulary is `research_niches`, managed from /settings and
+read through `worker/niches.py` (see **Layout** above for the cache and
+fallback chain).
+
+- **The table is the track vocabulary, not a registry of every niche
+  string.** 61 scripts carry `Finance General` / `Girly Finance`, neither of
+  which has a row, and they render fine — the app derives its pill palette
+  from observed values rather than requiring a match. A niche only needs a
+  row once it should own an emoji, prefix channel names, and grant a Discord
+  role.
+- **Archiving leaves the /onboard picker but keeps classifying.** An
+  archived niche drops out of `active_niches()`, so nobody can select it for
+  a new creator, but `track_bases()` reads every row, archived included —
+  otherwise the existing channels on that emoji would go unclassifiable the
+  moment someone archived it.
+- **Emoji uniqueness is on the variation-selector-stripped base, in both SQL
+  and Python.** `niche_emoji_base()` (the migration) and `strip_emoji_base()`
+  (`worker/niches.py`) both drop U+FE0F and U+200D before comparing, so `✝️`
+  and `✝` collide as one track in the unique index and in
+  `discord_pull_worker.py`'s `split_track_channel` alike. Letting the two
+  diverge would make channel discovery non-deterministic with nothing
+  reporting an error.
+- **A rename cascades through `rename_niche()`.** PostgREST cannot span
+  `research_scripts`, `research_app_creators`, `research_discord_channels`
+  and `research_niches` in one transaction, so the function does — a rename
+  applied to only some of those tables is exactly what stranded Finance
+  General as an orphan nothing pointed back to.
+- **Channel renames are previewed and confirmed, never automatic.** Discord
+  rate-limits channel updates to 2 per 10 minutes per channel, and a rename
+  is visible to every creator in the channel, so `planNicheChannelRenames`
+  (`src/lib/niche-channel-rename.ts`) only produces the plan — a human
+  confirms it in /settings.
 
 ## Scheduled work
 
