@@ -13,6 +13,7 @@ import { formatDateTime } from "@/lib/format";
 import { NICHE_PALETTE } from "../../scripts/cal";
 import { DiscordLink } from "@/components/discord-link";
 import { channelUrl, cleanSnippet, messageUrl, ROLE_CHIP, ROLE_SENDER } from "@/lib/discord-render";
+import { loadNiches, nicheEmojiMap, nicheLabel } from "@/lib/niches";
 import { isParkedCategory } from "@/lib/roster-archive";
 import { DISCORD_DEPRECATED, DiscordDeprecatedNotice } from "../deprecated";
 
@@ -96,6 +97,7 @@ export default async function DiscordChannelPage({
       supabase.from("research_discord_user_roles").select("discord_user_id::text, role, note"),
       supabase.from("research_discord_channels").select("channel_id::text, channel_name"),
     ]);
+  const nicheEmojis = nicheEmojiMap(await loadNiches(supabase));
   const creator = creatorData as ResearchCreator | null;
   const users = (usersData ?? []) as unknown as ResearchDiscordUser[];
   const messages = (messagesData ?? []) as unknown as ResearchDiscordMessage[];
@@ -171,7 +173,7 @@ export default async function DiscordChannelPage({
                 <span
                   className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${nicheClass(channel.niche)}`}
                 >
-                  {channel.niche}
+                  {nicheLabel(channel.niche, nicheEmojis)}
                 </span>
               )}
             </div>
