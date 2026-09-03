@@ -37,13 +37,14 @@ from discord_bot.command_ui import (
 )
 from discord_bot.config import BotConfig
 from discord_bot.onboarding import (
-    NICHE_CHANNEL_PREFIXES,
     OverwriteSpec,
     execute_onboarding,
     render_outcome,
     select_niche_categories,
 )
 from discord_bot.offboarding import execute_offboarding, render_offboard_outcome
+
+import niches
 
 logger = logging.getLogger(__name__)
 
@@ -317,7 +318,9 @@ def register_commands(
             provision_link=provision_folk_link,
             launchpoint_bot_id=cfg.launchpoint_bot_id,
             excluded_category_ids=cfg.excluded_category_ids,
-            niche_role_ids=cfg.niche_role_ids,
+            niche_role_id=await asyncio.to_thread(
+                niches.role_id_for, None if track == "legacy" else track
+            ),
             build_overwrite=_to_overwrite,
             fetch_member=fetch_member,
             sync_crm=onboard_crm_sync,
@@ -348,20 +351,10 @@ def register_commands(
     # categories are coach teams now, so rename what the operator sees while
     # the internal plumbing keeps its name.
     onboard = app_commands.rename(niche="team")(onboard)
-    track_emojis = "/".join(NICHE_CHANNEL_PREFIXES.values())
     onboard = app_commands.describe(
         username="The creator to onboard",
         niche="Which coach team category their channel goes in",
-        track=f"Niche track — names the channel {track_emojis}<name> and sets their niche everywhere",
-    )(onboard)
-    onboard = app_commands.choices(
-        track=[
-            *(
-                app_commands.Choice(name=f"{emoji} {niche_name}"[:100], value=niche_name)
-                for niche_name, emoji in NICHE_CHANNEL_PREFIXES.items()
-            ),
-            app_commands.Choice(name="coaching- (legacy, niche set later)", value="legacy"),
-        ]
+        track="Niche track — names their channel and sets their niche everywhere",
     )(onboard)
     options = list(niche_options or [])[:MAX_CHOICES]
     if options:
@@ -392,6 +385,31 @@ def register_commands(
             if needle:
                 cats = [c for c in cats if needle in getattr(c, "name", "").lower()]
             return [app_commands.Choice(name=c.name, value=str(c.id)) for c in cats[:MAX_CHOICES]]
+
+    # Outside the `if not options:` guard on purpose: that guard only decides
+    # whether the *niche* (category) autocomplete is needed, because static
+    # category choices were supplied instead. Track choices are never static
+    # -- nesting this here would silently drop track autocomplete whenever
+    # niche categories happen to be pre-supplied.
+    @onboard_command.autocomplete("track")
+    async def track_autocomplete(
+        interaction: discord.Interaction, current: str
+    ) -> list[app_commands.Choice[str]]:
+        # Runtime, not the app_commands.choices decorator: choices are
+        # registered with Discord once at startup, so a niche added in
+        # /settings would need a bot restart to appear. This does not.
+        entries = await asyncio.to_thread(niches.active_niches)
+        needle = (current or "").strip().lower()
+        if needle:
+            entries = [n for n in entries if needle in n.name.lower()]
+        choices = [
+            app_commands.Choice(name=f"{n.emoji or ''} {n.name}".strip()[:100], value=n.name)
+            for n in entries
+        ]
+        choices.append(
+            app_commands.Choice(name="coaching- (legacy, niche set later)", value="legacy")
+        )
+        return choices[:MAX_CHOICES]
 
     # ---- /offboard ----------------------------------------------------
 
@@ -428,7 +446,11 @@ def register_commands(
             kick=kick == "yes",
             creator_role_name=cfg.creator_role_name,
             creator_role_id=cfg.creator_role_id,
-            niche_role_ids=cfg.niche_role_ids,
+            niche_role_ids=[
+                n.discord_role_id
+                for n in await asyncio.to_thread(niches.load_niches)
+                if n.discord_role_id
+            ],
             move_channel=move_channel,
             grant_channel_access=grant_channel_access,
             remove_role=remove_role,

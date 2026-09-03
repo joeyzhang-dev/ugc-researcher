@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Mapping, Optional
+from typing import Any, Awaitable, Callable, Iterable, Optional
 
 from discord_bot.config import PAUSED_CATEGORIES
 from discord_bot.onboarding import (
@@ -254,7 +254,7 @@ async def execute_offboarding(
     kick: bool,
     creator_role_name: str,
     creator_role_id: Optional[int] = None,
-    niche_role_ids: Optional[Mapping[int, int]] = None,
+    niche_role_ids: Optional[Iterable[int]] = None,
     move_channel: Callable[..., Awaitable[None]],
     grant_channel_access: Optional[Callable[..., Awaitable[None]]] = None,
     remove_role: Optional[Callable[..., Awaitable[None]]] = None,
@@ -429,7 +429,7 @@ async def execute_offboarding(
     niche_roles_already_absent = False
     niche_role_error: Optional[str] = None
     configured_niche_role_ids = {
-        int(role_id) for role_id in (niche_role_ids or {}).values() if role_id is not None
+        int(role_id) for role_id in (niche_role_ids or ()) if role_id is not None
     }
     if configured_niche_role_ids:
         if not hasattr(member, "roles"):

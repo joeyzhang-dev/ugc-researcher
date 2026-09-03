@@ -15,6 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from discord_bot.onboarding import build_channel_name  # noqa: E402
 
+import niches  # noqa: E402
+
 
 class BuildChannelName(unittest.TestCase):
     def test_track_niche_sets_the_emoji_prefix(self):
@@ -33,6 +35,24 @@ class BuildChannelName(unittest.TestCase):
 
     def test_unknown_track_keeps_the_legacy_prefix(self):
         self.assertEqual(build_channel_name("Ann", niche="Knitting"), "coaching-ann")
+
+
+class ChannelNameFollowsTheTable(unittest.TestCase):
+    def tearDown(self):
+        niches.configure(fetch=None, clock=None)
+        niches.reset_cache()
+
+    def test_a_new_niche_names_the_channel_with_its_emoji(self):
+        niches.reset_cache()
+        niches.configure(fetch=lambda: [
+            {"name": "Fitness", "emoji": "💪", "discord_role_id": None, "is_active": True},
+        ], clock=None)
+        self.assertEqual(build_channel_name("Malik Jones", niche="Fitness"), "💪malik-jones")
+
+    def test_an_unknown_niche_falls_back_to_the_legacy_prefix(self):
+        niches.reset_cache()
+        niches.configure(fetch=lambda: [], clock=None)
+        self.assertEqual(build_channel_name("Malik Jones", niche="Nope"), "coaching-malik-jones")
 
 
 

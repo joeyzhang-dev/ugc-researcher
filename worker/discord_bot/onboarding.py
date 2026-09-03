@@ -15,21 +15,28 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Iterable, Mapping, Optional, Sequence
+from typing import Any, Awaitable, Callable, Iterable, Optional, Sequence
 
 import niches
 
 # Live convention 2026-08-20: a creator channel is ``<track-emoji><name>``
 # (``✝️jas``) and the CATEGORY records the coach team, not the niche. The
-# emoji-per-niche vocabulary now lives in research_niches (see niches.py),
-# not a module constant here. NICHE_CHANNEL_PREFIXES below is seeded from
-# the fallback list rather than read live -- a stopgap kept just wide enough
-# to keep this module importable; making /onboard's niche list (autocomplete
-# included) track research_niches live is separate follow-up work, not done
-# here. Unmapped tracks fall back to the legacy ``coaching-`` prefix, which
-# every parser accepts.
+# emoji-per-niche vocabulary lives in research_niches (see niches.py) and is
+# read live through niche_channel_prefixes() below, so a niche added in
+# /settings names new channels immediately -- no bot restart. Unmapped tracks
+# fall back to the legacy ``coaching-`` prefix, which every parser accepts.
 CHANNEL_PREFIX = "coaching-"
-NICHE_CHANNEL_PREFIXES: dict[str, str] = dict(niches.FALLBACK_NICHES)
+
+
+def niche_channel_prefixes() -> dict[str, str]:
+    """Niche name -> channel-name emoji, live from research_niches.
+
+    Only active niches: this drives what /onboard offers and how it names a
+    NEW channel. Classification of existing channels reads every niche
+    (niches.track_bases), archived included.
+    """
+    return {n.name: n.emoji for n in niches.active_niches() if n.emoji}
+
 
 # Discord hard limit for a channel name.
 MAX_CHANNEL_NAME_LEN = 100
@@ -147,7 +154,7 @@ def build_channel_name(display_name: str, fallback: str = "", niche: Optional[st
     slug = slugify_creator_name(display_name) or slugify_creator_name(fallback)
     if not slug:
         raise ValueError("cannot derive a channel name from an empty display name")
-    prefix = NICHE_CHANNEL_PREFIXES.get(niche or "", CHANNEL_PREFIX)
+    prefix = niche_channel_prefixes().get(niche or "", CHANNEL_PREFIX)
     return f"{prefix}{slug}"[:MAX_CHANNEL_NAME_LEN]
 
 
@@ -386,7 +393,7 @@ async def execute_onboarding(
     launchpoint_bot_id: Optional[int] = None,
     excluded_category_ids: frozenset[int] = frozenset(),
     creator_role_id: Optional[int] = None,
-    niche_role_ids: Optional[Mapping[int, int]] = None,
+    niche_role_id: Optional[int] = None,
     build_overwrite: Callable[[OverwriteSpec], Any],
     fetch_member: Optional[Callable[[int], Awaitable[Any]]] = None,
     sync_crm: Optional[Callable[[int, str, str, str, int, Optional[str]], None]] = None,
@@ -517,8 +524,6 @@ async def execute_onboarding(
     niche_role_already_had = False
     niche_role_name: Optional[str] = None
     niche_role_error: Optional[str] = None
-    category_id = int(getattr(category, "id", 0))
-    niche_role_id = (niche_role_ids or {}).get(category_id)
     if niche_role_id is not None:
         niche_role = _find_role(guild, "", niche_role_id)
         if niche_role is None:

@@ -41,11 +41,12 @@ DEFAULT_FOLK_BRANDING_CHANNEL_ID = 1527396634617581719  # folk-branding
 DEFAULT_TIKTOK_EMOJI_ID = 1542405352363008060  # :tt:
 DEFAULT_INSTAGRAM_EMOJI_ID = 1542405235635388517  # :ig:
 DEFAULT_LAUNCHPOINT_BOT_ID = 1516872874512613446  # Launchpoint automation bot
-DEFAULT_NICHE_ROLE_ID_PAIRS: tuple[tuple[int, int], ...] = (
-    (1512236272742043698, 1531750777062822002),  # Creators: 🌸 Girly Finance -> Finance Girls Niche
-    (1510142851676111039, 1531750975675695244),  # Creators: 💸 Finance General -> Finance General Niche
-    (1523482165416034314, 1531750872995070133),  # Creators: ✝️ Christian -> Christian Niche
-)
+
+# Niche -> Discord role now lives in research_niches.discord_role_id, managed
+# from /settings. The old map here was keyed by CATEGORY id, and once
+# categories became coach teams two of its three keys pointed at Will's and
+# Luke's team categories while all three target roles 404'd — so /onboard has
+# been reporting "niche role not found" rather than assigning anything.
 
 # Categories /onboard must never create a channel in. Server plumbing, plus
 # "Not Creating 🚫", which is where creators are moved once they stop rather
@@ -75,10 +76,6 @@ def _env_id_tuple(name: str, default: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(int(piece.strip()) for piece in raw.split(",") if piece.strip())
 
 
-def _default_niche_role_ids() -> dict[int, int]:
-    return dict(DEFAULT_NICHE_ROLE_ID_PAIRS)
-
-
 # Public origin of the webapp — the paged card's "View all scripts" button
 # links to <app_public_url>/c/<share_token>. Mirrors the default in
 # src/app/c/portal.ts (NEXT_PUBLIC_APP_URL there) — keep them in sync.
@@ -98,7 +95,6 @@ class BotConfig:
     creator_role_id: int | None = DEFAULT_CREATOR_ROLE_ID
     launchpoint_bot_id: int | None = DEFAULT_LAUNCHPOINT_BOT_ID
     excluded_category_ids: frozenset[int] = DEFAULT_EXCLUDED_CATEGORY_IDS
-    niche_role_ids: dict[int, int] = field(default_factory=_default_niche_role_ids)
     welcome_links: WelcomeLinks = field(
         default_factory=lambda: WelcomeLinks(
             post_tracking=DEFAULT_POST_TRACKING_CHANNEL_ID,
@@ -130,22 +126,6 @@ def _env_id_set(name: str, default: frozenset[int]) -> frozenset[int]:
     return frozenset(int(part.strip()) for part in raw.split(",") if part.strip())
 
 
-def _env_id_pair_map(name: str, default: tuple[tuple[int, int], ...]) -> dict[int, int]:
-    """Comma-separated category_id:role_id pairs; malformed input fails startup
-    rather than silently applying a partial onboarding mapping."""
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return dict(default)
-    parsed: dict[int, int] = {}
-    for entry in (part.strip() for part in raw.split(",") if part.strip()):
-        pieces = entry.split(":")
-        if len(pieces) != 2 or not pieces[0].strip() or not pieces[1].strip():
-            raise ValueError(f"{name} must be comma-separated category_id:role_id pairs")
-        category_id, role_id = pieces
-        parsed[int(category_id.strip())] = int(role_id.strip())
-    return parsed
-
-
 def load_bot_config() -> BotConfig:
     return BotConfig(
         discord_bot_token=os.environ["DISCORD_BOT_TOKEN"],
@@ -157,7 +137,6 @@ def load_bot_config() -> BotConfig:
         creator_role_id=_env_int("CREATOR_ROLE_ID", DEFAULT_CREATOR_ROLE_ID),
         launchpoint_bot_id=_env_int("LAUNCHPOINT_BOT_ID", DEFAULT_LAUNCHPOINT_BOT_ID),
         excluded_category_ids=_env_id_set("ONBOARD_EXCLUDED_CATEGORY_IDS", DEFAULT_EXCLUDED_CATEGORY_IDS),
-        niche_role_ids=_env_id_pair_map("ONBOARD_NICHE_ROLE_IDS", DEFAULT_NICHE_ROLE_ID_PAIRS),
         welcome_links=WelcomeLinks(
             post_tracking=_env_int("ONBOARD_POST_TRACKING_CHANNEL_ID", DEFAULT_POST_TRACKING_CHANNEL_ID),
             warmup=_env_int("ONBOARD_WARMUP_CHANNEL_ID", DEFAULT_WARMUP_CHANNEL_ID),
