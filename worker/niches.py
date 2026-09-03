@@ -33,7 +33,7 @@ FALLBACK_NICHES: tuple[tuple[str, str], ...] = (
 # Variation selector and zero-width joiner, written as escapes because they
 # are invisible in a source file. Mirrors niche_emoji_base() in the migration,
 # so Python and Postgres agree on when two emojis are one track.
-_DECORATIONS = ("️", "‍")
+_DECORATIONS = ("\ufe0f", "\u200d")
 
 
 @dataclass(frozen=True)
