@@ -10,11 +10,16 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  DAY_MS,
+  ONBOARDING_DAYS,
   comparePerformance,
   creatorPerformance,
   lastCompleteWeek,
+  teamPerformance,
+  transcriptHorizon,
   weekKey,
   type CreatorPerformance,
+  type TeamPerformance,
   type PerformanceVideo,
   type Window,
 } from "@/lib/performance";
@@ -23,7 +28,7 @@ import { isArchived, isParkedCategory } from "@/lib/roster-archive";
 /** Discord categories that are coach teams look like "Coach: Will's Team".
  *  The pull worker uses the same "team" test (`_TEAM_CATEGORY`) to tell a
  *  coach category from a niche one. */
-const TEAM_CATEGORY = /\bteam\b/i;
+export const TEAM_CATEGORY = /\bteam\b/i;
 
 
 export interface PerformanceRow {
@@ -50,6 +55,8 @@ export interface CoachGroup {
   /** Category name; `null` groups creators with no coach. */
   coach: string | null;
   rows: PerformanceRow[];
+  /** The team as one read — what the coach's own dashboard shows. */
+  team: TeamPerformance;
 }
 
 export interface PerformanceReport {
@@ -81,9 +88,19 @@ async function readAllRows<T>(
   }
 }
 
+export interface PerformanceReportOptions {
+  /** Only these coach categories. The coach page needs one team, and the
+   *  cost of this loader is the roster's videos — ~40k rows, paged 1,000 at
+   *  a time — so reading fifteen creators' worth instead of everyone's is
+   *  the difference between 8 seconds and 2. `parked` is empty when scoped:
+   *  a parked creator has no team to be in. */
+  teams?: string[];
+}
+
 export async function loadPerformanceReport(
   client: SupabaseClient,
-  week: Window = lastCompleteWeek()
+  week: Window = lastCompleteWeek(),
+  options: PerformanceReportOptions = {}
 ): Promise<PerformanceReport> {
   type CreatorRow = {
     id: string;
@@ -107,7 +124,7 @@ export async function loadPerformanceReport(
   // Instagram only — TikTok is out of scope (decided 2026-08-29), and the
   // roster's TikTok rows (a handful, pre-dating CREATE_PLATFORMS) have no
   // videos behind them anyway.
-  const [igCreators, accounts, channels] = await Promise.all([
+  const [allIgCreators, accounts, channels] = await Promise.all([
     readAllRows<CreatorRow>("research_creators", (from, to) =>
       client
         .from("research_creators")
@@ -129,54 +146,6 @@ export async function loadPerformanceReport(
     ),
   ]);
 
-  const creatorIds = igCreators.map((c) => c.id);
-  const videos = creatorIds.length
-    ? await readAllRows<VideoRow>("research_videos", (from, to) =>
-        client
-          .from("research_videos")
-          .select("research_creator_id, shortcode, url, posted_at, view_count, earnings_usd")
-          .in("research_creator_id", creatorIds)
-          .range(from, to)
-      )
-    : [];
-
-  // Transcripts, but only for the reporting week. `collapseTrialUploads` needs
-  // them to spot a trial batch, and the corpus is ~40k posts deep — fetching
-  // every transcript to answer a question about seven days would be orders of
-  // magnitude more payload for nothing.
-  const weekTranscripts = creatorIds.length
-    ? await readAllRows<{
-        shortcode: string | null;
-        transcript_text: string | null;
-        thumbnail_url: string | null;
-      }>(
-        "research_videos",
-        (from, to) =>
-          client
-            .from("research_videos")
-            .select("shortcode, transcript_text, thumbnail_url")
-            .in("research_creator_id", creatorIds)
-            .gte("posted_at", week.start.toISOString())
-            .lt("posted_at", week.end.toISOString())
-            .range(from, to)
-      )
-    : [];
-  const weekExtrasByShortcode = new Map(
-    weekTranscripts
-      .filter((t) => !!t.shortcode)
-      .map((t) => [t.shortcode as string, t] as const)
-  );
-
-  // joined_at = the creator's first Launchpoint post, earliest across every
-  // account the contractor holds (decided 2026-08-29).
-  const joinedByContractor = new Map<string, Date>();
-  for (const a of accounts) {
-    if (!a.first_post_at) continue;
-    const at = new Date(a.first_post_at);
-    const prev = joinedByContractor.get(a.contractor_id);
-    if (!prev || at < prev) joinedByContractor.set(a.contractor_id, at);
-  }
-
   // creator → coach comes from the category of their coaching channel.
   const coachByCreator = new Map<string, { coach: string; channelId: string }>();
   const parkedCreators = new Set<string>();
@@ -191,12 +160,108 @@ export async function loadPerformanceReport(
     }
   }
 
+  // Scope BEFORE the video read — that read is the whole cost of this loader.
+  const teams = options.teams ? new Set(options.teams) : null;
+  const igCreators = teams
+    ? allIgCreators.filter((c) => {
+        const team = coachByCreator.get(c.id);
+        return team != null && teams.has(team.coach);
+      })
+    : allIgCreators;
+
+  const creatorIds = igCreators.map((c) => c.id);
+  const videos = creatorIds.length
+    ? await readAllRows<VideoRow>("research_videos", (from, to) =>
+        client
+          .from("research_videos")
+          .select("research_creator_id, shortcode, url, posted_at, view_count, earnings_usd")
+          .in("research_creator_id", creatorIds)
+          .range(from, to)
+      )
+    : [];
+
+  // joined_at = the creator's first Launchpoint post, earliest across every
+  // account the contractor holds (decided 2026-08-29).
+  const joinedByContractor = new Map<string, Date>();
+  for (const a of accounts) {
+    if (!a.first_post_at) continue;
+    const at = new Date(a.first_post_at);
+    const prev = joinedByContractor.get(a.contractor_id);
+    if (!prev || at < prev) joinedByContractor.set(a.contractor_id, at);
+  }
+  const joinedAtFor = (c: CreatorRow): Date | null =>
+    c.launchpoint_creator_id ? (joinedByContractor.get(c.launchpoint_creator_id) ?? null) : null;
+
+  // Transcripts for every window the trial-reel collapse is applied to, and
+  // no further: the corpus is ~40k posts deep, and fetching every transcript
+  // to answer a question about the last two months would be orders of
+  // magnitude more payload for nothing.
+  //
+  // The horizon is not just the reporting week. `creatorPerformance` reads
+  // 30-day windows ending at this week AND the previous one, and walks back
+  // a further week per bad-streak step — a post without a transcript stands
+  // alone, so a horizon shorter than those windows collapses one week of a
+  // number and leaves the rest raw. That is exactly what happened when this
+  // fetched the week only (2026-08-31): `cpm30` was one-quarter collapsed,
+  // `cpm30Prev` not at all, and every trial-running creator showed a
+  // projected-CPM "improvement" that was the mismatch, not the creator.
+  type ExtraRow = { shortcode: string | null; transcript_text: string | null; thumbnail_url: string | null };
+  const EXTRA_COLUMNS = "shortcode, transcript_text, thumbnail_url";
+  const horizon = transcriptHorizon(week);
+  const horizonExtras = creatorIds.length
+    ? await readAllRows<ExtraRow>("research_videos", (from, to) =>
+        client
+          .from("research_videos")
+          .select(EXTRA_COLUMNS)
+          .in("research_creator_id", creatorIds)
+          .gte("posted_at", horizon.start.toISOString())
+          .lt("posted_at", horizon.end.toISOString())
+          .range(from, to)
+      )
+    : [];
+
+  // `onboardingRead` collapses the creator's first week too, and for anyone
+  // who joined before the horizon that week is outside it. One extra query
+  // per such creator, a few at a time — a first week is a handful of rows,
+  // but most of the roster joined months ago, so this is ~50 small requests
+  // and they should not all land on PostgREST at once.
+  const onboardingWindows = igCreators.flatMap((c) => {
+    const joinedAt = joinedAtFor(c);
+    if (!joinedAt || joinedAt.getTime() >= horizon.start.getTime()) return [];
+    const end = new Date(Math.min(joinedAt.getTime() + ONBOARDING_DAYS * DAY_MS, horizon.start.getTime()));
+    return [{ creator: c, start: joinedAt, end }];
+  });
+  const onboardingExtras: ExtraRow[] = [];
+  const ONBOARDING_CONCURRENCY = 8;
+  for (let i = 0; i < onboardingWindows.length; i += ONBOARDING_CONCURRENCY) {
+    const batch = await Promise.all(
+      onboardingWindows.slice(i, i + ONBOARDING_CONCURRENCY).map(({ creator, start, end }) =>
+        readAllRows<ExtraRow>(`research_videos (onboarding ${creator.handle})`, (from, to) =>
+          client
+            .from("research_videos")
+            .select(EXTRA_COLUMNS)
+            .eq("research_creator_id", creator.id)
+            .gte("posted_at", start.toISOString())
+            .lt("posted_at", end.toISOString())
+            .range(from, to)
+        )
+      )
+    );
+    onboardingExtras.push(...batch.flat());
+  }
+
+  const extrasByShortcode = new Map(
+    [...horizonExtras, ...onboardingExtras]
+      .filter((t) => !!t.shortcode)
+      .map((t) => [t.shortcode as string, t] as const)
+  );
+
   const videosByCreator = new Map<string, PerformanceVideo[]>();
   for (const raw of videos) {
-    // Attach the transcript only where we fetched one (this week's posts);
-    // everything older keeps `undefined`, which the collapse treats as
-    // "stands alone".
-    const extra = raw.shortcode ? weekExtrasByShortcode.get(raw.shortcode) : undefined;
+    // Attach the transcript only where we fetched one (the horizon and the
+    // onboarding weeks); everything older keeps `undefined`, which the
+    // collapse treats as "stands alone".
+    const extra = raw.shortcode ? extrasByShortcode.get(raw.shortcode) : undefined;
     const v: PerformanceVideo & { research_creator_id: string } = extra
       ? { ...raw, transcript_text: extra.transcript_text, thumbnail_url: extra.thumbnail_url }
       : raw;
@@ -228,9 +293,7 @@ export async function loadPerformanceReport(
       discordChannelId: team?.channelId ?? null,
       performance: creatorPerformance({
         videos: videosByCreator.get(c.id) ?? [],
-        joinedAt: c.launchpoint_creator_id
-          ? (joinedByContractor.get(c.launchpoint_creator_id) ?? null)
-          : null,
+        joinedAt: joinedAtFor(c),
         week,
       }),
     });
@@ -248,6 +311,13 @@ export async function loadPerformanceReport(
         (a, b) =>
           comparePerformance(a.performance, b.performance) || a.handle.localeCompare(b.handle)
       ),
+      team: teamPerformance({
+        members: groupRows.map((r) => ({
+          performance: r.performance,
+          videos: videosByCreator.get(r.creatorId) ?? [],
+        })),
+        week,
+      }),
     }));
 
   return {

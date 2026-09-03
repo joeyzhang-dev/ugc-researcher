@@ -9,8 +9,18 @@ export interface Profile {
   id: string;
   email: string | null;
   name: string | null;
-  role: "admin" | "viewer" | "creator";
+  /** `coach` is neither staff nor creator: one surface (/coach), one team. */
+  role: "admin" | "viewer" | "creator" | "coach";
   created_at: string;
+}
+
+/** Which Discord team category a coach account owns (`research_coach_teams`). */
+export interface CoachTeam {
+  profile_id: string;
+  category: string;
+  discord_user_id: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type ResearchCreatorStatus = "pending" | "scraping" | "ready" | "failed";

@@ -27,11 +27,12 @@ export type PerformanceVideo = Pick<
   ResearchVideo,
   "shortcode" | "url" | "posted_at" | "view_count" | "earnings_usd"
 > & {
-  /** Only populated for videos inside the reporting week — it is all the
-   *  trial-reel collapse needs, and pulling transcripts for the whole corpus
-   *  would multiply the loader's payload for no gain. */
+  /** Only populated for videos inside `transcriptHorizon` (plus a creator's
+   *  onboarding week) — that is every window the collapse is applied to,
+   *  and pulling transcripts for the whole ~40k-post corpus would multiply
+   *  the loader's payload for no gain. Absent, the post stands alone. */
   transcript_text?: string | null;
-  /** As above: week-window posts only, for the top-posts strip. */
+  /** As above: horizon posts only, for the top-posts strip. */
   thumbnail_url?: string | null;
 };
 
@@ -125,6 +126,31 @@ export function lastCompleteWeek(now: Date = new Date()): Window {
 
 export function previousWeek(w: Window): Window {
   return { start: new Date(w.start.getTime() - WEEK_MS), end: new Date(w.end.getTime() - WEEK_MS) };
+}
+
+/**
+ * How far back a loader must attach transcripts for the trial-reel collapse
+ * to mean the same thing in every window `creatorPerformance` reads.
+ *
+ * The collapse only sees a post's words where the loader fetched them; a post
+ * without a transcript stands alone. So the horizon decides which windows are
+ * actually collapsed. `cpm30` reaches 30 days back from the week's end,
+ * `cpm30Prev` 37, and a bad streak of `BAD_STREAK_FLAG` weeks reads a 30-day
+ * window ending two weeks earlier still — 51 days. Eight weeks (56) covers
+ * all of them with a week to spare, and is also the trend `/stats` draws, so
+ * the coach digest and the creator's own panel collapse the same posts.
+ *
+ * Before this existed (2026-08-31 → 2026-09-02) the digest loader fetched the
+ * reporting week only: `cpm30` was collapsed for one week of its four,
+ * `cpm30Prev` not at all, and a creator running trials showed a projected-CPM
+ * "improvement" that was nothing but the mismatch.
+ */
+export const TRANSCRIPT_HORIZON_WEEKS = 8;
+
+/** The `TRANSCRIPT_HORIZON_WEEKS` ending with `week` — the posts a loader
+ *  must carry transcripts for. */
+export function transcriptHorizon(week: Window): Window {
+  return { start: new Date(week.end.getTime() - TRANSCRIPT_HORIZON_WEEKS * WEEK_MS), end: week.end };
 }
 
 /** `YYYY-MM-DD` of a window's Monday — the URL/API key for a week. */
@@ -228,6 +254,19 @@ export function bucketForViews(avgViews: number | null): Bucket | null {
   if (avgViews >= GOOD_AVG_VIEWS) return "good";
   if (avgViews <= BAD_AVG_VIEWS) return "bad";
   return "decent";
+}
+
+/** Median views per post — what a *typical* post of theirs does. One viral
+ *  reel moves the mean by tens of thousands and the median by nothing, which
+ *  is the whole reason it sits beside the mean as a second rating. */
+export function medianViews(videos: PerformanceVideo[]): number | null {
+  const sorted = videos
+    .filter((v) => v.view_count != null)
+    .map((v) => v.view_count as number)
+    .sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 function avgViews(videos: PerformanceVideo[]): number | null {
@@ -404,6 +443,25 @@ export interface CpmRead {
   /** Average views of the settled (paid) posts — what the bucket is judged
    *  on when the true read is usable. */
   settledAvgViews: number | null;
+  /** Median views of the same settled posts (see `medianViews`). */
+  settledMedianViews: number | null;
+  /**
+   * The settled month before `settledWindow` — the same `days`, ending where
+   * the settled window starts — which is what "how is my CPM moving" has to
+   * compare against.
+   *
+   * Not "the same read a week ago": payouts lag posting by ~3 weeks, so the
+   * newest paid post is always older than the reporting week, and a read as
+   * of last Monday sees exactly the same paid posts as a read as of this
+   * Monday. Compared that way the true number could never move on the
+   * latest week, and the first coach dashboard showed "no new payouts" on
+   * every single row (2026-09-02). Month against prior month is the
+   * comparison Joey actually asked for.
+   */
+  priorCpm: number | null;
+  priorPaidPosts: number;
+  priorWindow: Window | null;
+  priorLowSample: boolean;
   /** Projected over every post of the calendar window (the `days` before
    *  `asOf`) — the fallback while `cpm` is null, and a preview of where the
    *  true number is heading. */
@@ -413,6 +471,8 @@ export interface CpmRead {
   /** Average views of every post in the calendar window — the bucket basis
    *  while the true read is missing or a low sample. */
   avgViews: number | null;
+  /** Median views of the calendar window's posts. */
+  medianViews: number | null;
 }
 
 /** The average views a read should be bucketed on: the settled posts when
@@ -421,6 +481,19 @@ export function bucketBasis(read: CpmRead): { avgViews: number | null; source: "
   if (read.cpm != null && !read.lowSample) return { avgViews: read.settledAvgViews, source: "true" };
   if (read.avgViews != null) return { avgViews: read.avgViews, source: "projected" };
   return { avgViews: null, source: null };
+}
+
+/**
+ * The same choice of posts as `bucketBasis`, judged on the median instead
+ * of the mean. Both ratings are shown side by side: the mean is the money
+ * view (one 656k-view reel really did make the month cheap), the median is
+ * the coaching view (that creator's typical post still does 1,900 views).
+ * Live case 2026-09-02: @stayfocusedevan, mean 52,928 → good, median
+ * 1,911 → decent.
+ */
+export function medianBucket(read: CpmRead): Bucket | null {
+  if (read.cpm != null && !read.lowSample) return bucketForViews(read.settledMedianViews);
+  return bucketForViews(read.medianViews);
 }
 
 /**
@@ -445,6 +518,45 @@ export function cpmRead(
   // twenty times — leaving it raw drags the average toward the trial noise
   // floor and hands each upload its own flat-fee projection.
   const calendar = collapseTrialUploads(inWindow(videos, trailingWindow(asOf, days))).kept;
+  return cpmReadOver(videos, calendar, asOf, days, payscale);
+}
+
+/**
+ * The same read over a whole team: every member's videos pooled.
+ *
+ * A ratio of sums, exactly like a creator's — the team's paid dollars over
+ * the views those dollars bought — so a coach's number is the money number,
+ * not an average of ten CPMs where a 149-view creator's "$1.00" would count
+ * as much as a 400k-view one's. The settled window ends at the TEAM's newest
+ * payout.
+ *
+ * Trial batches are collapsed per creator, never across them: one script is
+ * handed to several creators, so two creators reading the same words are two
+ * posts, and pooling before collapsing would fold one creator's reel into
+ * another's.
+ */
+export function teamCpmRead(
+  videosByCreator: PerformanceVideo[][],
+  asOf: Date,
+  days: number = CPM_WINDOW_DAYS,
+  payscale: Payscale = DEFAULT_PAYSCALE
+): CpmRead {
+  const calendar = videosByCreator.flatMap(
+    (videos) => collapseTrialUploads(inWindow(videos, trailingWindow(asOf, days))).kept
+  );
+  return cpmReadOver(videosByCreator.flat(), calendar, asOf, days, payscale);
+}
+
+/** Shared body of `cpmRead` / `teamCpmRead`: `calendar` is the already
+ *  collapsed set for the projection, `videos` the raw set the settled read
+ *  is taken from. */
+function cpmReadOver(
+  videos: PerformanceVideo[],
+  calendar: PerformanceVideo[],
+  asOf: Date,
+  days: number,
+  payscale: Payscale
+): CpmRead {
   const frontier = videos
     .filter((v) => isPaid(v) && postedAt(v) != null && postedAt(v)! < asOf.getTime())
     .reduce<number | null>((max, v) => (max == null || postedAt(v)! > max ? postedAt(v)! : max), null);
@@ -461,15 +573,25 @@ export function cpmRead(
   // understate money a creator genuinely received. It is filtered to paid
   // posts already, which is what keeps the trial floor out of it.
   const settled = settledWindow ? inWindow(videos, settledWindow).filter(isPaid) : [];
+  const priorWindow: Window | null = settledWindow
+    ? { start: new Date(settledWindow.start.getTime() - days * DAY_MS), end: settledWindow.start }
+    : null;
+  const prior = priorWindow ? inWindow(videos, priorWindow).filter(isPaid) : [];
   return {
     cpm: trueCpm(settled),
     paidPosts: settled.length,
     settledWindow,
     lowSample: settled.length > 0 && settled.length < MIN_PAID_SAMPLE,
     settledAvgViews: avgViews(settled),
+    settledMedianViews: medianViews(settled),
+    priorCpm: trueCpm(prior),
+    priorPaidPosts: prior.length,
+    priorWindow,
+    priorLowSample: prior.length > 0 && prior.length < MIN_PAID_SAMPLE,
     projected: projectedCpm(calendar, payscale),
     posts: calendar.length,
     avgViews: avgViews(calendar),
+    medianViews: medianViews(calendar),
   };
 }
 
@@ -574,19 +696,23 @@ export function badStreak(
 export interface CreatorPerformance {
   week: Window;
   weekly: WeeklyRead;
+  /** The week before, so this week's posts have something to be compared to. */
+  weeklyPrev: WeeklyRead;
   /** Rolling 30-day CPM as of the end of `week`. */
   cpm30: CpmRead;
-  /** The same reading one week earlier — what "vs last week" compares to. */
-  cpm30Prev: CpmRead;
-  /** Change in the true 30-day CPM; null unless both weeks have one. */
+  /** The settled month against the settled month before it (see
+   *  `CpmRead.priorCpm`); null until both have paid posts. */
   delta: Delta | null;
-  /** Change in the projection — always available, so the embed can still
-   *  say which way a never-paid creator is moving. */
+  /** This week's posts against last week's, on the payscale projection —
+   *  the leading indicator, weeks before a payout confirms it. Null when
+   *  either week has no viewed posts. */
   projectedDelta: Delta | null;
   /** Judged on average views (see bucketForViews) over the settled posts
    *  when the true read is usable, the calendar month otherwise. */
   bucket: Bucket | null;
   bucketSource: "true" | "projected" | null;
+  /** The same posts rated on their median views (see `medianBucket`). */
+  medianBucket: Bucket | null;
   onboarding: OnboardingRead;
   weeksSinceJoined: number | null;
   badStreak: number;
@@ -603,18 +729,20 @@ export function creatorPerformance(input: {
   const payscale = input.payscale ?? DEFAULT_PAYSCALE;
   const { videos, joinedAt, week } = input;
   const cpm30 = cpmRead(videos, week.end, CPM_WINDOW_DAYS, payscale);
-  const cpm30Prev = cpmRead(videos, previousWeek(week).end, CPM_WINDOW_DAYS, payscale);
+  const weekly = weeklyRead(videos, week, payscale);
+  const weeklyPrev = weeklyRead(videos, previousWeek(week), payscale);
   const basis = bucketBasis(cpm30);
   const streak = badStreak(videos, week, joinedAt, payscale);
   return {
     week,
-    weekly: weeklyRead(videos, week, payscale),
+    weekly,
+    weeklyPrev,
     cpm30,
-    cpm30Prev,
-    delta: delta(cpm30.cpm, cpm30Prev.cpm),
-    projectedDelta: delta(cpm30.projected, cpm30Prev.projected),
+    delta: delta(cpm30.cpm, cpm30.priorCpm),
+    projectedDelta: delta(weekly.projectedCpm, weeklyPrev.projectedCpm),
     bucket: bucketForViews(basis.avgViews),
     bucketSource: basis.source,
+    medianBucket: medianBucket(cpm30),
     onboarding: onboardingRead(videos, joinedAt, week.end, payscale),
     weeksSinceJoined: weeksSinceJoined(joinedAt, week),
     badStreak: streak,
@@ -637,4 +765,88 @@ export function comparePerformance(a: CreatorPerformance, b: CreatorPerformance)
   const da = (a.delta ?? a.projectedDelta)?.usd ?? Number.NEGATIVE_INFINITY;
   const db = (b.delta ?? b.projectedDelta)?.usd ?? Number.NEGATIVE_INFINITY;
   return db - da;
+}
+
+/* --- teams ---------------------------------------------------------------- */
+
+/**
+ * One coach's team for one week — the coach's own read, built from the same
+ * per-creator reads the digest and /performance show, so the team's numbers
+ * and its members' never disagree.
+ *
+ * "Is my team good" is answered the way a creator's is: the pooled true CPM
+ * where enough of the team's posts have settled, the pooled projection
+ * otherwise, and the bucket on average views (see `bucketForViews`). Bucket
+ * counts sit beside it because a $3 team can be two stars carrying eight
+ * strugglers, and the coach's job is the eight.
+ */
+export interface TeamPerformance {
+  week: Window;
+  creators: number;
+  /** This week: reels shipped (trial batches collapsed per creator). */
+  posts: number;
+  quota: number;
+  belowQuota: number;
+  views: number;
+  avgViews: number | null;
+  /** What this week's posts will cost per 1k views — the leading indicator. */
+  projectedCpm: number | null;
+  spikes: number;
+  trialUploads: number;
+  /** Pooled rolling 30-day read as of the week's end. */
+  cpm30: CpmRead;
+  /** Settled month vs the settled month before (`CpmRead.priorCpm`). */
+  delta: Delta | null;
+  /** This week's posts vs last week's, on the projection. */
+  projectedDelta: Delta | null;
+  /** Last week's projected CPM, for the label beside the delta. */
+  projectedCpmPrev: number | null;
+  bucket: Bucket | null;
+  bucketSource: "true" | "projected" | null;
+  /** How many creators sit in each bucket; `unread` had no read at all. */
+  buckets: Record<Bucket | "unread", number>;
+  flagged: number;
+}
+
+export function teamPerformance(input: {
+  members: { performance: CreatorPerformance; videos: PerformanceVideo[] }[];
+  week: Window;
+  payscale?: Payscale;
+}): TeamPerformance {
+  const payscale = input.payscale ?? DEFAULT_PAYSCALE;
+  const { members, week } = input;
+  const videosByCreator = members.map((m) => m.videos);
+  const weekPosts = videosByCreator.flatMap((v) => collapseTrialUploads(inWindow(v, week)).kept);
+  const prevWeekPosts = videosByCreator.flatMap(
+    (v) => collapseTrialUploads(inWindow(v, previousWeek(week))).kept
+  );
+  const weekly = members.map((m) => m.performance.weekly);
+  const views = weekly.reduce((sum, w) => sum + w.views, 0);
+  const posts = weekly.reduce((sum, w) => sum + w.posts, 0);
+  const cpm30 = teamCpmRead(videosByCreator, week.end, CPM_WINDOW_DAYS, payscale);
+  const projected = projectedCpm(weekPosts, payscale);
+  const projectedPrev = projectedCpm(prevWeekPosts, payscale);
+  const basis = bucketBasis(cpm30);
+  const buckets: TeamPerformance["buckets"] = { good: 0, decent: 0, bad: 0, unread: 0 };
+  for (const m of members) buckets[m.performance.bucket ?? "unread"]++;
+  return {
+    week,
+    creators: members.length,
+    posts,
+    quota: members.length * QUOTA_POSTS_PER_WEEK,
+    belowQuota: weekly.filter((w) => w.belowQuota).length,
+    views,
+    avgViews: posts > 0 ? views / posts : null,
+    projectedCpm: projected,
+    spikes: weekly.reduce((sum, w) => sum + w.spikes.length, 0),
+    trialUploads: weekly.reduce((sum, w) => sum + w.trialUploads, 0),
+    cpm30,
+    delta: delta(cpm30.cpm, cpm30.priorCpm),
+    projectedDelta: delta(projected, projectedPrev),
+    projectedCpmPrev: projectedPrev,
+    bucket: bucketForViews(basis.avgViews),
+    bucketSource: basis.source,
+    buckets,
+    flagged: members.filter((m) => m.performance.flagged).length,
+  };
 }

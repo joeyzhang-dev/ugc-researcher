@@ -19,6 +19,15 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/discord")).toBe(false);
   });
 
+  it("keeps the coach surface behind the session gate, and out of the creator surfaces", () => {
+    // /coach is a signed-in page for the coach role. It must not be public
+    // (a team's numbers are not for the open web) and must not read as a
+    // creator surface — `/c/` needs the slash, so "/coach" is a staff-style
+    // path that the MFA gate applies to like any other.
+    expect(isPublicPath("/coach")).toBe(false);
+    expect(isCreatorSurface("/coach")).toBe(false);
+  });
+
   it("treats creator surfaces and login as public", () => {
     expect(isPublicPath("/c/abc123")).toBe(true);
     expect(isPublicPath("/login")).toBe(true);

@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   BAD_AVG_VIEWS,
+  BAD_STREAK_FLAG,
+  CPM_WINDOW_DAYS,
   GOOD_AVG_VIEWS,
+  WEEK_MS,
+  medianBucket,
+  medianViews,
+  teamCpmRead,
+  teamPerformance,
+  trailingWindow,
+  transcriptHorizon,
   badStreak,
   bucketBasis,
   bucketForViews,
@@ -475,5 +484,165 @@ describe("collapseTrialUploads", () => {
     // The average is the published reel's views, not dragged to the trial floor.
     expect(read.avgViews).toBe(80000);
     expect(read.spikes).toHaveLength(1);
+  });
+});
+
+describe("transcriptHorizon", () => {
+  it("covers every window creatorPerformance collapses, including a flag-length streak", () => {
+    const horizon = transcriptHorizon(WEEK);
+    expect(horizon.end.getTime()).toBe(WEEK.end.getTime());
+    // cpm30 this week, cpm30Prev, and one 30-day window per streak step up
+    // to the flag: the deepest one is what the horizon must still reach.
+    const deepest = trailingWindow(
+      new Date(WEEK.end.getTime() - BAD_STREAK_FLAG * WEEK_MS),
+      CPM_WINDOW_DAYS
+    );
+    expect(horizon.start.getTime()).toBeLessThanOrEqual(deepest.start.getTime());
+  });
+
+  it("with transcripts across the horizon, identical trial weeks show no projected change", () => {
+    // Two weeks that are the same: one real reel that did 30k, uploaded as a
+    // 12-copy trial batch at ~2k each. Only the transcripts make them the same
+    // post — and only if the loader attached them to BOTH weeks.
+    // Different words each week, or the 30-day window folds them into one.
+    const trialWeek = (monday: Date, tag: string, words: string): PerformanceVideo[] =>
+      Array.from({ length: 12 }, (_, i) => ({
+        ...video(new Date(monday.getTime() + i * 3_600_000).toISOString(), i === 0 ? 30_000 : 2_000 + i, null, `${tag}${i}`),
+        transcript_text: words,
+      }));
+    const prev = previousWeek(WEEK);
+    const videos = [
+      ...trialWeek(WEEK.start, "cur", "morning routine that fixed my focus in seven days flat"),
+      ...trialWeek(prev.start, "prev", "three apps i deleted and why my sleep came back overnight"),
+    ];
+    const p = creatorPerformance({ videos, joinedAt: null, week: WEEK });
+    expect(p.weekly.posts).toBe(1);
+    expect(p.weekly.trialUploads).toBe(11);
+    expect(p.weeklyPrev.posts).toBe(1);
+    expect(p.cpm30.posts).toBe(2);
+    expect(p.projectedDelta?.usd).toBeCloseTo(0, 6);
+
+    // The bug this pins: drop the previous week's transcripts — what a
+    // week-only loader did — and the same creator "improves" by a few
+    // dollars of CPM while nothing changed.
+    const halfBlind = videos.map((v) => (v.shortcode?.startsWith("prev") ? { ...v, transcript_text: null } : v));
+    const q = creatorPerformance({ videos: halfBlind, joinedAt: null, week: WEEK });
+    expect(q.weeklyPrev.posts).toBe(12);
+    expect(q.projectedDelta!.usd).toBeLessThan(-1);
+  });
+});
+
+describe("team reads", () => {
+  it("pools a team's CPM as a ratio of sums, not a mean of member CPMs", () => {
+    // A 400k-view star paid $440 ($1.10) and a 1,000-view creator paid $41
+    // ($41.00). The mean of the two CPMs is $21; the money says $1.20.
+    const star = [video("2026-08-10T10:00:00Z", 400_000, 440, "star")];
+    const small = [video("2026-08-11T10:00:00Z", 1_000, 41, "small")];
+    const read = teamCpmRead([star, small], WEEK.end);
+    expect(read.paidPosts).toBe(2);
+    expect(read.cpm).toBeCloseTo((481 * 1000) / 401_000, 6);
+  });
+
+  it("collapses trial batches per creator, never across creators sharing a script", () => {
+    const words = "the one script both of them were handed this week";
+    const at = (i: number) => new Date(WEEK.start.getTime() + i * 3_600_000).toISOString();
+    // Creator A ran a trial: three uploads of one reel. Creator B posted the
+    // same script once. That is two reels, not one.
+    const a = [0, 1, 2].map((i) => ({ ...video(at(i), 2_000 + i, null, `a${i}`), transcript_text: words }));
+    const b = [{ ...video(at(5), 9_000, null, "b0"), transcript_text: words }];
+    expect(teamCpmRead([a, b], WEEK.end).posts).toBe(2);
+    // Pooled first, the same words would have folded B's reel into A's batch.
+    expect(teamCpmRead([[...a, ...b]], WEEK.end).posts).toBe(1);
+  });
+
+  it("sums the week and counts buckets from the members' own reads", () => {
+    const at = (i: number) => new Date(WEEK.start.getTime() + i * 3_600_000).toISOString();
+    const good = Array.from({ length: 7 }, (_, i) => video(at(i), 50_000, null, `g${i}`));
+    const quiet = [video(at(1), 800, null, "q0")];
+    const members = [good, quiet].map((videos) => ({
+      videos,
+      performance: creatorPerformance({ videos, joinedAt: null, week: WEEK }),
+    }));
+    const team = teamPerformance({ members, week: WEEK });
+    expect(team.creators).toBe(2);
+    expect(team.posts).toBe(8);
+    expect(team.quota).toBe(14);
+    expect(team.belowQuota).toBe(1);
+    expect(team.spikes).toBe(7);
+    expect(team.buckets).toEqual({ good: 1, decent: 0, bad: 1, unread: 0 });
+    // Nothing is paid, so the team is read on its projection, on average
+    // views — and the star carries it.
+    expect(team.cpm30.cpm).toBeNull();
+    expect(team.bucketSource).toBe("projected");
+    expect(team.bucket).toBe("good");
+  });
+});
+
+describe("trend: settled month vs the settled month before", () => {
+  it("compares the two settled months, so the latest week can still show a move", () => {
+    // Newest payout Aug 17; the settled month is Jul 18–Aug 17, the prior one
+    // Jun 18–Jul 18. Cheaper this month ($1.10) than last ($5.00).
+    const videos = [
+      video("2026-08-17T10:00:00Z", 100_000, 110, "n1"),
+      video("2026-08-01T10:00:00Z", 100_000, 110, "n2"),
+      video("2026-07-25T10:00:00Z", 100_000, 110, "n3"),
+      video("2026-07-10T10:00:00Z", 10_000, 50, "o1"),
+      video("2026-07-01T10:00:00Z", 10_000, 50, "o2"),
+      video("2026-06-25T10:00:00Z", 10_000, 50, "o3"),
+    ];
+    const p = creatorPerformance({ videos, joinedAt: null, week: WEEK });
+    expect(p.cpm30.cpm).toBeCloseTo(1.1, 6);
+    expect(p.cpm30.priorCpm).toBeCloseTo(5, 6);
+    expect(p.cpm30.priorPaidPosts).toBe(3);
+    expect(p.delta?.usd).toBeCloseTo(-3.9, 6);
+    // The old week-over-week comparison could not see this: nothing posted
+    // in the reporting week is paid yet, so both reads shared one frontier.
+    const asOfPrev = cpmRead(videos, previousWeek(WEEK).end);
+    expect(asOfPrev.settledWindow?.end.getTime()).toBe(p.cpm30.settledWindow?.end.getTime());
+  });
+
+  it("has no true delta until a second settled month exists, and falls back to the weekly projection", () => {
+    const at = (d: string) => `${d}T10:00:00Z`;
+    const videos = [
+      video(at("2026-08-10"), 50_000, 90, "p1"),
+      video(at("2026-08-08"), 50_000, 90, "p2"),
+      video(at("2026-08-05"), 50_000, 90, "p3"),
+      video(at("2026-08-26"), 30_000, null, "w1"),
+      video(at("2026-08-19"), 3_000, null, "v1"),
+    ];
+    const p = creatorPerformance({ videos, joinedAt: null, week: WEEK });
+    expect(p.cpm30.cpm).not.toBeNull();
+    expect(p.cpm30.priorPaidPosts).toBe(0);
+    expect(p.delta).toBeNull();
+    // This week's 30k post projects cheaper than last week's 3k one.
+    expect(p.projectedDelta!.usd).toBeLessThan(0);
+  });
+});
+
+describe("median rating", () => {
+  it("is not moved by one viral reel the way the mean is", () => {
+    // @stayfocusedevan, settled month to 2026-08-07: one 656k reel, one 158k,
+    // fourteen at ~1.5–2.8k. Mean 52,928 → good; median 1,911 → decent.
+    const at = (d: string) => `${d}T10:00:00Z`;
+    const videos = [
+      video(at("2026-08-05"), 656_546, 66.81, "viral"),
+      video(at("2026-07-25"), 158_049, 151.75, "big"),
+      ...[8279, 2818, 2570, 2056, 2022, 1912, 1861, 1658, 1590, 1541, 1534, 1484, 1475, 1458].map((views, i) =>
+        video(at(`2026-07-${String(10 + i).padStart(2, "0")}`), views, 41 + views / 1000, `s${i}`)
+      ),
+    ];
+    const p = creatorPerformance({ videos, joinedAt: null, week: WEEK });
+    expect(p.bucketSource).toBe("true");
+    expect(p.bucket).toBe("good");
+    expect(p.medianBucket).toBe("decent");
+    // 16 posts: the median is the mean of the 8th and 9th by views.
+    expect(p.cpm30.settledMedianViews).toBeCloseTo((1861 + 1912) / 2, 6);
+    expect(medianBucket(p.cpm30)).toBe(p.medianBucket);
+  });
+
+  it("median of an odd and an even set", () => {
+    expect(medianViews([video("2026-08-25T00:00:00Z", 1, null, "a"), video("2026-08-25T00:00:00Z", 100, null, "b"), video("2026-08-25T00:00:00Z", 3, null, "c")])).toBe(3);
+    expect(medianViews([video("2026-08-25T00:00:00Z", 1, null, "a"), video("2026-08-25T00:00:00Z", 3, null, "b")])).toBe(2);
+    expect(medianViews([])).toBeNull();
   });
 });

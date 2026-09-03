@@ -491,11 +491,38 @@ or `POST /api/jobs/research {"action":"launchpoint-sync"}`. Repeat until
   calendar window held one week of paid posts and swung Liam $1.49 → $12.33
   when a spike aged out. < 3 paid posts is a low sample: shown, not coloured,
   and the bad-streak defers to the month.
-- **Buckets are judged on average views** (good ≥ 40k, bad ≤ 1,667 — the $2
+- **The trend is settled month vs the settled month before it**
+  (`CpmRead.priorCpm`: the same 30 days ending where the settled window
+  starts), never "the same read a week ago". Payouts lag posting by ~3
+  weeks, so the newest paid post is always older than the reporting week
+  and a read as of last Monday sees exactly the same paid posts as one as
+  of this Monday — compared that way the true number could never move on
+  the latest week, and the first coach dashboard read "no new payouts" on
+  every row (2026-09-02). Where no true delta exists yet, the row shows
+  this week's posts against last week's on the projection, labelled.
+- **Buckets are judged on views, not CPM** (good ≥ 40k, bad ≤ 1,667 — the $2
   and $25 CPM lines for posts over 1k views). Sub-1k posts get no flat fee
   and read as a "good" $1 CPM; a 149-view creator must be bad, not best.
+  **Two ratings since 2026-09-02:** `bucket` on the *mean* (the money view —
+  it is what the CPM itself is made of) and `medianBucket` on the *median*
+  of the same posts (the coaching view). Live reason: @stayfocusedevan's
+  month had one 656k-view reel paid $66.81, so mean 52,928 → good while his
+  typical post does 1,911 → decent. "Average" in the original rule was the
+  author's word, not Joey's; he only set the 40k / 1.5k lines. The Discord
+  digest still shows the mean one; adding the median there is pending.
 - **Weeks are Monday→Monday UTC**, passed explicitly, so a re-run reproduces
   the same digest. Quota is 7 posts/week (the program's ceiling is 21).
+- **Trial-reel collapse only sees posts the loader fetched transcripts for**
+  (`collapseTrialUploads`; a post without a transcript stands alone). Both
+  loaders must therefore fetch `transcriptHorizon(week)` — 8 weeks, shared
+  with `/stats`'s `TREND_WEEKS` — because `creatorPerformance` collapses
+  30-day windows ending at this week *and* the previous one, plus one per
+  bad-streak step. When the digest loader fetched the reporting week only
+  (2026-08-31 → 09-02), `cpm30` was one-quarter collapsed, the previous
+  week's read not at all, and every trial-running creator showed a projected-CPM
+  "improvement" that was the mismatch. The onboarding week is fetched
+  separately for creators who joined before the horizon. Measured: 8 weeks
+  is ~1,600 rows / ~1.6MB against ~420 for one week.
 - **Coach = the Discord category of the creator's coaching channel**
   (`Coach: Will's Team`, `Coach: Luke's Team`). `Not Creating 🚫` is skipped.
   TikTok is ignored throughout.
@@ -510,6 +537,42 @@ or `POST /api/jobs/research {"action":"launchpoint-sync"}`. Repeat until
   `GET /api/jobs/coach-digest?week=&dry=1&to=<channel>` previews (`to` posts
   everything to one test channel without touching the ledger). Needs
   `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` on Vercel.
+## Coach role
+
+`profiles.role = 'coach'` (since 2026-09-02) is a fourth kind of account:
+**not staff, not creator, one page.** A coach signs in like anyone else and
+sees `/coach` and nothing else — the `(app)` layout redirects the role there,
+and `/coach` has its own layout with no rail and no workspace switcher.
+
+- **The team is the Discord category** of the creators' coaching channels
+  (`Coach: Will's Team`), bound to the account in `research_coach_teams`.
+  That is the same key the coach digest and /performance group by, so the
+  dashboard and the Monday digest describe the same creators by
+  construction. Bind coaches from /settings → Coaches (admin only): an
+  unknown email is invited through Supabase auth, a creator-role account is
+  promoted, a staff account is refused — demoting staff to one page should
+  be a deliberate step, not a side effect of a form.
+- **`is_staff()` is deliberately not widened.** Every research RLS policy
+  reads through it, and a coach must not be able to select `research_*` from
+  the browser. `/coach` reads with the **service role** and scopes to the
+  coach's own category in code — the page renders exactly one `CoachGroup`.
+  Staff may open `/coach?team=<category>` to see what a coach sees.
+- **The team's number is `teamPerformance`** (`src/lib/performance.ts`),
+  built from the same per-creator reads as the digest: a pooled true CPM
+  (ratio of sums — a mean of member CPMs would count a 149-view creator's
+  "$1.00" as much as a 400k-view one's), settled window ending at the
+  *team's* newest payout, bucket on average views. Trial batches collapse
+  **per creator, never across creators**: one script goes to several
+  creators, and pooling before collapsing folds one creator's reel into
+  another's (pinned by a test). `CoachGroup.team` carries it for every
+  group, so /performance can show it too.
+- Table rows are shared with /performance via
+  `src/components/performance-rows.tsx`; `creatorHref` is what keeps a coach
+  from being linked into `/research/<id>`, which they cannot open.
+
+Not built yet (next steps agreed with Joey 2026-08-31): a per-coach CPM goal
+with month-over-month attribution, and a mass ping to the team's channels.
+
 ## Roster lifecycle
 
 `research_creators.archived_at` is the only thing that means "we stopped

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getProfile, isStaff } from "@/lib/auth";
+import { getProfile, isCoach, isStaff } from "@/lib/auth";
 import { signOut } from "@/app/login/actions";
 import { WorkspaceRail } from "@/components/workspace-rail";
 import { getWorkspace } from "@/lib/workspace/server";
@@ -7,6 +7,10 @@ import { getWorkspace } from "@/lib/workspace/server";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const profile = await getProfile();
   if (!profile) redirect("/login");
+
+  // A coach has exactly one surface. /coach has its own layout (no rail, no
+  // workspace), so this is a redirect rather than a branch of this tree.
+  if (isCoach(profile)) redirect("/coach");
 
   // Default deny: signed in but not staff — dead-end here rather than redirect
   // to /login, which would loop with the middleware.

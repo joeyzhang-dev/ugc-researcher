@@ -16,20 +16,16 @@ import {
   parseWeek,
   previousWeek,
   weekKey,
-  type Bucket,
-  type Delta,
   type Window,
 } from "@/lib/performance";
-import { Avatar, Card, DiscordIcon, EmptyState, PageHeader, tableWrap } from "@/components/ui";
+import { Card, EmptyState, PageHeader, tableWrap } from "@/components/ui";
 import { formatCompact, formatDateUTC, formatUsd } from "@/lib/format";
 import { compareValues, parseSort, SortHeader, type SortDir } from "@/components/sort-header";
+import { PERFORMANCE_GRID as GRID, PerformanceRow as Row } from "@/components/performance-rows";
 
-const SORT_KEYS = ["digest", "creator", "posts", "views", "cpm", "delta", "joined"] as const;
+const SORT_KEYS = ["digest", "median", "creator", "posts", "views", "cpm", "delta", "joined"] as const;
 type SortKey = (typeof SORT_KEYS)[number];
 
-/** Header and rows share one column recipe. */
-const GRID =
-  "grid grid-cols-[minmax(220px,1.4fr)_minmax(90px,0.6fr)_minmax(110px,0.8fr)_minmax(120px,0.9fr)_minmax(120px,0.9fr)_minmax(90px,0.6fr)_minmax(120px,0.9fr)] items-center gap-x-3";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +75,8 @@ export default async function PerformancePage({
     const p = r.performance;
     switch (sort.key) {
       case "digest": return p.bucket ? BUCKET_ORDER[p.bucket] : null;
+      case "median": return p.medianBucket ? BUCKET_ORDER[p.medianBucket] : null;
+    case "median": return p.medianBucket ? BUCKET_ORDER[p.medianBucket] : null;
       case "posts": return p.weekly.posts;
       case "views": return p.weekly.avgViews;
       case "cpm": return p.cpm30.cpm ?? p.cpm30.projected;
@@ -113,7 +111,7 @@ export default async function PerformancePage({
     <>
       <PageHeader
         title="Performance"
-        subtitle={`How each creator did in the week of ${formatDateUTC(week.start.toISOString())} — posts against the quota of ${QUOTA_POSTS_PER_WEEK}, views, and the rolling 30-day CPM with its change from the week before. Bad first, so the coach sees who needs the call.`}
+        subtitle={`How each creator did in the week of ${formatDateUTC(week.start.toISOString())} — posts against the quota of ${QUOTA_POSTS_PER_WEEK}, views, and the rolling 30-day CPM with how it moved against the settled month before (or this week's posts against last week's, where nothing is paid yet). Bad first, so the coach sees who needs the call.`}
         action={
           <div className="flex items-center gap-1.5">
             <Link href={hrefWith({ week: weekKey(previousWeek(week)) })} className={weekNav} title="Previous week">
@@ -157,7 +155,7 @@ export default async function PerformancePage({
             <EmptyState message="No roster creators to read." />
           ) : (
             <div className={tableWrap}>
-              <div className="min-w-[1000px]">
+              <div className="min-w-[1100px]">
                 <div className={`${GRID} border-b border-black/[0.05] pb-1`}>
                   {(
                     [
@@ -165,9 +163,10 @@ export default async function PerformancePage({
                       ["Posts", "posts", "desc", "text-right"],
                       ["Avg views", "views", "desc", "text-right"],
                       ["30d CPM", "cpm", "asc", "text-right"],
-                      ["vs last week", "delta", "desc", "text-right"],
+                      ["Trend", "delta", "desc", "text-right"],
                       ["Joined", "joined", "desc", "text-right"],
-                      ["Bucket", "digest", "asc", "text-right"],
+                      ["30d rating", "digest", "asc", "text-right"],
+                      ["Median rating", "median", "asc", "text-right"],
                     ] as const
                   ).map(([label, key, first, align]) => (
                     <SortHeader
@@ -200,7 +199,7 @@ export default async function PerformancePage({
                         </div>
                       )}
                       {group.rows.map((r) => (
-                        <Row key={r.creatorId} row={r} showCoach={sorted && !coachParam} />
+                        <Row key={r.creatorId} row={r} showCoach={sorted && !coachParam} creatorHref={(row) => `/research/${row.creatorId}`} />
                       ))}
                     </Fragment>
                   ))}
@@ -231,196 +230,3 @@ const chip = (active: boolean) =>
       ? "bg-neutral-900 text-white"
       : "bg-neutral-900/[0.04] text-neutral-600 hover:bg-neutral-900/[0.08]"
   }`;
-
-function Row({ row, showCoach }: { row: PerformanceRow; showCoach: boolean }) {
-  const p = row.performance;
-  const cpm = p.cpm30.cpm ?? p.cpm30.projected;
-  const projected = p.cpm30.cpm == null && p.cpm30.projected != null;
-  const d = p.delta ?? p.projectedDelta;
-  const dProjected = p.delta == null && p.projectedDelta != null;
-  return (
-    <div className={`${GRID} py-3 pr-1 transition-colors hover:bg-neutral-900/[0.03]`}>
-      <div className="flex min-w-0 items-center gap-2.5">
-        <Avatar name={row.handle} src={row.avatarUrl} size={34} />
-        <span className="min-w-0">
-          <span className="flex items-center gap-1.5">
-            <Link
-              href={`/research/${row.creatorId}`}
-              className="truncate text-sm font-semibold tracking-[-0.01em] text-neutral-900 hover:underline"
-            >
-              {row.displayName || `@${row.handle}`}
-            </Link>
-            {p.flagged && (
-              <span
-                title={`${p.badStreak} consecutive bad weeks — coach call or offboard`}
-                className="rounded-full bg-danger/[0.1] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-danger ring-1 ring-inset ring-danger/[0.22]"
-              >
-                {p.badStreak}w bad
-              </span>
-            )}
-          </span>
-          <span className="mt-0.5 flex items-center gap-1.5">
-            {row.discordUserId && <DiscordIcon size={12} />}
-            <a
-              href={row.profileUrl ?? `https://www.instagram.com/${row.handle}/`}
-              target="_blank"
-              rel="noreferrer"
-              className="truncate font-mono text-[11px] text-neutral-400 hover:text-neutral-700"
-            >
-              @{row.handle}
-            </a>
-            {showCoach && (
-              <span className="truncate text-[11px] text-neutral-400">
-                · {row.coach?.replace(/^Coach:\s*/i, "") ?? "no coach"}
-              </span>
-            )}
-          </span>
-        </span>
-      </div>
-
-      <Cell
-        value={`${p.weekly.posts}/${p.weekly.quota}`}
-        sub={p.weekly.belowQuota ? "below quota" : "on quota"}
-        tone={p.weekly.belowQuota ? "warn" : "ok"}
-      />
-      <Cell
-        value={formatCompact(p.weekly.avgViews == null ? null : Math.round(p.weekly.avgViews))}
-        sub={
-          p.weekly.posts === 0
-            ? "no posts"
-            : (p.weekly.avgViews ?? 0) < DEFAULT_PAYSCALE.flatFeeMinViews
-              ? `under ${formatCompact(DEFAULT_PAYSCALE.flatFeeMinViews)} · no flat fee`
-              : `≈ ${formatUsd(p.weekly.projectedCpm)} CPM${
-                  p.weekly.spikes.length > 0
-                    ? ` · ${p.weekly.spikes.length} spike${p.weekly.spikes.length === 1 ? "" : "s"}`
-                    : ""
-                }`
-        }
-        href={p.weekly.bestPost?.url}
-      />
-      <Cell
-        value={cpm == null ? "—" : formatUsd(cpm)}
-        sub={
-          cpm == null
-            ? "no posts in 30d"
-            : projected
-              ? "≈ what Launchpoint will pay · nothing settled yet"
-              : `${p.cpm30.paidPosts} paid · to ${formatDateUTC(p.cpm30.settledWindow?.end.toISOString())}${
-                  p.cpm30.lowSample ? " · low sample" : ""
-                }`
-        }
-        tone={projected || p.cpm30.lowSample ? "muted" : undefined}
-      />
-      {p.delta != null &&
-      p.cpm30.settledWindow?.end.getTime() === p.cpm30Prev.settledWindow?.end.getTime() ? (
-        // Same newest payout both weeks: the true number could not have
-        // moved, and saying "→ $0.00" would read as a measured no-change.
-        <Cell value="→" sub="no new payouts" />
-      ) : (
-        <DeltaCell delta={d} projected={dProjected} muted={p.cpm30.lowSample || p.cpm30Prev.lowSample} />
-      )}
-      <Cell
-        value={p.weeksSinceJoined == null ? "—" : `${p.weeksSinceJoined}w`}
-        sub={
-          p.onboarding.bucket
-            ? `start: ${p.onboarding.bucket}${p.onboarding.final ? "" : " (pending)"}`
-            : p.onboarding.joinedAt
-              ? "no first-week posts"
-              : "not on Launchpoint"
-        }
-      />
-      <div className="text-right">
-        <BucketChip bucket={p.bucket} projected={p.bucketSource === "projected"} />
-      </div>
-    </div>
-  );
-}
-
-function Cell({
-  value,
-  sub,
-  tone,
-  href,
-}: {
-  value: string;
-  sub: string;
-  tone?: "ok" | "warn" | "muted";
-  href?: string;
-}) {
-  const subClass =
-    tone === "warn" ? "text-warning" : tone === "ok" ? "text-success" : "text-neutral-400";
-  return (
-    <span className="text-right">
-      <span
-        className={`block text-[15px] font-semibold tracking-[-0.01em] tabular-nums ${
-          tone === "muted" ? "text-neutral-500" : "text-neutral-900"
-        }`}
-      >
-        {value}
-      </span>
-      {href ? (
-        <a
-          href={href}
-          target="_blank"
-          rel="noreferrer"
-          className={`mt-0.5 block text-[11px] leading-tight hover:underline ${subClass}`}
-        >
-          {sub}
-        </a>
-      ) : (
-        <span className={`mt-0.5 block text-[11px] leading-tight ${subClass}`}>{sub}</span>
-      )}
-    </span>
-  );
-}
-
-/** For CPM, down is good: it costs less to reach a thousand people. A change
- *  read off fewer than three paid posts is shown but not coloured — one
- *  spike entering or leaving the sample is not a trend. */
-function DeltaCell({
-  delta,
-  projected,
-  muted,
-}: {
-  delta: Delta | null;
-  projected: boolean;
-  muted: boolean;
-}) {
-  if (!delta) return <Cell value="—" sub="no prior read" />;
-  const flat = Math.abs(delta.usd) < 0.005;
-  const tone =
-    muted || flat ? "text-neutral-500" : delta.usd < 0 ? "text-success" : "text-danger";
-  const arrow = flat ? "→" : delta.usd < 0 ? "▼" : "▲";
-  return (
-    <span className="text-right">
-      <span className={`block text-[15px] font-semibold tracking-[-0.01em] tabular-nums ${tone}`}>
-        {arrow} {formatUsd(Math.abs(delta.usd))}
-      </span>
-      <span className="mt-0.5 block text-[11px] leading-tight tabular-nums text-neutral-400">
-        {delta.pct > 0 ? "+" : ""}
-        {delta.pct.toFixed(1)}%{projected ? " · projected" : muted ? " · low sample" : ""}
-      </span>
-    </span>
-  );
-}
-
-function BucketChip({ bucket, projected }: { bucket: Bucket | null; projected: boolean }) {
-  if (!bucket) {
-    return <span className="font-mono text-[11px] text-neutral-400">—</span>;
-  }
-  const tone =
-    bucket === "good"
-      ? "bg-success/[0.1] text-success ring-success/[0.22]"
-      : bucket === "bad"
-        ? "bg-danger/[0.1] text-danger ring-danger/[0.22]"
-        : "bg-warning/[0.1] text-warning ring-warning/[0.22]";
-  return (
-    <span
-      title={projected ? "From the projected CPM — nothing in the window is paid yet" : "From the true CPM"}
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] ring-1 ring-inset ${tone}`}
-    >
-      {bucket}
-      {projected && <span className="font-normal normal-case tracking-normal opacity-70">~</span>}
-    </span>
-  );
-}

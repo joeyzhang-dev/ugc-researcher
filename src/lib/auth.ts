@@ -24,6 +24,12 @@ export function isStaff(profile: Pick<Profile, "role"> | null | undefined): bool
   return profile?.role === "admin" || profile?.role === "viewer";
 }
 
+/** A coach owns one team and sees one page. Not staff — `isStaff` stays
+ *  false so nothing built on it (RLS, the app layout, actions) opens up. */
+export function isCoach(profile: Pick<Profile, "role"> | null | undefined): boolean {
+  return profile?.role === "coach";
+}
+
 /** Throws unless the caller is a signed-in admin. Use at the top of mutating server actions. */
 export async function requireAdmin(): Promise<Profile> {
   const profile = await getProfile();

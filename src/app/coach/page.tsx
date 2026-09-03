@@ -1,0 +1,309 @@
+import Link from "next/link";
+import { getProfile, isCoach, isStaff } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getOwnCoachTeam, listTeamCategories } from "@/lib/coach-team";
+import { loadPerformanceReport, type CoachGroup } from "@/lib/jobs/performance";
+import {
+  lastCompleteWeek,
+  parseWeek,
+  previousWeek,
+  weekKey,
+  type Window,
+} from "@/lib/performance";
+import { Card, EmptyState, KpiCard, PageHeader } from "@/components/ui";
+import { CoachTable } from "@/components/coach-table";
+import { BucketChip, signedPct, signedUsd } from "@/components/performance-rows";
+import { formatCompact, formatDateUTC, formatUsd } from "@/lib/format";
+import { comparePosting } from "@/lib/digest-render";
+import { Avatar } from "@/components/ui";
+import { QUOTA_POSTS_PER_WEEK, TOP_POSTS } from "@/lib/performance";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * A coach's own team for one week: the pooled CPM, how the week went, and
+ * one line per creator — the same lines /performance and the Monday digest
+ * show, because all three read `loadPerformanceReport`.
+ *
+ * Reads with the service role: a coach is not staff, so RLS would return
+ * nothing to their session. The scope is enforced here instead — the page
+ * renders exactly one coach group, the one bound to the signed-in account.
+ */
+export default async function CoachPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ week?: string; team?: string }>;
+}) {
+  const { week: weekParam, team: teamParam } = await searchParams;
+  const profile = await getProfile();
+  if (!profile) return null; // the layout already redirected
+  const week: Window = parseWeek(weekParam) ?? lastCompleteWeek();
+
+  // Which team: a coach's own binding, always. Staff may pick any team via
+  // ?team= to see what that coach sees.
+  let category: string | null = null;
+  if (isCoach(profile)) {
+    category = (await getOwnCoachTeam(profile.id))?.category ?? null;
+    if (!category) {
+      return (
+        <EmptyState message="No team is assigned to this account yet — ask the Folk team to bind you to your coaching category." />
+      );
+    }
+  }
+
+  // One team's worth of videos, not the roster's: this loader's cost is the
+  // video read, and a coach never needs anyone else's.
+  const admin = createAdminClient();
+  const teamNames: string[] = isCoach(profile) ? [category!] : await listTeamCategories(admin);
+  const selected = isCoach(profile)
+    ? category!
+    : (teamNames.find((t) => t === teamParam) ?? teamNames[0] ?? null);
+  const report = selected
+    ? await loadPerformanceReport(admin, week, { teams: [selected] })
+    : null;
+  const group: CoachGroup | undefined = report?.groups.find((g) => g.coach === selected);
+
+  const hrefWith = (overrides: { week?: string; team?: string | null }) => {
+    const sp = new URLSearchParams();
+    sp.set("week", overrides.week ?? weekKey(week));
+    const team = overrides.team === undefined ? (group?.coach ?? null) : overrides.team;
+    if (isStaff(profile) && team) sp.set("team", team);
+    return `/coach?${sp.toString()}`;
+  };
+  const nextWeek: Window = { start: week.end, end: new Date(week.end.getTime() + (week.end.getTime() - week.start.getTime())) };
+  const canGoForward = nextWeek.end.getTime() <= lastCompleteWeek().end.getTime();
+  const isLatest = weekKey(week) === weekKey(lastCompleteWeek());
+  const teamName = (group?.coach ?? category ?? "Your team").replace(/^Coach:\s*/i, "");
+
+  const t = group?.team;
+  // The recap's own numbers, so the page and the Monday message agree.
+  const members = group?.rows ?? [];
+  const silent = members.filter((r) => r.performance.weekly.posts === 0);
+  const flagged = members.filter((r) => r.performance.flagged);
+  const posting = [...members].sort(comparePosting);
+  const busiest = Math.max(QUOTA_POSTS_PER_WEEK, ...posting.map((r) => r.performance.weekly.posts));
+  const topPosts = members
+    .flatMap((r) => r.performance.weekly.topPosts.map((post) => ({ row: r, post })))
+    .sort((a, b) => b.post.views - a.post.views)
+    .slice(0, TOP_POSTS);
+  const cpm = t ? (t.cpm30.cpm ?? t.cpm30.projected) : null;
+  const cpmProjected = Boolean(t && t.cpm30.cpm == null && t.cpm30.projected != null);
+  const d = t ? (t.delta ?? t.projectedDelta) : null;
+  const dLabel = !t ? "" : t.delta != null ? "vs prior 30 days" : t.projectedDelta != null ? "this week vs last, projected" : "";
+  const cpmTone = !t?.bucket ? "neutral" : t.bucket === "good" ? "emerald" : t.bucket === "bad" ? "red" : "amber";
+
+  return (
+    <>
+      <PageHeader
+        title={teamName}
+        action={
+          <div className="flex items-center gap-1.5">
+            <Link href={hrefWith({ week: weekKey(previousWeek(week)) })} className={weekNav} title="Previous week">‹</Link>
+            <span className="rounded-lg bg-surface-sunken px-2.5 py-1 font-mono text-[12px] tabular-nums text-neutral-700">
+              {formatDateUTC(week.start.toISOString())} – {formatDateUTC(new Date(week.end.getTime() - 1).toISOString())}
+              {isLatest && <span className="ml-1.5 text-neutral-400">latest</span>}
+            </span>
+            {canGoForward ? (
+              <Link href={hrefWith({ week: weekKey(nextWeek) })} className={weekNav} title="Next week">›</Link>
+            ) : (
+              <span className={`${weekNav} pointer-events-none opacity-30`}>›</span>
+            )}
+          </div>
+        }
+      />
+
+      {isStaff(profile) && teamNames.length > 1 && (
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          {teamNames.map((name) => (
+            <Link key={name} href={hrefWith({ team: name })} className={chip(name === selected)}>
+              {name.replace(/^Coach:\s*/i, "")}
+            </Link>
+          ))}
+          <span className="ml-auto font-mono text-[11px] text-neutral-400">staff preview — this is what the coach sees</span>
+        </div>
+      )}
+
+      {!group || !t ? (
+        <EmptyState message={`No creators are in ${teamName} yet.`} />
+      ) : (
+        <div className="stagger-children space-y-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <KpiCard
+              label="Coach's CPM · 30d"
+              value={cpm == null ? "—" : formatUsd(cpm)}
+              sub={cpm == null ? "no posts in 30 days" : cpmProjected ? "projected" : `${t.cpm30.paidPosts} paid posts`}
+              icon="dollar"
+              tone={cpmTone}
+            />
+            <KpiCard
+              label="CPM change"
+              value={d == null ? "—" : Math.abs(d.usd) < 0.005 ? "no change" : signedUsd(d.usd)}
+              sub={d == null ? "" : Math.abs(d.usd) < 0.005 ? dLabel : `${signedPct(d.pct)} ${dLabel}`}
+              icon="trend"
+              tone={d == null || Math.abs(d.usd) < 0.005 ? "neutral" : d.usd < 0 ? "emerald" : "red"}
+            />
+            <KpiCard
+              label="Posts this week"
+              value={`${t.posts}/${t.quota}`}
+              sub={`${t.belowQuota} of ${t.creators} below quota`}
+              icon="play"
+              tone={t.belowQuota > 0 ? "amber" : "emerald"}
+            />
+            <KpiCard
+              label="Avg views · this week"
+              value={formatCompact(t.avgViews == null ? null : Math.round(t.avgViews))}
+              sub={
+                <span className="flex items-center gap-2">
+                  {t.projectedCpm != null && <span>≈ {formatUsd(t.projectedCpm)} CPM</span>}
+                  <BucketChip bucket={t.bucket} projected={t.bucketSource === "projected"} />
+                </span>
+              }
+              icon="eye"
+            />
+          </div>
+
+          <Card
+            title="Your creators"
+            subtitle={
+              <span className="flex flex-wrap items-center gap-1.5">
+                <BucketCount count={t.buckets.bad} bucket="bad" />
+                <BucketCount count={t.buckets.decent} bucket="decent" />
+                <BucketCount count={t.buckets.good} bucket="good" />
+                {t.buckets.unread > 0 && (
+                  <span className="rounded-full bg-neutral-900/[0.06] px-2 py-0.5 text-[11px] font-semibold text-neutral-500">
+                    {t.buckets.unread} no read yet
+                  </span>
+                )}
+                {t.flagged > 0 && (
+                  <span className="rounded-full bg-danger/[0.1] px-2 py-0.5 text-[11px] font-semibold text-danger ring-1 ring-inset ring-danger/[0.22]">
+                    {t.flagged} flagged for a call
+                  </span>
+                )}
+              </span>
+            }
+          >
+            <CoachTable rows={group.rows} />
+          </Card>
+
+          <p className="text-sm text-neutral-700">
+            <b className="text-neutral-900">{formatCompact(t.posts)}</b> posts ·{" "}
+            <b className="text-neutral-900">{t.avgViews == null ? "—" : formatCompact(Math.round(t.avgViews))}</b> avg views ·{" "}
+            <b className="text-neutral-900">{t.creators - t.belowQuota}/{t.creators}</b> hit quota ·{" "}
+            <b className="text-neutral-900">{t.spikes}</b> spike{t.spikes === 1 ? "" : "s"} ·{" "}
+            <b className="text-neutral-900">{silent.length}</b> didn’t post
+          </p>
+
+          <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
+            <Card title="Posting this week" subtitle={`Reels shipped, against the quota of ${QUOTA_POSTS_PER_WEEK}. Busiest first.`}>
+              <ul className="space-y-2">
+                {posting.map((r) => {
+                  const w = r.performance.weekly;
+                  const width = `${Math.round((w.posts / busiest) * 100)}%`;
+                  const tick = `${Math.round((QUOTA_POSTS_PER_WEEK / busiest) * 100)}%`;
+                  const tone = w.posts === 0 ? "bg-neutral-300" : w.belowQuota ? "bg-warning/70" : "bg-success/80";
+                  return (
+                    <li key={r.creatorId} className="grid grid-cols-[minmax(150px,1fr)_3fr_minmax(88px,auto)] items-center gap-3 text-sm">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <Avatar name={r.handle} src={r.avatarUrl} size={24} />
+                        <span className="truncate text-neutral-900">{r.launchpointName || r.displayName || `@${r.handle}`}</span>
+                      </span>
+                      <span className="relative h-3 rounded-full bg-neutral-900/[0.05]">
+                        <span className={`absolute inset-y-0 left-0 rounded-full ${tone}`} style={{ width }} />
+                        <span className="absolute inset-y-[-3px] w-px bg-neutral-900/30" style={{ left: tick }} title={`quota: ${QUOTA_POSTS_PER_WEEK}`} />
+                      </span>
+                      <span className="text-right font-mono text-[12px] tabular-nums text-neutral-600">
+                        {w.posts}
+                        <span className="text-neutral-400">/{w.quota}</span>
+                        {w.posts > 0 && <span className="ml-1.5 text-neutral-400">{formatCompact(Math.round(w.avgViews ?? 0))} avg</span>}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Card>
+
+            <div className="space-y-5">
+              <Card title="Top posts this week">
+                {topPosts.length === 0 ? (
+                  <EmptyState message="No posts this week." />
+                ) : (
+                  <ol className="space-y-2">
+                    {topPosts.map(({ row, post }, i) => (
+                      <li key={post.shortcode ?? post.url}>
+                        <a href={post.url} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-lg p-1 transition hover:bg-neutral-900/[0.03]">
+                          {post.thumbnail ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={post.thumbnail} alt="" className="h-14 w-10 shrink-0 rounded-md object-cover ring-1 ring-black/[0.06]" />
+                          ) : (
+                            <span className="h-14 w-10 shrink-0 rounded-md bg-neutral-900/[0.05]" />
+                          )}
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium text-neutral-900">
+                              {i + 1}. {row.launchpointName || row.displayName || `@${row.handle}`}
+                            </span>
+                            <span className="block font-mono text-[11px] text-neutral-400">
+                              @{row.handle} · {formatCompact(post.views)} views
+                            </span>
+                          </span>
+                        </a>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </Card>
+
+              {(flagged.length > 0 || silent.length > 0) && (
+                <Card title="Needs your attention">
+                  <ul className="space-y-1.5 text-sm">
+                    {flagged.map((r) => (
+                      <li key={r.creatorId} className="flex items-center gap-2">
+                        <span className="rounded-full bg-danger/[0.1] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-danger ring-1 ring-inset ring-danger/[0.22]">
+                          {r.performance.badStreak}w bad
+                        </span>
+                        <span className="text-neutral-900">{r.launchpointName || r.displayName || `@${r.handle}`}</span>
+                        <span className="text-neutral-400">— call or offboard</span>
+                      </li>
+                    ))}
+                    {silent.map((r) => (
+                      <li key={r.creatorId} className="flex items-center gap-2">
+                        <span className="rounded-full bg-neutral-900/[0.06] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-neutral-500">
+                          0 posts
+                        </span>
+                        <span className="text-neutral-900">{r.launchpointName || r.displayName || `@${r.handle}`}</span>
+                        <span className="text-neutral-400">— didn’t post this week</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+const weekNav =
+  "flex h-7 w-7 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-900/[0.05] hover:text-neutral-900";
+
+const chip = (active: boolean) =>
+  `rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+    active ? "bg-neutral-900 text-white" : "bg-neutral-900/[0.04] text-neutral-600 hover:bg-neutral-900/[0.08]"
+  }`;
+
+/** "1 bad" as a chip in the bucket's colour — the same three colours the
+ *  Bucket column uses, so the summary and the rows read as one thing. */
+function BucketCount({ count, bucket }: { count: number; bucket: "good" | "decent" | "bad" }) {
+  const tone =
+    bucket === "good"
+      ? "bg-success/[0.1] text-success ring-success/[0.22]"
+      : bucket === "bad"
+        ? "bg-danger/[0.1] text-danger ring-danger/[0.22]"
+        : "bg-warning/[0.1] text-warning ring-warning/[0.22]";
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] ring-1 ring-inset ${tone}`}>
+      {count} {bucket}
+    </span>
+  );
+}

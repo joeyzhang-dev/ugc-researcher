@@ -7,6 +7,8 @@ import {
   describeSchedule, isRunDue, nextRunAt,
 } from "@/lib/scrape-settings";
 import { saveScrapeSettings } from "../scrape-actions";
+import { assignCoach, removeCoach } from "../coach-actions";
+import { listCoachTeams, listTeamCategories } from "@/lib/coach-team";
 import { SubmitButton } from "@/components/submit-button";
 import { ScrapeAllButton } from "@/components/scrape-all-button";
 import { ScheduleFields } from "@/components/schedule-fields";
@@ -34,13 +36,17 @@ export default async function SettingsPage({
   // rides the URL so the confirm step is a plain reload rather than client
   // state — the plan the admin confirms is then recomputed from live Discord,
   // never from something the browser held onto.
-  searchParams: Promise<{ renameFrom?: string; renameTo?: string }>;
+  searchParams: Promise<{ renameFrom?: string; renameTo?: string; coach?: string }>;
 }) {
-  const { renameFrom, renameTo } = await searchParams;
+  const { renameFrom, renameTo, coach: coachNotice } = await searchParams;
   const profile = await getProfile();
   const isAdmin = profile?.role === "admin";
   const supabase = await createClient();
-  const settings = await readSettings(createAdminClient());
+  const admin = createAdminClient();
+  const settings = await readSettings(admin);
+  const [coachTeams, teamCategories] = isAdmin
+    ? await Promise.all([listCoachTeams(admin), listTeamCategories(admin)])
+    : [[], []];
   const workspace = await getWorkspace();
   const appFilter = workspace.current === ALL_APPS ? null : workspace.current;
 
@@ -378,6 +384,78 @@ export default async function SettingsPage({
             </div>
           )}
         </Card>
+
+        {isAdmin && (
+          <Card
+            id="coaches"
+            title="Coaches"
+            subtitle="Coach accounts see one page, /coach, with their own team: the creators whose coaching channels sit in that Discord category. Not staff — nothing else in this app opens for them."
+          >
+            {coachNotice && (
+              <p className="mb-3 rounded-lg bg-danger/[0.08] px-3 py-2 text-sm text-danger ring-1 ring-inset ring-danger/[0.2]">
+                {coachNotice}
+              </p>
+            )}
+            {coachTeams.length === 0 ? (
+              <EmptyState message="No coaches yet." />
+            ) : (
+              <div className={tableWrap}>
+                <table className={table}>
+                  <thead>
+                    <tr>
+                      <th className={th}>Coach</th>
+                      <th className={th}>Team</th>
+                      <th className={th}>Discord</th>
+                      <th className={th}></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-black/[0.05]">
+                    {coachTeams.map((c) => (
+                      <tr key={c.profile_id} className={trHover}>
+                        <td className={td}>
+                          <span className="font-medium text-neutral-900">{c.name || c.email}</span>
+                          {c.name && <span className="ml-2 font-mono text-[11px] text-neutral-400">{c.email}</span>}
+                          {c.role !== "coach" && (
+                            <span className="ml-2 text-xs text-warning">role is {c.role}</span>
+                          )}
+                        </td>
+                        <td className={td}>{c.category}</td>
+                        <td className={`${td} font-mono text-[11px] text-neutral-400`}>{c.discord_user_id ?? "—"}</td>
+                        <td className={`${td} text-right`}>
+                          <form action={removeCoach}>
+                            <input type="hidden" name="profile_id" value={c.profile_id} />
+                            <button className="text-xs text-neutral-400 hover:text-danger">Remove</button>
+                          </form>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <form action={assignCoach} className="mt-4 grid gap-3 border-t border-black/[0.05] pt-4 md:grid-cols-[1.2fr_1fr_0.8fr_auto] md:items-end">
+              <div>
+                <label htmlFor="coach-email" className={labelClass}>Email</label>
+                <input id="coach-email" name="email" type="email" required placeholder="will@folk.com" className={inputClass} />
+              </div>
+              <div>
+                <label htmlFor="coach-category" className={labelClass}>Team</label>
+                <select id="coach-category" name="category" required className={inputClass} defaultValue="">
+                  <option value="" disabled>Pick a category…</option>
+                  {teamCategories.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="coach-discord" className={labelClass}>Discord id <span className="font-normal text-neutral-400">(optional)</span></label>
+                <input id="coach-discord" name="discord_user_id" inputMode="numeric" placeholder="snowflake" className={inputClass} />
+              </div>
+              <SubmitButton pendingLabel="Adding…">Add coach</SubmitButton>
+            </form>
+          </Card>
+        )}
       </div>
     </>
   );
