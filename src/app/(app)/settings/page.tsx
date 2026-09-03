@@ -11,6 +11,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { ScrapeAllButton } from "@/components/scrape-all-button";
 import { ScheduleFields } from "@/components/schedule-fields";
 import { LaunchpointSync } from "@/components/launchpoint-sync";
+import { NicheManager } from "@/components/niche-manager";
 import { readLaunchpointStatus } from "../launchpoint-actions";
 import {
   Card, EmptyState, KpiCard, PageHeader, StatusBadge,
@@ -47,6 +48,28 @@ export default async function SettingsPage() {
   const next = nextRunAt(settings);
   const due = isRunDue(settings);
   const launchpoint = await readLaunchpointStatus();
+
+  const { data: nicheRows } = await supabase
+    .from("research_niches")
+    .select("id, name, emoji, discord_role_id::text, is_active")
+    .order("name");
+  const nicheList = ((nicheRows ?? []) as {
+    id: string; name: string; emoji: string | null; discord_role_id: string | null; is_active: boolean;
+  }[]).map((r) => ({
+    id: r.id,
+    name: r.name,
+    emoji: r.emoji,
+    discordRoleId: r.discord_role_id,
+    isActive: r.is_active,
+  }));
+
+  const { data: nicheChannelRows } = await supabase
+    .from("research_discord_channels")
+    .select("niche");
+  const channelCounts = new Map<string, number>();
+  for (const r of (nicheChannelRows ?? []) as { niche: string | null }[]) {
+    if (r.niche) channelCounts.set(r.niche, (channelCounts.get(r.niche) ?? 0) + 1);
+  }
 
   const staleFirst = creators
     .filter((c) => settings.scrape_research || c.kind !== "research")
@@ -235,6 +258,19 @@ export default async function SettingsPage() {
             )}
           </Card>
         </div>
+      </div>
+
+      <div className="mt-5">
+        <Card
+          title="Niches"
+          subtitle="The track vocabulary: the emoji that prefixes a creator's channel, the niche written on their scripts, and the Discord role /onboard grants."
+        >
+          {!isAdmin ? (
+            <EmptyState message="Only admins can change niches." />
+          ) : (
+            <NicheManager niches={nicheList} channelCounts={channelCounts} />
+          )}
+        </Card>
       </div>
 
       <div className="mt-5">

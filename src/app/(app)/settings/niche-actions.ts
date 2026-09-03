@@ -1,0 +1,72 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { requireAdmin } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+/** Pages that render a niche pill or the manager itself. */
+const NICHE_PATHS = ["/settings", "/discord", "/scripts"];
+const revalidateNichePaths = () => NICHE_PATHS.forEach((p) => revalidatePath(p));
+
+const clean = (v: FormDataEntryValue | null) => String(v ?? "").trim();
+
+export async function createNiche(formData: FormData) {
+  await requireAdmin();
+  const name = clean(formData.get("name"));
+  if (!name) return;
+  const emoji = clean(formData.get("emoji")) || null;
+  const roleId = clean(formData.get("discordRoleId")) || null;
+
+  const { error } = await createAdminClient().from("research_niches").insert({
+    name,
+    emoji,
+    discord_role_id: roleId,
+  });
+  if (error) throw new Error(`adding niche: ${error.message}`);
+  revalidateNichePaths();
+}
+
+export async function updateNiche(formData: FormData) {
+  await requireAdmin();
+  const id = clean(formData.get("id"));
+  const originalName = clean(formData.get("originalName"));
+  const name = clean(formData.get("name"));
+  if (!id || !name) return;
+  const admin = createAdminClient();
+
+  // A rename has to move the rows carrying the old string too, or it
+  // manufactures the orphan that stranded Finance General. rename_niche does
+  // all four updates in one transaction and renames the niche row itself, so
+  // it is the whole write when the name changed.
+  if (name !== originalName) {
+    const { error } = await admin.rpc("rename_niche", {
+      old_name: originalName,
+      new_name: name,
+    });
+    if (error) throw new Error(`renaming niche: ${error.message}`);
+  }
+
+  const { error } = await admin
+    .from("research_niches")
+    .update({
+      emoji: clean(formData.get("emoji")) || null,
+      discord_role_id: clean(formData.get("discordRoleId")) || null,
+    })
+    .eq("id", id);
+  if (error) throw new Error(`updating niche: ${error.message}`);
+  revalidateNichePaths();
+}
+
+export async function setNicheActive(formData: FormData) {
+  await requireAdmin();
+  const id = clean(formData.get("id"));
+  if (!id) return;
+  // Archive, never delete: the name is still written across three tables, and
+  // an archived niche keeps classifying its existing channels.
+  const { error } = await createAdminClient()
+    .from("research_niches")
+    .update({ is_active: clean(formData.get("active")) === "true" })
+    .eq("id", id);
+  if (error) throw new Error(`archiving niche: ${error.message}`);
+  revalidateNichePaths();
+}
