@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { discordConfigured, listGuildChannels, renameChannel } from "@/lib/discord";
+import { planNicheChannelRenames } from "@/lib/niche-channel-rename";
 
 /** Pages that render a niche pill or the manager itself. */
 const NICHE_PATHS = ["/settings", "/discord", "/scripts"];
@@ -68,5 +70,33 @@ export async function setNicheActive(formData: FormData) {
     .update({ is_active: clean(formData.get("active")) === "true" })
     .eq("id", id);
   if (error) throw new Error(`archiving niche: ${error.message}`);
+  revalidateNichePaths();
+}
+
+/**
+ * Rename every live channel on a niche's old emoji to its new one.
+ *
+ * Explicit and confirmed, never a side effect of editing the emoji: it is
+ * visible to every creator in those channels, and Discord's 2-updates-per-
+ * 10-minutes-per-channel limit makes a bulk rename slow and a repeat rename a
+ * stall. Failures are reported per channel and never retried in a loop.
+ */
+export async function renameNicheChannels(formData: FormData) {
+  await requireAdmin();
+  const fromEmoji = clean(formData.get("fromEmoji"));
+  const toEmoji = clean(formData.get("toEmoji"));
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!fromEmoji || !toEmoji || !guildId || !discordConfigured()) return;
+
+  const plan = planNicheChannelRenames(await listGuildChannels(guildId), fromEmoji, toEmoji);
+  const failed: string[] = [];
+  for (const step of plan) {
+    try {
+      await renameChannel(step.channelId, step.to);
+    } catch (err) {
+      failed.push(`${step.from}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  if (failed.length) throw new Error(`renamed ${plan.length - failed.length}/${plan.length}; failed: ${failed.join("; ")}`);
   revalidateNichePaths();
 }

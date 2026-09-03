@@ -1,15 +1,22 @@
 import { SubmitButton } from "@/components/submit-button";
 import { StatusBadge, inputClass, table, tableWrap, td, th, trHover } from "@/components/ui";
-import { createNiche, setNicheActive, updateNiche } from "@/app/(app)/settings/niche-actions";
+import {
+  createNiche, renameNicheChannels, setNicheActive, updateNiche,
+} from "@/app/(app)/settings/niche-actions";
 import type { Niche } from "@/lib/niches";
 
 export function NicheManager({
   niches,
   channelCounts,
+  liveEmojiCounts,
 }: {
   niches: (Niche & { id: string })[];
   /** Live Discord channels currently named with each niche's emoji. */
   channelCounts: Map<string, number>;
+  /** Live Discord channel names starting with each emoji base, keyed by
+   *  EMOJI (not niche name — a niche's stored emoji is the lookup key, and
+   *  more than one niche can share it while it is still resolving). */
+  liveEmojiCounts: Map<string, number>;
 }) {
   return (
     <div className={tableWrap}>
@@ -56,6 +63,22 @@ export function NicheManager({
                   {!n.isActive && <StatusBadge status="Archived" />}
                   <SubmitButton>Save</SubmitButton>
                 </form>
+                {n.emoji && (liveEmojiCounts.get(n.emoji) ?? 0) > 0 && (
+                  <form action={renameNicheChannels} className="mt-2 flex items-center gap-2">
+                    <input type="hidden" name="fromEmoji" value={n.emoji} />
+                    <input
+                      name="toEmoji"
+                      placeholder="new emoji"
+                      required
+                      className={`${inputClass} w-16 text-center`}
+                      aria-label={`Rename ${n.name} channels to a new emoji`}
+                    />
+                    <span className="text-xs text-neutral-400">
+                      renames {liveEmojiCounts.get(n.emoji)} live Discord channels
+                    </span>
+                    <SubmitButton>Rename in Discord</SubmitButton>
+                  </form>
+                )}
               </td>
               <td className={td}>
                 <form action={setNicheActive}>

@@ -115,6 +115,12 @@ export function createTextChannel(
   });
 }
 
+/** Rename one channel. Discord allows 2 channel updates per 10 minutes per
+ *  channel, so callers rename deliberately and never in a retry loop. */
+export async function renameChannel(channelId: string, name: string): Promise<void> {
+  await discordRequest<GuildChannel>("PATCH", `/channels/${channelId}`, { name });
+}
+
 export interface GuildMember {
   user: { id: string; username: string; global_name: string | null };
   nick: string | null;

@@ -13,6 +13,8 @@ import { ScheduleFields } from "@/components/schedule-fields";
 import { LaunchpointSync } from "@/components/launchpoint-sync";
 import { NicheManager } from "@/components/niche-manager";
 import { readLaunchpointStatus } from "../launchpoint-actions";
+import { discordConfigured, listGuildChannels } from "@/lib/discord";
+import { countNicheChannels } from "@/lib/niche-channel-rename";
 import {
   Card, EmptyState, KpiCard, PageHeader, StatusBadge,
   inputClass, labelClass, table, tableWrap, td, th, trHover,
@@ -69,6 +71,22 @@ export default async function SettingsPage() {
   const channelCounts = new Map<string, number>();
   for (const r of (nicheChannelRows ?? []) as { niche: string | null }[]) {
     if (r.niche) channelCounts.set(r.niche, (channelCounts.get(r.niche) ?? 0) + 1);
+  }
+
+  // Live Discord channel counts per stored emoji, for the rename preview.
+  // A Discord outage or an unset guild id must leave the rest of /settings
+  // working — the rename control simply does not render.
+  const liveEmojiCounts = new Map<string, number>();
+  if (discordConfigured() && process.env.DISCORD_GUILD_ID) {
+    try {
+      const guildChannels = await listGuildChannels(process.env.DISCORD_GUILD_ID);
+      for (const n of nicheList) {
+        if (!n.emoji) continue;
+        liveEmojiCounts.set(n.emoji, countNicheChannels(guildChannels, n.emoji));
+      }
+    } catch {
+      // Leave the counts empty; the rename control simply does not render.
+    }
   }
 
   const staleFirst = creators
@@ -268,7 +286,7 @@ export default async function SettingsPage() {
           {!isAdmin ? (
             <EmptyState message="Only admins can change niches." />
           ) : (
-            <NicheManager niches={nicheList} channelCounts={channelCounts} />
+            <NicheManager niches={nicheList} channelCounts={channelCounts} liveEmojiCounts={liveEmojiCounts} />
           )}
         </Card>
       </div>
