@@ -27,6 +27,25 @@ from discord_pull_worker import (  # noqa: E402
     split_track_channel,
 )
 
+import niches  # noqa: E402
+
+
+LIVE_TRACKS = [
+    {"name": "Christian", "emoji": "✝️", "discord_role_id": None, "is_active": True},
+    {"name": "Female General Self-Improvement", "emoji": "🤍", "discord_role_id": None, "is_active": True},
+    {"name": "General Motivation / Hustle", "emoji": "🌱", "discord_role_id": None, "is_active": True},
+]
+
+
+def setUpModule():
+    niches.reset_cache()
+    niches.configure(fetch=lambda: list(LIVE_TRACKS), clock=None)
+
+
+def tearDownModule():
+    niches.configure(fetch=None, clock=None)
+    niches.reset_cache()
+
 
 def text_channel(cid, name, parent_id=None):
     return {"id": str(cid), "type": 0, "name": name, "parent_id": parent_id}
@@ -123,7 +142,7 @@ class EmojiOnlyConvention(unittest.TestCase):
         )
 
     def test_unknown_emoji_does_not_classify(self):
-        # A new track exists only once its emoji is in TRACK_EMOJI_NICHES —
+        # A new track exists only once its emoji is in research_niches —
         # guessing from an unmapped emoji would misparse 🦄kim-lee. /health
         # flags these as untracked instead.
         self.assertEqual(self.classify(text_channel(1, "🦄kim-lee")), [])
@@ -249,6 +268,45 @@ class FullNameConvention(unittest.TestCase):
              "is_bot": False, "webhook_id": None, "count": 12},
         ]
         self.assertEqual(_identify_creator("🌱richky-lim", authors, set()), 2)
+
+
+class ClassificationFollowsTheTable(unittest.TestCase):
+    """Adding a niche in /settings must classify without a code change."""
+
+    def tearDown(self):
+        # Restore the module fixture, NOT the real reader. This class runs
+        # alphabetically first among this module's test classes, so every
+        # test after it here -- and every later test module in the same
+        # `unittest discover` run -- depends on niches still being configured
+        # with LIVE_TRACKS. Restoring fetch=None here would make the rest of
+        # the suite fall through to a real (and here, unreachable) Supabase
+        # call on its next cache miss.
+        niches.configure(fetch=lambda: list(LIVE_TRACKS), clock=None)
+        niches.reset_cache()
+
+    def use(self, rows):
+        niches.reset_cache()
+        niches.configure(fetch=lambda: rows, clock=None)
+
+    def test_a_niche_added_to_the_table_classifies_immediately(self):
+        self.use([
+            {"name": "Fitness", "emoji": "💪", "discord_role_id": None, "is_active": True},
+        ])
+        self.assertEqual(split_track_channel("💪malik-jones"), ("Fitness", "malik-jones"))
+
+    def test_a_niche_absent_from_the_table_does_not_classify(self):
+        self.use([
+            {"name": "Fitness", "emoji": "💪", "discord_role_id": None, "is_active": True},
+        ])
+        self.assertIsNone(split_track_channel("✝️jas-alcantara"))
+
+    def test_an_archived_niche_still_classifies(self):
+        self.use([
+            {"name": "Retired", "emoji": "🌱", "discord_role_id": None, "is_active": False},
+        ])
+        rows = classify_creator_channels([text_channel(1, "🌱ethan-lau", parent_id="9"),
+                                          category(9, "Coach: Joey's Team")])
+        self.assertEqual(rows[0]["niche"], "Retired")
 
 
 if __name__ == "__main__":

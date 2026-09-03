@@ -43,6 +43,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import niches
+
 ROOT = Path(__file__).resolve().parent
 
 
@@ -165,32 +167,13 @@ EXCLUDE_CATEGORIES = frozenset({"👤・Creators"})
 # the emoji alone carries the niche. Full names replaced the first-name form
 # (``✝️jas``, ``🤍anna🌸``) once Launchpoint gave us the real names: two Annas,
 # two Madisons and two Jacobs were being told apart by a decorative emoji tail.
-# Both forms still parse; VERIFIED_HANDLES carries a key per form. This map is the entire niche vocabulary: classification, name
-# derivation, /onboard's track choices and the bot's channel names all derive
-# from it, so adding a niche is adding ONE line here (the value must match
-# research_scripts.niche verbatim) and restarting the bot/worker.
-TRACK_EMOJI_NICHES: dict[str, str] = {
-    "✝️": "Christian",
-    "🤍": "Female General Self-Improvement",
-    "🌱": "General Motivation / Hustle",
-}
+# Both forms still parse; VERIFIED_HANDLES carries a key per form. The niche
+# vocabulary lives in research_niches now, read via niches.track_bases() — a
+# new track needs a row in /settings, not a code edit here.
 # 2026-08-19 names carried a niche word between the emoji and the creator
 # (``✝️christian-jas``, ``🌱improvement-terai``); dropping these words keeps
 # every historical name deriving the same creator.
 LEGACY_TRACK_WORDS = frozenset({"christian", "improvement"})
-# Prefix-match with variation selectors / zero-width joiners stripped so ✝️
-# and ✝ are the same track; longest base first so a multi-codepoint emoji can
-# never be shadowed by a shorter one.
-_TRACK_BASES: tuple[tuple[str, str], ...] = tuple(
-    sorted(
-        (
-            (emoji.replace("\ufe0f", "").replace("\u200d", ""), niche)
-            for emoji, niche in TRACK_EMOJI_NICHES.items()
-        ),
-        key=lambda pair: len(pair[0]),
-        reverse=True,
-    )
-)
 # Categories that describe a state or an owner, not a niche. Coach-team
 # categories (Will's Team, Luke's Team, FOLK TEAM, ...) record WHO runs the
 # channel — matched by the word "team" so a new coach's category can't
@@ -306,7 +289,7 @@ def split_track_channel(channel_name: str) -> tuple[str, str] | None:
     non-track names give None.
     """
     lowered = channel_name.strip().lower()
-    for base, niche in _TRACK_BASES:
+    for base, niche in niches.track_bases():
         if not lowered.startswith(base):
             continue
         rest = lowered[len(base):].lstrip("\ufe0f\u200d").lstrip("-_ ")
@@ -339,14 +322,14 @@ def classify_creator_channels(channels: list[dict]) -> list[dict]:
 
     Two naming conventions coexist:
     - live: ``<track-emoji><name>`` â the emoji alone decides the niche via
-      TRACK_EMOJI_NICHES (the 2026-08-19 ``<emoji><word>-<name>`` interim
+      niches.track_bases() (the 2026-08-19 ``<emoji><word>-<name>`` interim
       form parses identically);
     - legacy: ``coaching-<name>`` (+ coachking-/influencer-) where the niche
       comes from the *category*, if it names one.
 
     Anything else is not a creator channel: decorative furniture
-    (``📃・creator-brief``), unmapped emojis (a new track needs its
-    TRACK_EMOJI_NICHES line first â /health flags these as untracked), and
+    (``📃・creator-brief``), unmapped emojis (a new track needs
+    a row in research_niches first â /health flags these as untracked), and
     wordy names without an emoji (``folk-branding``).
     """
     category_names = {

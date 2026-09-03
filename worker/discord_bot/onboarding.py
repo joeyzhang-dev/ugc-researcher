@@ -17,17 +17,19 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Iterable, Mapping, Optional, Sequence
 
-import discord_pull_worker as pull
+import niches
 
 # Live convention 2026-08-20: a creator channel is ``<track-emoji><name>``
 # (``✝️jas``) and the CATEGORY records the coach team, not the niche. The
-# emoji-per-niche map lives in the pull worker (TRACK_EMOJI_NICHES) so the
-# bot, the pull loop and the web app share one vocabulary; unmapped tracks
-# fall back to the legacy ``coaching-`` prefix, which every parser accepts.
+# emoji-per-niche vocabulary now lives in research_niches (see niches.py),
+# not a module constant here. NICHE_CHANNEL_PREFIXES below is seeded from
+# the fallback list rather than read live -- a stopgap kept just wide enough
+# to keep this module importable; making /onboard's niche list (autocomplete
+# included) track research_niches live is separate follow-up work, not done
+# here. Unmapped tracks fall back to the legacy ``coaching-`` prefix, which
+# every parser accepts.
 CHANNEL_PREFIX = "coaching-"
-NICHE_CHANNEL_PREFIXES: dict[str, str] = {
-    niche: emoji for emoji, niche in pull.TRACK_EMOJI_NICHES.items()
-}
+NICHE_CHANNEL_PREFIXES: dict[str, str] = dict(niches.FALLBACK_NICHES)
 
 # Discord hard limit for a channel name.
 MAX_CHANNEL_NAME_LEN = 100
