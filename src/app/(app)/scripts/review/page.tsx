@@ -53,8 +53,11 @@ export default async function MatchReviewPage({
   const items = ctx.review.map((m) => {
     const a = ctx.assignmentById.get(m.assignmentId)!;
     const script = ctx.scriptById.get(m.scriptId)!;
+    // A trial upload is never the post a script produced, so it is never
+    // offered to a human either — the resolver refusing to link one is only
+    // half the guarantee if this page hands the same upload over a click away.
     const pool = (byCreator.get(m.creatorId) ?? []).filter(
-      (v) => v.transcript_text && !taken.has(v.id)
+      (v) => v.transcript_text && !taken.has(v.id) && !ctx.trialVideoIds.has(v.id)
     );
     return {
       match: m,
@@ -64,6 +67,13 @@ export default async function MatchReviewPage({
       candidates: suggestMatches([script.hook, script.body].filter(Boolean).join(" "), pool, {
         limit: 3,
       }),
+      // Per card, because the number is what decides whether to wait: one
+      // straggler is a normal posting day, fourteen is a trial batch
+      // mid-upload.
+      hint:
+        m.reason === "awaiting-siblings"
+          ? `${m.pendingSiblings} other upload${m.pendingSiblings === 1 ? "" : "s"} from that day still transcribing`
+          : undefined,
     };
   });
 
@@ -72,6 +82,7 @@ export default async function MatchReviewPage({
   // Every reason needs a home on this page, or a match the resolver deliberately
   // held back would vanish from the only queue that can settle it.
   const backdated = items.filter((i) => i.match.reason === "posted-before-send");
+  const held = items.filter((i) => i.match.reason === "awaiting-siblings");
 
   return (
     <div className="space-y-6">
@@ -103,6 +114,14 @@ export default async function MatchReviewPage({
       />
 
       <Section
+        title="Waiting on the same day's uploads"
+        note="This creator posted more than once that day and the rest have not come back from transcription yet. Instagram trial reels are near-identical copies of one reel uploaded over and over, and none of them is a real post — once their transcripts land the whole batch drops out of matching on its own. Leave these unless you KNOW this one is the post."
+        items={held}
+        liftById={liftById}
+        empty="Nothing waiting on a transcript."
+      />
+
+      <Section
         title="Posted before the script went out"
         note="The wording matches, but this post already existed when the script was sent — so the script cannot have produced it. Usually a recycled script or a stale assignment. Confirm only if you know the history."
         items={backdated}
@@ -126,6 +145,9 @@ type Item = {
   script: { id: string; hook: string | null; body: string | null; title: string };
   creator?: { handle: string; avatar_url?: string | null };
   candidates: { video: ResearchVideo; score: number }[];
+  /** One line of per-card context where the section's own note cannot carry
+   *  it, because the number differs per creator. */
+  hint?: string;
 };
 
 /** The judging is a read: does this transcript say that script? Both sides
@@ -181,6 +203,7 @@ function Section({
               >
                 {i.script.hook || i.script.title}
               </Link>
+              {i.hint && <p className="mt-1 text-[11px] text-neutral-400">{i.hint}</p>}
               <div className="mt-1.5">
                 <FoldedText
                   summary="Read the script"

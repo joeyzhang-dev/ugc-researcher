@@ -10,7 +10,7 @@ import type {
   ResearchVideo,
 } from "@/lib/types";
 import { computeLifts, median, type VideoLift } from "@/lib/research";
-import { suggestMatches } from "@/lib/scripts";
+import { suggestMatches, trialUploadIds } from "@/lib/scripts";
 import {
   assignScript,
   linkAssignmentVideo,
@@ -127,6 +127,13 @@ export default async function ScriptDetailPage({
     for (const row of computeLifts(vids)) liftById.set(row.video.id, row);
   }
 
+  // A trial upload is never the post a script produced, so it is never
+  // suggested here — the same detection /performance collapses by, run over
+  // each creator's whole library (claimed posts included, since a claimed
+  // sibling is still evidence the upload came out of a batch).
+  const trialByCreator = new Map<string, Set<string>>();
+  for (const [creatorId, vids] of byCreator) trialByCreator.set(creatorId, trialUploadIds(vids));
+
   // Videos already claimed by another script must not be offered again.
   const { data: takenData } = await supabase
     .from("research_script_assignments")
@@ -142,8 +149,9 @@ export default async function ScriptDetailPage({
     .map((a) => {
       const creator = creatorById.get(a.research_creator_id);
       const linked = a.research_video_id ? liftById.get(a.research_video_id) ?? null : null;
+      const trial = trialByCreator.get(a.research_creator_id);
       const pool = (byCreator.get(a.research_creator_id) ?? []).filter(
-        (v) => !takenElsewhere.has(v.id)
+        (v) => !takenElsewhere.has(v.id) && !trial?.has(v.id)
       );
       // Suggest only while unlinked — once confirmed, the answer is settled.
       // Match on hook + body: the hook is part of what they say.
