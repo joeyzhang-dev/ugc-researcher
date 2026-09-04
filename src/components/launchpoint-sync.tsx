@@ -129,7 +129,7 @@ export function LaunchpointSync({ status }: { status: LaunchpointStatus }) {
 
   if (!status.configured) {
     return (
-      <p className="rounded-xl bg-warning/[0.08] p-3 text-xs text-warning ring-1 ring-inset ring-warning/[0.2]">
+      <p className="rounded-[14px] bg-warning/[0.08] p-3 text-xs text-warning ring-1 ring-inset ring-warning/[0.2]">
         <span className="font-medium">LAUNCHPOINT_API_KEY is not set.</span> Add it to
         <span className="font-mono"> .env.local</span> locally and to the Vercel project for the
         hourly cron. Without it every phase self-skips — nothing breaks, nothing syncs.
@@ -140,10 +140,10 @@ export function LaunchpointSync({ status }: { status: LaunchpointStatus }) {
   return (
     <div className="space-y-3">
       {/* Coverage — the number that answers "is this working yet". */}
-      <div className="rounded-xl bg-surface-muted p-3 ring-1 ring-hairline">
+      <div className="rounded-[14px] bg-[rgba(118,128,152,0.05)] p-3 shadow-[inset_0_0_0_0.5px_rgba(16,24,40,0.09)]">
         <p className="flex items-baseline justify-between text-xs">
-          <span className="font-semibold text-neutral-700">Retention coverage</span>
-          <span className="font-mono tabular-nums text-neutral-500">
+          <span className="font-semibold text-[var(--ag-ink-2)]">Retention coverage</span>
+          <span className="font-mono tabular-nums text-[var(--ag-ink-3)]">
             {formatNumber(status.withInsights)} / {formatNumber(status.trackedVideos)} posts
           </span>
         </p>
@@ -152,28 +152,28 @@ export function LaunchpointSync({ status }: { status: LaunchpointStatus }) {
           aria-valuenow={coverage}
           aria-valuemin={0}
           aria-valuemax={100}
-          className="mt-2 block h-1.5 w-full overflow-hidden rounded-full bg-surface-sunken ring-1 ring-hairline"
+          className="mt-2 block h-1.5 w-full overflow-hidden rounded-full bg-[rgba(118,128,152,0.12)] shadow-[inset_0_0_0_0.5px_rgba(16,24,40,0.09)]"
         >
           <span
-            className="block h-full rounded-full bg-accent transition-[width] duration-500"
+            className="block h-full rounded-full bg-[var(--ag-blue)] transition-[width] duration-500"
             style={{ width: `${coverage}%` }}
           />
         </span>
-        <p className="mt-1.5 font-mono text-[10px] text-neutral-400">
+        <p className="mt-1.5 font-mono text-[10px] text-[var(--ag-ink-4)]">
           {formatNumber(status.curvePoints)} daily snapshots stored
         </p>
       </div>
 
       {/* Per-phase state. One row per phase because they fail and finish
           independently — one line saying "partial" would hide which half. */}
-      <dl className="divide-y divide-hairline rounded-xl bg-surface-muted ring-1 ring-hairline">
+      <dl className="divide-y divide-[var(--ag-hairline)] rounded-[14px] bg-[rgba(118,128,152,0.05)] shadow-[inset_0_0_0_0.5px_rgba(16,24,40,0.09)]">
         {(["creators", "socials", "discord", "accounts", "posts", "insights", "history"] as const).map((phase) => {
           const row = status.phases.find((p) => p.phase === phase);
           return (
             <div key={phase} className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
-              <dt className="font-medium text-neutral-700">{PHASE_LABELS[phase]}</dt>
+              <dt className="font-medium text-[var(--ag-ink-2)]">{PHASE_LABELS[phase]}</dt>
               <dd className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-neutral-400" title={row?.last_detail ?? undefined}>
+                <span className="truncate text-[var(--ag-ink-4)]" title={row?.last_detail ?? undefined}>
                   {row?.last_detail ?? "never run"}
                 </span>
                 {row?.last_status && (
@@ -211,7 +211,7 @@ export function LaunchpointSync({ status }: { status: LaunchpointStatus }) {
             <button
               type="button"
               onClick={run}
-              className="inline-flex items-center gap-1.5 rounded-full bg-neutral-900 px-3.5 py-1.5 text-xs font-medium text-white shadow-ambient transition hover:bg-neutral-800 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--ag-ink)] px-3.5 py-1.5 text-xs font-medium text-white transition hover:opacity-90 active:scale-[0.98] "
             >
               Sync everything
               {remaining != null && remaining > 0 && (
@@ -224,7 +224,7 @@ export function LaunchpointSync({ status }: { status: LaunchpointStatus }) {
               type="button"
               onClick={runMetadata}
               title="Creators and posts only — a handful of API calls, no retention backfill"
-              className="rounded-full px-3 py-1.5 text-xs font-medium text-neutral-600 ring-1 ring-inset ring-hairline transition hover:bg-neutral-900/[0.03] hover:text-neutral-900 active:scale-[0.98]"
+              className="rounded-full px-3 py-1.5 text-xs font-medium text-[var(--ag-ink-2)] shadow-[inset_0_0_0_0.5px_rgba(16,24,40,0.09)] transition hover:bg-[rgba(118,128,152,0.06)] hover:text-[var(--ag-ink)] active:scale-[0.98]"
             >
               Creators &amp; posts only
             </button>
@@ -232,11 +232,11 @@ export function LaunchpointSync({ status }: { status: LaunchpointStatus }) {
         )}
 
         {running && (
-          <span className="inline-flex items-center gap-2 text-xs text-neutral-500">
-            <Spinner className="text-neutral-400" />
+          <span className="inline-flex items-center gap-2 text-xs text-[var(--ag-ink-3)]">
+            <Spinner className="text-[var(--ag-ink-4)]" />
             {done > 0 ? `${formatNumber(done)} posts synced` : "Working…"}
             {remaining != null && remaining > 0 && (
-              <span className="font-mono text-[11px] tabular-nums text-neutral-400">
+              <span className="font-mono text-[11px] tabular-nums text-[var(--ag-ink-4)]">
                 {formatNumber(remaining)} left
               </span>
             )}
@@ -245,7 +245,7 @@ export function LaunchpointSync({ status }: { status: LaunchpointStatus }) {
       </div>
 
       {note && (
-        <p className="rounded-lg bg-neutral-900/[0.03] px-2.5 py-1.5 text-xs text-neutral-600 ring-1 ring-inset ring-hairline">
+        <p className="rounded-lg bg-[rgba(118,128,152,0.06)] px-2.5 py-1.5 text-xs text-[var(--ag-ink-2)] shadow-[inset_0_0_0_0.5px_rgba(16,24,40,0.09)]">
           {note}
         </p>
       )}
@@ -254,7 +254,7 @@ export function LaunchpointSync({ status }: { status: LaunchpointStatus }) {
           {error}
         </p>
       )}
-      {running && <p className="text-[11px] text-neutral-400">Keep this tab open</p>}
+      {running && <p className="text-[11px] text-[var(--ag-ink-4)]">Keep this tab open</p>}
     </div>
   );
 }

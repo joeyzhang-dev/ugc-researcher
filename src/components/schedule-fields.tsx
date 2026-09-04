@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { INTERVAL_MAX, INTERVAL_MIN, type ScrapeSettings } from "@/lib/scrape-settings";
-import { inputClass, labelClass } from "@/components/ui";
+import { agHint, agInput, agLabel } from "@/components/glass";
 
 /**
  * Automatic-scrape toggle plus the schedule inputs. Client-side only so the
@@ -21,45 +21,45 @@ export function ScheduleFields({ settings }: { settings: ScrapeSettings }) {
           name="autoScrape"
           checked={enabled}
           onChange={(e) => setEnabled(e.target.checked)}
-          className="mt-0.5 h-4 w-4 rounded border-hairline accent-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          className="mt-[3px] h-3.5 w-3.5 rounded-[4px] accent-[var(--ag-ink)]"
         />
         <span>
-          <span className="block text-sm font-medium text-neutral-900">
+          <span className="block text-[13.5px] font-medium text-[var(--ag-ink)]">
             Scrape automatically
           </span>
-          <span className="block text-xs text-neutral-400">
+          <span className="mt-0.5 block text-[11.5px] text-[var(--ag-ink-4)]">
             Keeps every creator&apos;s reels and metrics fresh on a schedule.
           </span>
         </span>
       </label>
 
       <div
-        className={`space-y-3 border-l-2 border-hairline pl-4 transition ${
+        className={`space-y-4 border-l border-[var(--ag-hairline)] pl-4 transition-opacity duration-[260ms] ease-[cubic-bezier(0.32,0.72,0,1)] ${
           enabled ? "opacity-100" : "pointer-events-none opacity-40"
         }`}
       >
         <fieldset>
-          <legend className={labelClass}>Schedule</legend>
-          <div className="mt-1.5 flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 text-sm text-neutral-700">
+          <legend className={agLabel}>Schedule</legend>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <label className="ag-press ag-glass-thin inline-flex cursor-pointer items-center gap-2 rounded-full px-3.5 py-2 text-[12.5px] font-medium text-[var(--ag-ink-2)]">
               <input
                 type="radio"
                 name="scheduleMode"
                 value="interval"
                 checked={mode === "interval"}
                 onChange={() => setMode("interval")}
-                className="h-4 w-4 border-hairline accent-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+                className="h-3.5 w-3.5 accent-[var(--ag-ink)]"
               />
               Every N hours
             </label>
-            <label className="flex items-center gap-2 text-sm text-neutral-700">
+            <label className="ag-press ag-glass-thin inline-flex cursor-pointer items-center gap-2 rounded-full px-3.5 py-2 text-[12.5px] font-medium text-[var(--ag-ink-2)]">
               <input
                 type="radio"
                 name="scheduleMode"
                 value="time_of_day"
                 checked={mode === "time_of_day"}
                 onChange={() => setMode("time_of_day")}
-                className="h-4 w-4 border-hairline accent-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+                className="h-3.5 w-3.5 accent-[var(--ag-ink)]"
               />
               At a time of day
             </label>
@@ -68,30 +68,30 @@ export function ScheduleFields({ settings }: { settings: ScrapeSettings }) {
 
         {mode === "interval" ? (
           <label className="block max-w-xs">
-            <span className={labelClass}>Hours between runs</span>
+            <span className={agLabel}>Hours between runs</span>
             <input
               type="number"
               name="intervalHours"
               defaultValue={settings.interval_hours}
               min={INTERVAL_MIN}
               max={INTERVAL_MAX}
-              className={inputClass}
+              className={`${agInput} mt-2`}
             />
-            <span className="mt-1 block text-xs text-neutral-400">
+            <span className={agHint}>
               Counted from the end of the last run, so a laptop that was asleep just runs late
               rather than skipping.
             </span>
           </label>
         ) : (
           <label className="block max-w-xs">
-            <span className={labelClass}>Run at</span>
+            <span className={agLabel}>Run at</span>
             <input
               type="time"
               name="timeOfDay"
               defaultValue={settings.time_of_day}
-              className={inputClass}
+              className={`${agInput} mt-2`}
             />
-            <span className="mt-1 block text-xs text-neutral-400">
+            <span className={agHint}>
               Local time. A slot missed while the machine was off stays due until it actually
               runs.
             </span>

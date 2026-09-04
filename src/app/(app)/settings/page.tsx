@@ -18,9 +18,10 @@ import { readLaunchpointStatus } from "../launchpoint-actions";
 import { discordConfigured, listGuildChannels } from "@/lib/discord";
 import { liveEmojiBases, planNicheChannelRenames, type LiveEmojiBase } from "@/lib/niche-channel-rename";
 import {
-  Card, EmptyState, KpiCard, PageHeader, StatusBadge,
-  inputClass, labelClass, table, tableWrap, td, th, trHover,
-} from "@/components/ui";
+  AlertIcon, Badge, Card, CardHead, ClockIcon, DiscordGlyph, Empty, Eyebrow, Field,
+  GlassPanel, Lattice, PlusIcon, RefreshIcon, Rise, SlidersIcon, Stat, TagIcon, UsersIcon,
+  agButton, agButtonIcon, agHint, agInput, agLabel, agRow, agTable, agTableWrap, agTd, agTh,
+} from "@/components/glass";
 import { formatDateTime } from "@/lib/format";
 import { ALL_APPS } from "@/lib/workspace";
 import { getWorkspace } from "@/lib/workspace/server";
@@ -28,7 +29,16 @@ import type { ResearchCreator } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-/** Scraping settings: what gets pulled, how often, and a manual trigger. */
+/**
+ * The scrape console.
+ *
+ * Laid out on the blud material system (`src/components/glass.tsx`), ported
+ * from folk-web's /admin. The rule that shapes this page: exactly ONE surface
+ * floats. The hero is glass and carries the page's whole state — what we
+ * track, what is queued, what is broken, and when the next run lands — because
+ * those were four separate blocks all describing the same thing. Everything
+ * below it sits flat on the canvas behind a single hairline.
+ */
 export default async function SettingsPage({
   searchParams,
 }: {
@@ -124,132 +134,189 @@ export default async function SettingsPage({
     .slice(0, 10);
 
   return (
-    <>
-      <PageHeader
-        title="Settings"
-        subtitle="How creator profiles get re-scraped. A scrape re-pulls recent reels and their metrics for every creator, which is what keeps lift scores current."
-      />
-
-      <div className="stagger-children mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard label="Creators tracked" value={String(creators.length)} icon="users" />
-        <KpiCard
-          label="Queued to scrape"
-          value={String(queued.length)}
-          sub={queued.length ? "run in progress or paused" : undefined}
-          icon="clock"
-          tone={queued.length ? "amber" : "neutral"}
-        />
-        <KpiCard
-          label="Never scraped"
-          value={String(neverScraped.length)}
-          icon="alert"
-          tone={neverScraped.length ? "amber" : "neutral"}
-        />
-        <KpiCard
-          label="Last scrape failed"
-          value={String(failed.length)}
-          icon="alert"
-          tone={failed.length ? "red" : "neutral"}
-        />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <Card
-          title="Scrape configuration"
-          subtitle="Saved settings — applied on the next scheduled run."
-        >
-          {!isAdmin ? (
-            <EmptyState message="Only admins can change scrape settings." />
-          ) : (
-            <form action={saveScrapeSettings} className="space-y-5">
-              <ScheduleFields settings={settings} />
-
-              <div className="space-y-3 border-t border-hairline pt-5">
-                <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-neutral-400">
-                  Volume &amp; pacing
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label>
-                    <span className={labelClass}>Reels per creator</span>
-                    <input
-                      type="number"
-                      name="resultsLimit"
-                      defaultValue={settings.results_limit}
-                      min={RESULTS_MIN}
-                      max={RESULTS_MAX}
-                      className={inputClass}
-                    />
-                    <span className="mt-1 block text-xs text-neutral-400">
-                      How many recent reels each scrape pulls ({RESULTS_MIN}–{RESULTS_MAX}).
-                    </span>
-                  </label>
-                  <label>
-                    <span className={labelClass}>Pause between creators</span>
-                    <input
-                      type="number"
-                      name="staggerSeconds"
-                      defaultValue={settings.stagger_seconds}
-                      min={STAGGER_MIN}
-                      max={STAGGER_MAX}
-                      className={inputClass}
-                    />
-                    <span className="mt-1 block text-xs text-neutral-400">
-                      Seconds to wait between creators. Scrape Creators bills per request
-                      and Instagram rate-limits, so a full pass back-to-back is worth
-                      spacing out.
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              <fieldset className="space-y-2 border-t border-hairline pt-5">
-                <legend className="text-[11px] font-medium uppercase tracking-[0.1em] text-neutral-400">
-                  Include
-                </legend>
-                <div className="flex flex-wrap gap-4">
-                  <label className="flex items-center gap-2 text-sm text-neutral-700">
-                    <input
-                      type="checkbox"
-                      name="scrapeResearch"
-                      defaultChecked={settings.scrape_research}
-                      className="h-4 w-4 rounded border-hairline accent-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-                    />
-                    Research creators ({research.length})
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-neutral-700">
-                    <input
-                      type="checkbox"
-                      name="scrapeRoster"
-                      defaultChecked={settings.scrape_roster}
-                      className="h-4 w-4 rounded border-hairline accent-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-                    />
-                    Our creators ({roster.length})
-                  </label>
-                </div>
-              </fieldset>
-
-              <div className="border-t border-hairline pt-5">
-                <SubmitButton pendingLabel="Saving…">Save settings</SubmitButton>
-                <p className="mt-2 text-xs text-neutral-400">
-                  Applies on the next run — this doesn&apos;t start a scrape.
+    // Full-bleed inside the app shell's padded <main>, so the console reads as
+    // its own room rather than a card floating on the old canvas.
+    <div className="ag -mx-8 -my-7 min-h-[100dvh] bg-[var(--ag-canvas)] px-8 pb-20 pt-8">
+      <div className="mx-auto w-full max-w-[1280px] space-y-4">
+        {/* ── The one floating surface ─────────────────────────────────── */}
+        <Rise>
+          <GlassPanel tone="thick" radius={30} innerClassName="p-6 sm:p-7">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <Eyebrow>Console</Eyebrow>
+                <h1 className="mt-3 text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--ag-ink)]">
+                  Settings
+                </h1>
+                <p className="mt-2 max-w-[54ch] text-[13.5px] leading-relaxed text-[var(--ag-ink-2)]">
+                  How creator profiles get re-scraped. A scrape re-pulls recent reels and
+                  their metrics for every creator, which is what keeps lift scores current.
                 </p>
               </div>
-            </form>
-          )}
-        </Card>
+              <div className="flex items-center gap-2">
+                <Badge
+                  status={settings.auto_scrape_enabled ? "Active" : "Paused"}
+                  tone={settings.auto_scrape_enabled ? "positive" : "warn"}
+                />
+              </div>
+            </div>
 
-        <div className="space-y-4">
-          <Card
-            title="Run a scrape now"
-            subtitle="Runs immediately · doesn't change saved settings."
-          >
-            <div className="space-y-3">
-              <p className="text-sm text-neutral-500">
-                Scrapes every creator in scope, one at a time, with the pause above between each.
-                A full pass takes roughly a minute per creator.
+            {/* Four figures that belong to one another — a lattice, not four
+                cards with gaps between them. */}
+            <Lattice tone="inset" className="mt-6 grid-cols-2 lg:grid-cols-4">
+              <div className="px-4 py-3.5">
+                <Stat label="Creators tracked" value={creators.length} />
+              </div>
+              <div className="px-4 py-3.5">
+                <Stat
+                  label="Queued to scrape"
+                  value={queued.length}
+                  sub={queued.length ? "run in progress or paused" : undefined}
+                />
+              </div>
+              <div className="px-4 py-3.5">
+                <Stat label="Never scraped" value={neverScraped.length} />
+              </div>
+              <div className="px-4 py-3.5">
+                <Stat label="Last scrape failed" value={failed.length} />
+              </div>
+            </Lattice>
+
+            {/* Schedule state lives here rather than in its own card: it is the
+                same subject as the figures above it. */}
+            <dl className="mt-5 grid gap-x-8 gap-y-0 border-t border-[var(--ag-hairline)] pt-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Field label="Schedule">{describeSchedule(settings)}</Field>
+              <Field label="Next run">
+                {settings.auto_scrape_enabled
+                  ? due
+                    ? "Due now"
+                    : formatDateTime(next?.toISOString())
+                  : "—"}
+              </Field>
+              <Field label="Last run">
+                {settings.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}
+              </Field>
+              {settings.last_run_summary ? (
+                <Field label="Result">{settings.last_run_summary}</Field>
+              ) : null}
+            </dl>
+          </GlassPanel>
+        </Rise>
+
+        {/* ── Configuration + manual run ───────────────────────────────── */}
+        <div className="grid gap-4 lg:grid-cols-[1.55fr_1fr]">
+          <Rise index={1}>
+            <Card innerClassName="p-5 sm:p-6" className="h-full">
+              <CardHead
+                icon={<SlidersIcon className="h-[15px] w-[15px]" />}
+                title="Scrape configuration"
+                aside={
+                  <span className="text-[11.5px] text-[var(--ag-ink-4)]">
+                    Applied on the next scheduled run
+                  </span>
+                }
+              />
+              {!isAdmin ? (
+                <div className="mt-5">
+                  <Empty>Only admins can change scrape settings.</Empty>
+                </div>
+              ) : (
+                <form action={saveScrapeSettings} className="mt-5 space-y-6">
+                  <ScheduleFields settings={settings} />
+
+                  <div className="space-y-3 border-t border-[var(--ag-hairline)] pt-5">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--ag-ink-4)]">
+                      Volume &amp; pacing
+                    </p>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="block">
+                        <span className={agLabel}>Reels per creator</span>
+                        <input
+                          type="number"
+                          name="resultsLimit"
+                          defaultValue={settings.results_limit}
+                          min={RESULTS_MIN}
+                          max={RESULTS_MAX}
+                          className={`${agInput} mt-2`}
+                        />
+                        <span className={agHint}>
+                          How many recent reels each scrape pulls ({RESULTS_MIN}–{RESULTS_MAX}).
+                        </span>
+                      </label>
+                      <label className="block">
+                        <span className={agLabel}>Pause between creators</span>
+                        <input
+                          type="number"
+                          name="staggerSeconds"
+                          defaultValue={settings.stagger_seconds}
+                          min={STAGGER_MIN}
+                          max={STAGGER_MAX}
+                          className={`${agInput} mt-2`}
+                        />
+                        <span className={agHint}>
+                          Seconds between creators. Scrape Creators bills per request and
+                          Instagram rate-limits, so a full pass back-to-back is worth spacing out.
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <fieldset className="space-y-3 border-t border-[var(--ag-hairline)] pt-5">
+                    <legend className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--ag-ink-4)]">
+                      Include
+                    </legend>
+                    <div className="flex flex-wrap gap-2">
+                      <label className="ag-press ag-glass-thin inline-flex cursor-pointer items-center gap-2 rounded-full px-3.5 py-2 text-[12.5px] font-medium text-[var(--ag-ink-2)]">
+                        <input
+                          type="checkbox"
+                          name="scrapeResearch"
+                          defaultChecked={settings.scrape_research}
+                          className="h-3.5 w-3.5 rounded-[4px] accent-[var(--ag-ink)]"
+                        />
+                        Research creators
+                        <span className="tabular-nums text-[var(--ag-ink-4)]">{research.length}</span>
+                      </label>
+                      <label className="ag-press ag-glass-thin inline-flex cursor-pointer items-center gap-2 rounded-full px-3.5 py-2 text-[12.5px] font-medium text-[var(--ag-ink-2)]">
+                        <input
+                          type="checkbox"
+                          name="scrapeRoster"
+                          defaultChecked={settings.scrape_roster}
+                          className="h-3.5 w-3.5 rounded-[4px] accent-[var(--ag-ink)]"
+                        />
+                        Our creators
+                        <span className="tabular-nums text-[var(--ag-ink-4)]">{roster.length}</span>
+                      </label>
+                    </div>
+                  </fieldset>
+
+                  <div className="flex flex-wrap items-center gap-3 border-t border-[var(--ag-hairline)] pt-5">
+                    <SubmitButton pendingLabel="Saving…" className={`group ${agButton}`}>
+                      Save settings
+                      <span className={agButtonIcon}>
+                        <CheckGlyph />
+                      </span>
+                    </SubmitButton>
+                    <p className="text-[11.5px] text-[var(--ag-ink-4)]">
+                      Applies on the next run — this doesn&apos;t start a scrape.
+                    </p>
+                  </div>
+                </form>
+              )}
+            </Card>
+          </Rise>
+
+          <Rise index={2}>
+            <Card innerClassName="p-5 sm:p-6" className="h-full">
+              <CardHead
+                icon={<RefreshIcon className="h-[15px] w-[15px]" />}
+                title="Run a scrape now"
+              />
+              <p className="mt-4 text-[13px] leading-relaxed text-[var(--ag-ink-2)]">
+                Scrapes every creator in scope, one at a time, with the pause above between
+                each. A full pass takes roughly a minute per creator, and doesn&apos;t change
+                anything you have saved.
               </p>
               {isAdmin ? (
-                <div className="flex flex-col gap-2">
+                <div className="mt-5 flex flex-col gap-2">
                   <ScrapeAllButton
                     kinds={["research", "roster"]}
                     queued={queued.length}
@@ -266,206 +333,282 @@ export default async function SettingsPage({
                   />
                 </div>
               ) : (
-                <EmptyState message="Only admins can start a scrape." />
+                <div className="mt-5">
+                  <Empty>Only admins can start a scrape.</Empty>
+                </div>
               )}
-            </div>
-          </Card>
 
-          <Card title="Schedule status">
-            <dl className="space-y-2 text-sm">
-              <Row label="Automatic scraping">
-                <StatusBadge
-                  status={settings.auto_scrape_enabled ? "Active" : "Paused"}
-                />
-              </Row>
-              <Row label="Schedule">{describeSchedule(settings)}</Row>
-              <Row label="Next run">
-                {settings.auto_scrape_enabled
-                  ? due
-                    ? "Due now"
-                    : formatDateTime(next?.toISOString())
-                  : "—"}
-              </Row>
-              <Row label="Last run">
-                {settings.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}
-              </Row>
-              {settings.last_run_summary && (
-                <Row label="Result">{settings.last_run_summary}</Row>
-              )}
-            </dl>
-
-            {settings.auto_scrape_enabled && (
-              <p className="mt-3 rounded-xl bg-warning/[0.1] p-3 text-xs leading-relaxed text-warning ring-1 ring-inset ring-warning/[0.22]">
-                This app only runs on your machine, so nothing fires the schedule on its own yet.
-                The settings are saved and the schedule is live — point a cron or launchd job at{" "}
-                <code className="font-mono">POST /api/jobs/research</code> with{" "}
-                <code className="font-mono">{'{"action":"scrape-all"}'}</code> and it will honour
-                everything above, skipping runs that aren&apos;t due.
-              </p>
-            )}
-          </Card>
+              {settings.auto_scrape_enabled ? (
+                <p className="mt-5 rounded-[14px] bg-[rgba(224,135,0,0.09)] px-3.5 py-3 text-[11.5px] leading-relaxed text-[#a86200]">
+                  The schedule is live, but nothing fires it from this machine. Point a cron at{" "}
+                  <code className="font-mono text-[11px]">POST /api/jobs/research</code> with{" "}
+                  <code className="font-mono text-[11px]">{'{"action":"scrape-all"}'}</code> — it
+                  honours everything above and skips runs that aren&apos;t due.
+                </p>
+              ) : null}
+            </Card>
+          </Rise>
         </div>
-      </div>
 
-      <div className="mt-5">
-        <Card
-          id="niches"
-          title="Niches"
-          subtitle="The track vocabulary: the emoji that prefixes a creator's channel, the niche written on their scripts, and the Discord role /onboard grants."
-        >
-          {!isAdmin ? (
-            <EmptyState message="Only admins can change niches." />
-          ) : (
-            <NicheManager
-              niches={nicheList}
-              channelCounts={channelCounts}
-              liveBases={liveBases}
-              discordReachable={discordReachable}
-              preview={renamePreview}
+        {/* ── Niches ───────────────────────────────────────────────────── */}
+        <Rise index={3}>
+          <Card id="niches" innerClassName="p-5 sm:p-6">
+            <CardHead
+              icon={<TagIcon className="h-[15px] w-[15px]" />}
+              title="Niches"
+              aside={
+                <span className="text-[11.5px] text-[var(--ag-ink-4)]">
+                  {nicheList.filter((n) => n.isActive).length} active
+                </span>
+              }
             />
-          )}
-        </Card>
-      </div>
-
-      <div className="mt-5">
-        <Card
-          title="Launchpoint"
-          subtitle="First-party Instagram metrics — reach, saves, watch time and skip rate — plus daily view curves and payout cost. Runs on the hourly cron; this is the manual push."
-        >
-          <LaunchpointSync status={launchpoint} />
-        </Card>
-      </div>
-
-      <div className="mt-5">
-        <Card title="Oldest scrapes" subtitle="Next in line for a run">
-          {staleFirst.length === 0 ? (
-            <EmptyState message="No creators yet." />
-          ) : (
-            <div className={tableWrap}>
-              <table className={table}>
-                <thead>
-                  <tr>
-                    <th className={th}>Creator</th>
-                    <th className={th}>Pool</th>
-                    <th className={th}>Status</th>
-                    <th className={th}>Last scraped</th>
-                    <th className={th}>Queued</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-black/[0.05]">
-                  {staleFirst.map((c) => (
-                    <tr key={c.id} className={trHover}>
-                      <td className={`${td} font-mono font-medium`}>@{c.handle}</td>
-                      <td className={td}>
-                        <span className="text-neutral-500">
-                          {c.kind === "research" ? "Research" : "Ours"}
-                        </span>
-                      </td>
-                      <td className={td}>
-                        <StatusBadge status={c.status} />
-                        {c.status === "failed" && c.error_message && (
-                          <span className="ml-2 text-xs text-danger">{c.error_message}</span>
-                        )}
-                      </td>
-                      <td className={td}>
-                        {c.last_scraped_at ? formatDateTime(c.last_scraped_at) : "Never"}
-                      </td>
-                      <td className={td}>
-                        {c.scrape_queued_at ? (
-                          <StatusBadge status="Pending" />
-                        ) : (
-                          <span className="text-neutral-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <p className="mt-3 max-w-[80ch] text-[13px] leading-relaxed text-[var(--ag-ink-2)]">
+              The track vocabulary: the emoji that prefixes a creator&apos;s channel, the niche
+              written on their scripts, and the Discord role <code className="font-mono text-[12px]">/onboard</code> grants.
+              The workers pick up a change within a minute — no restart.
+            </p>
+            <div className="mt-5">
+              {!isAdmin ? (
+                <Empty>Only admins can change niches.</Empty>
+              ) : (
+                <NicheManager
+                  niches={nicheList}
+                  channelCounts={channelCounts}
+                  liveBases={liveBases}
+                  discordReachable={discordReachable}
+                  preview={renamePreview}
+                />
+              )}
             </div>
-          )}
-        </Card>
-
-        {isAdmin && (
-          <Card
-            id="coaches"
-            title="Coaches"
-            subtitle="Coach accounts see one page, /coach, with their own team: the creators whose coaching channels sit in that Discord category. Not staff — nothing else in this app opens for them."
-          >
-            {coachNotice && (
-              <p className="mb-3 rounded-lg bg-danger/[0.08] px-3 py-2 text-sm text-danger ring-1 ring-inset ring-danger/[0.2]">
-                {coachNotice}
-              </p>
-            )}
-            {coachTeams.length === 0 ? (
-              <EmptyState message="No coaches yet." />
-            ) : (
-              <div className={tableWrap}>
-                <table className={table}>
-                  <thead>
-                    <tr>
-                      <th className={th}>Coach</th>
-                      <th className={th}>Team</th>
-                      <th className={th}>Discord</th>
-                      <th className={th}></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-black/[0.05]">
-                    {coachTeams.map((c) => (
-                      <tr key={c.profile_id} className={trHover}>
-                        <td className={td}>
-                          <span className="font-medium text-neutral-900">{c.name || c.email}</span>
-                          {c.name && <span className="ml-2 font-mono text-[11px] text-neutral-400">{c.email}</span>}
-                          {c.role !== "coach" && (
-                            <span className="ml-2 text-xs text-warning">role is {c.role}</span>
-                          )}
-                        </td>
-                        <td className={td}>{c.category}</td>
-                        <td className={`${td} font-mono text-[11px] text-neutral-400`}>{c.discord_user_id ?? "—"}</td>
-                        <td className={`${td} text-right`}>
-                          <form action={removeCoach}>
-                            <input type="hidden" name="profile_id" value={c.profile_id} />
-                            <button className="text-xs text-neutral-400 hover:text-danger">Remove</button>
-                          </form>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <form action={assignCoach} className="mt-4 grid gap-3 border-t border-black/[0.05] pt-4 md:grid-cols-[1.2fr_1fr_0.8fr_auto] md:items-end">
-              <div>
-                <label htmlFor="coach-email" className={labelClass}>Email</label>
-                <input id="coach-email" name="email" type="email" required placeholder="will@folk.com" className={inputClass} />
-              </div>
-              <div>
-                <label htmlFor="coach-category" className={labelClass}>Team</label>
-                <select id="coach-category" name="category" required className={inputClass} defaultValue="">
-                  <option value="" disabled>Pick a category…</option>
-                  {teamCategories.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label htmlFor="coach-discord" className={labelClass}>Discord id <span className="font-normal text-neutral-400">(optional)</span></label>
-                <input id="coach-discord" name="discord_user_id" inputMode="numeric" placeholder="snowflake" className={inputClass} />
-              </div>
-              <SubmitButton pendingLabel="Adding…">Add coach</SubmitButton>
-            </form>
           </Card>
-        )}
+        </Rise>
+
+        {/* ── Launchpoint ──────────────────────────────────────────────── */}
+        <Rise index={4}>
+          <Card innerClassName="p-5 sm:p-6">
+            <CardHead
+              icon={<ClockIcon className="h-[15px] w-[15px]" />}
+              title="Launchpoint"
+            />
+            <p className="mt-3 max-w-[80ch] text-[13px] leading-relaxed text-[var(--ag-ink-2)]">
+              First-party Instagram metrics — reach, saves, watch time and skip rate — plus daily
+              view curves and payout cost. Runs on the hourly cron; this is the manual push.
+            </p>
+            <div className="mt-5">
+              <LaunchpointSync status={launchpoint} />
+            </div>
+          </Card>
+        </Rise>
+
+        {/* ── Queue ────────────────────────────────────────────────────── */}
+        <Rise index={5}>
+          <Card innerClassName="p-5 sm:p-6">
+            <CardHead
+              icon={<UsersIcon className="h-[15px] w-[15px]" />}
+              title="Oldest scrapes"
+              aside={
+                <span className="text-[11.5px] text-[var(--ag-ink-4)]">Next in line for a run</span>
+              }
+            />
+            <div className="mt-5">
+              {staleFirst.length === 0 ? (
+                <Empty>No creators yet.</Empty>
+              ) : (
+                <div className={agTableWrap}>
+                  <table className={agTable}>
+                    <thead className="ag-thead">
+                      <tr>
+                        <th className={agTh}>Creator</th>
+                        <th className={agTh}>Pool</th>
+                        <th className={agTh}>Status</th>
+                        <th className={agTh}>Last scraped</th>
+                        <th className={agTh}>Queued</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {staleFirst.map((c) => (
+                        <tr key={c.id} className={agRow}>
+                          <td className={`${agTd} font-mono font-medium text-[var(--ag-ink)]`}>
+                            @{c.handle}
+                          </td>
+                          <td className={agTd}>{c.kind === "research" ? "Research" : "Ours"}</td>
+                          <td className={agTd}>
+                            <Badge status={c.status} />
+                            {c.status === "failed" && c.error_message ? (
+                              <span className="ml-2 text-[11.5px] text-[var(--ag-red)]">
+                                {c.error_message}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className={agTd}>
+                            {c.last_scraped_at ? formatDateTime(c.last_scraped_at) : "Never"}
+                          </td>
+                          <td className={agTd}>
+                            {c.scrape_queued_at ? (
+                              <Badge status="Pending" />
+                            ) : (
+                              <span className="text-[var(--ag-ink-4)]">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </Card>
+        </Rise>
+
+        {/* ── Coaches ──────────────────────────────────────────────────── */}
+        {isAdmin ? (
+          <Rise index={6}>
+            <Card id="coaches" innerClassName="p-5 sm:p-6">
+              <CardHead
+                icon={<DiscordGlyph className="h-[15px] w-[15px]" />}
+                title="Coaches"
+                aside={
+                  <span className="text-[11.5px] text-[var(--ag-ink-4)]">
+                    {coachTeams.length} with access
+                  </span>
+                }
+              />
+              <p className="mt-3 max-w-[80ch] text-[13px] leading-relaxed text-[var(--ag-ink-2)]">
+                Coach accounts see one page, <code className="font-mono text-[12px]">/coach</code>,
+                with their own team: the creators whose coaching channels sit in that Discord
+                category. Not staff — nothing else in this app opens for them.
+              </p>
+
+              {coachNotice ? (
+                <p className="mt-4 flex items-start gap-2 rounded-[14px] bg-[rgba(229,72,77,0.09)] px-3.5 py-3 text-[12.5px] leading-relaxed text-[#c2333c]">
+                  <AlertIcon className="mt-[1px] h-4 w-4 shrink-0" />
+                  {coachNotice}
+                </p>
+              ) : null}
+
+              <div className="mt-5">
+                {coachTeams.length === 0 ? (
+                  <Empty>No coaches yet.</Empty>
+                ) : (
+                  <div className={agTableWrap}>
+                    <table className={agTable}>
+                      <thead className="ag-thead">
+                        <tr>
+                          <th className={agTh}>Coach</th>
+                          <th className={agTh}>Team</th>
+                          <th className={agTh}>Discord</th>
+                          <th className={agTh} />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {coachTeams.map((c) => (
+                          <tr key={c.profile_id} className={agRow}>
+                            <td className={agTd}>
+                              <span className="font-medium text-[var(--ag-ink)]">
+                                {c.name || c.email}
+                              </span>
+                              {c.name ? (
+                                <span className="ml-2 font-mono text-[11px] text-[var(--ag-ink-4)]">
+                                  {c.email}
+                                </span>
+                              ) : null}
+                              {c.role !== "coach" ? (
+                                <span className="ml-2 text-[11.5px] text-[#a86200]">
+                                  role is {c.role}
+                                </span>
+                              ) : null}
+                            </td>
+                            <td className={agTd}>{c.category}</td>
+                            <td className={`${agTd} font-mono text-[11px] text-[var(--ag-ink-4)]`}>
+                              {c.discord_user_id ?? "—"}
+                            </td>
+                            <td className={`${agTd} text-right`}>
+                              <form action={removeCoach}>
+                                <input type="hidden" name="profile_id" value={c.profile_id} />
+                                <button className="ag-press text-[11.5px] text-[var(--ag-ink-4)] transition-colors hover:text-[var(--ag-red)]">
+                                  Remove
+                                </button>
+                              </form>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <form
+                action={assignCoach}
+                className="mt-5 grid gap-4 border-t border-[var(--ag-hairline)] pt-5 md:grid-cols-[1.2fr_1fr_0.9fr_auto] md:items-end"
+              >
+                <div>
+                  <label htmlFor="coach-email" className={agLabel}>Email</label>
+                  <input
+                    id="coach-email"
+                    name="email"
+                    type="email"
+                    required
+                    placeholder="will@folk.com"
+                    className={`${agInput} mt-2`}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="coach-category" className={agLabel}>Team</label>
+                  <select
+                    id="coach-category"
+                    name="category"
+                    required
+                    className={`${agInput} mt-2`}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Pick a category…</option>
+                    {teamCategories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="coach-discord" className={agLabel}>
+                    Discord id <span className="font-normal normal-case tracking-normal text-[var(--ag-ink-4)]">optional</span>
+                  </label>
+                  <input
+                    id="coach-discord"
+                    name="discord_user_id"
+                    inputMode="numeric"
+                    placeholder="snowflake"
+                    className={`${agInput} mt-2 font-mono`}
+                  />
+                </div>
+                <SubmitButton pendingLabel="Adding…" className={`group ${agButton}`}>
+                  Add coach
+                  <span className={agButtonIcon}>
+                    <PlusIcon className="h-3.5 w-3.5" />
+                  </span>
+                </SubmitButton>
+              </form>
+            </Card>
+          </Rise>
+        ) : null}
       </div>
-    </>
+    </div>
   );
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+/** The tick inside the save button's trailing circle. */
+function CheckGlyph() {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="text-neutral-500">{label}</dt>
-      <dd className="min-w-0 truncate text-right font-medium text-neutral-900">{children}</dd>
-    </div>
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className="h-3 w-3"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
   );
 }
