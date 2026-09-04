@@ -7,8 +7,9 @@ import { discordConfigured, postChannelMessage } from "@/lib/discord";
 import { buildScriptPage, testSendContent, type SendableScript } from "@/lib/discord-send";
 import { resolveInspoVideoUrl } from "@/lib/inspo-media";
 import { isChannelTarget } from "@/lib/send-targets";
+import { listFormatChannels } from "@/lib/format-channels";
 import { assignScriptNumbers } from "./doc";
-import type { ResearchScript } from "@/lib/types";
+import type { ResearchScript, ResearchScriptPost } from "@/lib/types";
 
 /** Canonical #N for every script (Doc position within week+niche) — computed
  *  over the WHOLE table so a subset send still carries the real numbers. */
@@ -291,4 +292,108 @@ export async function sendScriptsTest(scriptIds: string[]): Promise<SendReport> 
       }],
     };
   }
+}
+
+export interface ChannelSendReport {
+  channel: string;
+  /** Cards actually posted in this run. */
+  posted: number;
+  /** Skipped because this script is already in this channel. */
+  alreadyPosted: number;
+  error?: string;
+}
+
+/**
+ * Publish a batch of scripts to one format channel.
+ *
+ * No creator loop, no assignments, no ping: the card is a library entry, and
+ * whoever wants it takes it. The research_script_posts row is the record, and
+ * its unique index is the dedupe — re-running is a no-op per script.
+ */
+export async function sendScriptsToChannel(input: {
+  scriptIds: string[];
+  channelId: string;
+}): Promise<ChannelSendReport> {
+  await requireAdmin();
+  if (!discordConfigured()) {
+    return { channel: input.channelId, posted: 0, alreadyPosted: 0,
+      error: "DISCORD_BOT_TOKEN is not set in .env.local — add it and retry." };
+  }
+  const scriptIds = [...new Set(input.scriptIds)].filter(Boolean);
+  if (!scriptIds.length || !input.channelId) {
+    return { channel: input.channelId, posted: 0, alreadyPosted: 0,
+      error: "Pick at least one script and a channel." };
+  }
+
+  const channels = await listFormatChannels();
+  const channel = channels.find((c) => c.id === input.channelId);
+  if (!channel) {
+    return { channel: input.channelId, posted: 0, alreadyPosted: 0,
+      error: "That channel isn't under the scripts / formats category any more." };
+  }
+
+  const db = createAdminClient();
+  const [{ data: scriptsData }, { data: postedData }] = await Promise.all([
+    db.from("research_scripts").select("*").in("id", scriptIds),
+    // ::text — a snowflake read as a JS number rounds past 2^53 and would
+    // compare unequal to the id we are about to post to.
+    db
+      .from("research_script_posts")
+      .select("script_id, discord_channel_id::text")
+      .in("script_id", scriptIds),
+  ]);
+
+  const already = new Set(
+    ((postedData ?? []) as Pick<ResearchScriptPost, "script_id" | "discord_channel_id">[])
+      .filter((p) => String(p.discord_channel_id) === input.channelId)
+      .map((p) => p.script_id)
+  );
+  const scripts = ((scriptsData ?? []) as ResearchScript[])
+    .slice()
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const batch = scripts.filter((s) => !already.has(s.id));
+  if (!batch.length) {
+    return { channel: channel.name, posted: 0, alreadyPosted: scripts.length };
+  }
+
+  const numbering = await scriptNumbering(db);
+  const sendable: SendableScript[] = batch.map((s) => ({
+    ...toSendable(s),
+    number: numbering.get(s.id) ?? null,
+  }));
+
+  const inspoFor = inspoCache();
+  let posted = 0;
+  try {
+    for (let i = 0; i < sendable.length; i++) {
+      // No header and no mention: a library entry pings nobody.
+      const messageId = await postPage(input.channelId, sendable, i, {
+        videoUrl: await inspoFor(sendable[i]),
+        paged: false,
+        header: null,
+        mentionUserId: null,
+      });
+      const { error } = await db.from("research_script_posts").insert({
+        script_id: batch[i].id,
+        discord_channel_id: input.channelId,
+        channel_label: channel.name,
+        discord_message_id: messageId,
+        posted_at: new Date().toISOString(),
+      });
+      // 23505 means it was already published here — the card is a duplicate we
+      // just posted, but the record stands; do not fail the batch over it.
+      if (error && error.code !== "23505") {
+        throw new Error(`posted, but recording it failed: ${error.message}`);
+      }
+      posted++;
+    }
+  } catch (e) {
+    return {
+      channel: channel.name, posted, alreadyPosted: already.size,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+
+  revalidatePath("/scripts");
+  return { channel: channel.name, posted, alreadyPosted: already.size };
 }
