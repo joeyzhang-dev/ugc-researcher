@@ -298,6 +298,24 @@ export interface ResearchScriptAssignment {
   sent_at: string | null;
 }
 
+/**
+ * A script published to a shared format channel (the `scripts / formats`
+ * category). Distinct from an assignment: nobody is on the hook for it, and
+ * the earliest posting is what date-proximity measures a post against.
+ */
+export interface ResearchScriptPost {
+  id: string;
+  script_id: string;
+  /** Snowflake — always selected as ::text. */
+  discord_channel_id: string;
+  /** The channel's name at the moment of posting, e.g. "christian-10ways". */
+  channel_label: string;
+  /** Snowflake — always selected as ::text. */
+  discord_message_id: string;
+  posted_at: string;
+  created_at: string;
+}
+
 /* --- Discord (research_discord_*) ------------------------------------------
    Ingested by worker/discord_pull_worker.py. Discord snowflake ids are bigints
    beyond Number.MAX_SAFE_INTEGER, so every query casts them to ::text and the
