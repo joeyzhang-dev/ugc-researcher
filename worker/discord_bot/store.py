@@ -11,7 +11,21 @@ from typing import Optional
 
 import discord_pull_worker as pull
 
-PAUSED_CATEGORY = "Not Creating 🚫"
+# The paused category, by ID. `pull.is_paused_category` decides from the id
+# when a row has one and falls back to a loose name match when it does not —
+# rows written before research_discord_channels.category_id existed.
+#
+# The name below is only what /offboard WRITES into `category` for display,
+# and what a name-only fallback recognises. Until 2026-09-04 it was also the
+# comparison, and when the category was renamed to "🚫 Not Creating" all 22
+# parked channels silently stopped reading as paused.
+PAUSED_CATEGORY_ID = 1511568384200806481
+PAUSED_CATEGORY = "🚫 Not Creating"
+
+
+def _is_paused(row: dict) -> bool:
+    """Whether a research_discord_channels row sits in the paused category."""
+    return pull.is_paused_category(row.get("category_id"), row.get("category"))
 
 # Ceiling on the message rows /creator and /creators summarise. Matches the
 # web app's own .limit(10000) on the /discord page.
@@ -84,7 +98,8 @@ def tracking_drift() -> dict:
     parked on purpose and excluded."""
     channels = pull.sb_all(
         "research_discord_channels"
-        "?select=channel_id,channel_name,category,research_creator_id&is_tracked=eq.true"
+        "?select=channel_id,channel_name,category,category_id,research_creator_id"
+        "&is_tracked=eq.true"
     )
     creators = {
         c["id"]: c
@@ -93,7 +108,7 @@ def tracking_drift() -> dict:
     unlinked: list[str] = []
     unpingable: list[str] = []
     for ch in channels:
-        if not ch.get("category") or ch["category"] == PAUSED_CATEGORY:
+        if not ch.get("category") or _is_paused(ch):
             continue
         creator_id = ch.get("research_creator_id")
         if not creator_id:
@@ -142,7 +157,7 @@ def offboard_creator_channel(channel_id: int) -> bool:
     updated = pull.sb(
         "PATCH",
         f"research_discord_channels?channel_id=eq.{channel_id}",
-        {"category": PAUSED_CATEGORY},
+        {"category": PAUSED_CATEGORY, "category_id": PAUSED_CATEGORY_ID},
         prefer="return=representation",
     )
     if not updated:
@@ -350,7 +365,8 @@ def creator_overview() -> list[dict]:
     """One row per tracked channel, shaped for command_ui's embeds."""
     channels = pull.sb_all(
         "research_discord_channels?select=channel_id,channel_name,niche,category,"
-        "research_creator_id,research_creators(handle,discord_user_id)&is_tracked=eq.true"
+        "category_id,research_creator_id,research_creators(handle,discord_user_id)"
+        "&is_tracked=eq.true"
     )
     # Bounded on purpose: this runs on every /creator, /creators, /health and
     # autocomplete cache miss, and the table grows 24/7. The counters are a
@@ -387,7 +403,7 @@ def creator_overview() -> list[dict]:
         rows.append({
             "creator_name": _creator_name(c.get("channel_name")),
             "niche": c.get("niche"),
-            "status": "paused" if c.get("category") == PAUSED_CATEGORY else "active",
+            "status": "paused" if _is_paused(c) else "active",
             "channel_id": c["channel_id"],
             "discord_user_id": linked.get("discord_user_id"),
             "instagram": linked.get("handle"),
