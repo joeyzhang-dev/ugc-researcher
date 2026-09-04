@@ -150,16 +150,31 @@ export default async function ScriptDetailPage({
       const creator = creatorById.get(a.research_creator_id);
       const linked = a.research_video_id ? liftById.get(a.research_video_id) ?? null : null;
       const trial = trialByCreator.get(a.research_creator_id);
-      const pool = (byCreator.get(a.research_creator_id) ?? []).filter(
-        (v) => !takenElsewhere.has(v.id) && !trial?.has(v.id)
+      // takenElsewhere is the partial unique index's rule, not a heuristic —
+      // a video already linked to another assignment must never be offered
+      // again, in either list below.
+      const available = (byCreator.get(a.research_creator_id) ?? []).filter(
+        (v) => !takenElsewhere.has(v.id)
       );
+      // The dropdown is the human's override, and the trial-upload flag is a
+      // heuristic (0.976 precision — ~1 in 40 flags is wrong). Hiding a
+      // misjudged post here would remove the only way to link it, so every
+      // available video stays in the options; the JSX below marks the
+      // flagged ones so the operator knows why they weren't suggested.
+      const pool = available;
+      // Suggestions are the machine's opinion, so a probable trial upload is
+      // dropped: two takes of the same script score almost identically
+      // against it, manufacturing exactly the near-tie MATCH_AUTO_MARGIN
+      // exists to refuse — surfacing both as "likely matches" would just be
+      // noise.
+      const suggestionPool = available.filter((v) => !trial?.has(v.id));
       // Suggest only while unlinked — once confirmed, the answer is settled.
       // Match on hook + body: the hook is part of what they say.
       const matchText = [script.hook, script.body].filter(Boolean).join(" ");
       const suggestions = a.research_video_id
         ? []
-        : suggestMatches(matchText, pool, { limit: 4 });
-      return { a, creator, linked, pool, suggestions };
+        : suggestMatches(matchText, suggestionPool, { limit: 4 });
+      return { a, creator, linked, pool, suggestions, trial };
     })
     .sort((x, y) => (y.linked?.lift ?? -1) - (x.linked?.lift ?? -1));
 
@@ -524,7 +539,7 @@ export default async function ScriptDetailPage({
             <EmptyState message="Everyone who has this script already posted — see the videos above." />
           ) : (
             <div className="grid items-start gap-3 [grid-template-columns:repeat(auto-fill,minmax(290px,1fr))]">
-                {waiting.map(({ a, creator, pool, suggestions }) => (
+                {waiting.map(({ a, creator, pool, suggestions, trial }) => (
                   <div key={a.id} className="rounded-xl bg-surface p-3 ring-1 ring-hairline">
                     <div className="flex items-center justify-between gap-2">
                       <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
@@ -605,6 +620,7 @@ export default async function ScriptDetailPage({
                                 <option key={v.id} value={v.id}>
                                   {formatDate(v.posted_at)} · {formatCompact(v.view_count)} views ·{" "}
                                   {(v.caption?.split("\n")[0] || v.shortcode || "").slice(0, 60)}
+                                  {trial?.has(v.id) ? " — trial upload?" : ""}
                                 </option>
                               ))}
                             </select>
