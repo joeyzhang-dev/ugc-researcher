@@ -136,18 +136,18 @@ export default async function SettingsPage({
   return (
     // Full-bleed inside the app shell's padded <main>, so the console reads as
     // its own room rather than a card floating on the old canvas.
-    <div className="ag -mx-8 -my-7 min-h-[100dvh] bg-[var(--ag-canvas)] px-8 pb-20 pt-8">
-      <div className="mx-auto w-full max-w-[1280px] space-y-4">
+    <div className="ag -mx-8 -my-7 min-h-[100dvh] bg-[var(--ag-canvas)] px-8 pb-16 pt-7">
+      <div className="mx-auto w-full max-w-[1280px] space-y-3">
         {/* ── The one floating surface ─────────────────────────────────── */}
         <Rise>
-          <GlassPanel tone="thick" radius={30} innerClassName="p-6 sm:p-7">
+          <GlassPanel tone="thick" radius={30} innerClassName="p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
                 <Eyebrow>Console</Eyebrow>
-                <h1 className="mt-3 text-[30px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--ag-ink)]">
+                <h1 className="mt-2.5 text-[26px] font-semibold leading-[1.05] tracking-[-0.025em] text-[var(--ag-ink)]">
                   Settings
                 </h1>
-                <p className="mt-2 max-w-[54ch] text-[13.5px] leading-relaxed text-[var(--ag-ink-2)]">
+                <p className="mt-2 max-w-[58ch] text-[13px] leading-relaxed text-[var(--ag-ink-2)]">
                   How creator profiles get re-scraped. A scrape re-pulls recent reels and
                   their metrics for every creator, which is what keeps lift scores current.
                 </p>
@@ -162,28 +162,28 @@ export default async function SettingsPage({
 
             {/* Four figures that belong to one another — a lattice, not four
                 cards with gaps between them. */}
-            <Lattice tone="inset" className="mt-6 grid-cols-2 lg:grid-cols-4">
-              <div className="px-4 py-3.5">
+            <Lattice tone="inset" className="mt-5 grid-cols-2 lg:grid-cols-4">
+              <div className="px-3.5 py-3">
                 <Stat label="Creators tracked" value={creators.length} />
               </div>
-              <div className="px-4 py-3.5">
+              <div className="px-3.5 py-3">
                 <Stat
                   label="Queued to scrape"
                   value={queued.length}
                   sub={queued.length ? "run in progress or paused" : undefined}
                 />
               </div>
-              <div className="px-4 py-3.5">
+              <div className="px-3.5 py-3">
                 <Stat label="Never scraped" value={neverScraped.length} />
               </div>
-              <div className="px-4 py-3.5">
+              <div className="px-3.5 py-3">
                 <Stat label="Last scrape failed" value={failed.length} />
               </div>
             </Lattice>
 
             {/* Schedule state lives here rather than in its own card: it is the
                 same subject as the figures above it. */}
-            <dl className="mt-5 grid gap-x-8 gap-y-0 border-t border-[var(--ag-hairline)] pt-4 sm:grid-cols-2 lg:grid-cols-3">
+            <dl className="mt-4 grid gap-x-8 gap-y-0 border-t border-[var(--ag-hairline)] pt-3 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Schedule">{describeSchedule(settings)}</Field>
               <Field label="Next run">
                 {settings.auto_scrape_enabled
@@ -203,9 +203,9 @@ export default async function SettingsPage({
         </Rise>
 
         {/* ── Configuration + manual run ───────────────────────────────── */}
-        <div className="grid gap-4 lg:grid-cols-[1.55fr_1fr]">
+        <div className="grid gap-3 lg:grid-cols-[1.55fr_1fr]">
           <Rise index={1}>
-            <Card innerClassName="p-5 sm:p-6" className="h-full">
+            <Card innerClassName="p-4 sm:p-5" className="h-full">
               <CardHead
                 icon={<SlidersIcon className="h-[15px] w-[15px]" />}
                 title="Scrape configuration"
@@ -216,11 +216,11 @@ export default async function SettingsPage({
                 }
               />
               {!isAdmin ? (
-                <div className="mt-5">
+                <div className="mt-4">
                   <Empty>Only admins can change scrape settings.</Empty>
                 </div>
               ) : (
-                <form action={saveScrapeSettings} className="mt-5 space-y-6">
+                <form action={saveScrapeSettings} className="mt-4 space-y-5">
                   <ScheduleFields settings={settings} />
 
                   <div className="space-y-3 border-t border-[var(--ag-hairline)] pt-5">
@@ -236,7 +236,7 @@ export default async function SettingsPage({
                           defaultValue={settings.results_limit}
                           min={RESULTS_MIN}
                           max={RESULTS_MAX}
-                          className={`${agInput} mt-2`}
+                          className={`${agInput} mt-2 w-full`}
                         />
                         <span className={agHint}>
                           How many recent reels each scrape pulls ({RESULTS_MIN}–{RESULTS_MAX}).
@@ -250,7 +250,7 @@ export default async function SettingsPage({
                           defaultValue={settings.stagger_seconds}
                           min={STAGGER_MIN}
                           max={STAGGER_MAX}
-                          className={`${agInput} mt-2`}
+                          className={`${agInput} mt-2 w-full`}
                         />
                         <span className={agHint}>
                           Seconds between creators. Scrape Creators bills per request and
@@ -305,18 +305,18 @@ export default async function SettingsPage({
           </Rise>
 
           <Rise index={2}>
-            <Card innerClassName="p-5 sm:p-6" className="h-full">
+            <Card innerClassName="p-4 sm:p-5" className="h-full">
               <CardHead
                 icon={<RefreshIcon className="h-[15px] w-[15px]" />}
                 title="Run a scrape now"
               />
-              <p className="mt-4 text-[13px] leading-relaxed text-[var(--ag-ink-2)]">
+              <p className="mt-3 text-[12.5px] leading-relaxed text-[var(--ag-ink-3)]">
                 Scrapes every creator in scope, one at a time, with the pause above between
                 each. A full pass takes roughly a minute per creator, and doesn&apos;t change
                 anything you have saved.
               </p>
               {isAdmin ? (
-                <div className="mt-5 flex flex-col gap-2">
+                <div className="mt-4 flex flex-col gap-2">
                   <ScrapeAllButton
                     kinds={["research", "roster"]}
                     queued={queued.length}
@@ -333,7 +333,7 @@ export default async function SettingsPage({
                   />
                 </div>
               ) : (
-                <div className="mt-5">
+                <div className="mt-4">
                   <Empty>Only admins can start a scrape.</Empty>
                 </div>
               )}
@@ -352,7 +352,7 @@ export default async function SettingsPage({
 
         {/* ── Niches ───────────────────────────────────────────────────── */}
         <Rise index={3}>
-          <Card id="niches" innerClassName="p-5 sm:p-6">
+          <Card id="niches" innerClassName="p-4 sm:p-5">
             <CardHead
               icon={<TagIcon className="h-[15px] w-[15px]" />}
               title="Niches"
@@ -362,12 +362,12 @@ export default async function SettingsPage({
                 </span>
               }
             />
-            <p className="mt-3 max-w-[80ch] text-[13px] leading-relaxed text-[var(--ag-ink-2)]">
+            <p className="mt-2 max-w-[86ch] text-[12.5px] leading-relaxed text-[var(--ag-ink-3)]">
               The track vocabulary: the emoji that prefixes a creator&apos;s channel, the niche
               written on their scripts, and the Discord role <code className="font-mono text-[12px]">/onboard</code> grants.
               The workers pick up a change within a minute — no restart.
             </p>
-            <div className="mt-5">
+            <div className="mt-4">
               {!isAdmin ? (
                 <Empty>Only admins can change niches.</Empty>
               ) : (
@@ -385,16 +385,16 @@ export default async function SettingsPage({
 
         {/* ── Launchpoint ──────────────────────────────────────────────── */}
         <Rise index={4}>
-          <Card innerClassName="p-5 sm:p-6">
+          <Card innerClassName="p-4 sm:p-5">
             <CardHead
               icon={<ClockIcon className="h-[15px] w-[15px]" />}
               title="Launchpoint"
             />
-            <p className="mt-3 max-w-[80ch] text-[13px] leading-relaxed text-[var(--ag-ink-2)]">
+            <p className="mt-2 max-w-[86ch] text-[12.5px] leading-relaxed text-[var(--ag-ink-3)]">
               First-party Instagram metrics — reach, saves, watch time and skip rate — plus daily
               view curves and payout cost. Runs on the hourly cron; this is the manual push.
             </p>
-            <div className="mt-5">
+            <div className="mt-4">
               <LaunchpointSync status={launchpoint} />
             </div>
           </Card>
@@ -402,7 +402,7 @@ export default async function SettingsPage({
 
         {/* ── Queue ────────────────────────────────────────────────────── */}
         <Rise index={5}>
-          <Card innerClassName="p-5 sm:p-6">
+          <Card innerClassName="p-4 sm:p-5">
             <CardHead
               icon={<UsersIcon className="h-[15px] w-[15px]" />}
               title="Oldest scrapes"
@@ -410,7 +410,7 @@ export default async function SettingsPage({
                 <span className="text-[11.5px] text-[var(--ag-ink-4)]">Next in line for a run</span>
               }
             />
-            <div className="mt-5">
+            <div className="mt-4">
               {staleFirst.length === 0 ? (
                 <Empty>No creators yet.</Empty>
               ) : (
@@ -463,7 +463,7 @@ export default async function SettingsPage({
         {/* ── Coaches ──────────────────────────────────────────────────── */}
         {isAdmin ? (
           <Rise index={6}>
-            <Card id="coaches" innerClassName="p-5 sm:p-6">
+            <Card id="coaches" innerClassName="p-4 sm:p-5">
               <CardHead
                 icon={<DiscordGlyph className="h-[15px] w-[15px]" />}
                 title="Coaches"
@@ -473,7 +473,7 @@ export default async function SettingsPage({
                   </span>
                 }
               />
-              <p className="mt-3 max-w-[80ch] text-[13px] leading-relaxed text-[var(--ag-ink-2)]">
+              <p className="mt-2 max-w-[86ch] text-[12.5px] leading-relaxed text-[var(--ag-ink-3)]">
                 Coach accounts see one page, <code className="font-mono text-[12px]">/coach</code>,
                 with their own team: the creators whose coaching channels sit in that Discord
                 category. Not staff — nothing else in this app opens for them.
@@ -486,7 +486,7 @@ export default async function SettingsPage({
                 </p>
               ) : null}
 
-              <div className="mt-5">
+              <div className="mt-4">
                 {coachTeams.length === 0 ? (
                   <Empty>No coaches yet.</Empty>
                 ) : (
@@ -550,7 +550,7 @@ export default async function SettingsPage({
                     type="email"
                     required
                     placeholder="will@folk.com"
-                    className={`${agInput} mt-2`}
+                    className={`${agInput} mt-2 w-full`}
                   />
                 </div>
                 <div>
@@ -559,7 +559,7 @@ export default async function SettingsPage({
                     id="coach-category"
                     name="category"
                     required
-                    className={`${agInput} mt-2`}
+                    className={`${agInput} mt-2 w-full`}
                     defaultValue=""
                   >
                     <option value="" disabled>Pick a category…</option>
@@ -577,7 +577,7 @@ export default async function SettingsPage({
                     name="discord_user_id"
                     inputMode="numeric"
                     placeholder="snowflake"
-                    className={`${agInput} mt-2 font-mono`}
+                    className={`${agInput} mt-2 w-full font-mono`}
                   />
                 </div>
                 <SubmitButton pendingLabel="Adding…" className={`group ${agButton}`}>

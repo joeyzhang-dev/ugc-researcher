@@ -75,7 +75,7 @@ export function ScheduleFields({ settings }: { settings: ScrapeSettings }) {
               defaultValue={settings.interval_hours}
               min={INTERVAL_MIN}
               max={INTERVAL_MAX}
-              className={`${agInput} mt-2`}
+              className={`${agInput} mt-2 w-full`}
             />
             <span className={agHint}>
               Counted from the end of the last run, so a laptop that was asleep just runs late
@@ -89,7 +89,7 @@ export function ScheduleFields({ settings }: { settings: ScrapeSettings }) {
               type="time"
               name="timeOfDay"
               defaultValue={settings.time_of_day}
-              className={`${agInput} mt-2`}
+              className={`${agInput} mt-2 w-full`}
             />
             <span className={agHint}>
               Local time. A slot missed while the machine was off stays due until it actually

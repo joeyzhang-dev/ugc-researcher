@@ -1,13 +1,22 @@
 import Link from "next/link";
 import { SubmitButton } from "@/components/submit-button";
 import {
-  Badge, agButton, agButtonQuiet, agInput, agRow, agTable, agTableWrap, agTd, agTh,
+  Badge, agButton, agButtonQuiet, agInput, agTh,
 } from "@/components/glass";
 import {
   createNiche, previewNicheChannelRenames, renameNicheChannels, setNicheActive, updateNiche,
 } from "@/app/(app)/settings/niche-actions";
 import type { LiveEmojiBase } from "@/lib/niche-channel-rename";
 import type { Niche } from "@/lib/niches";
+
+/** One template for the header, every row and the add form — three places that
+ *  must agree, so they read from one constant rather than three copies. */
+const NICHE_COLS =
+  "grid grid-cols-[48px_minmax(160px,1fr)_150px_72px_auto_auto] items-center gap-x-2";
+
+/** Same discipline for the live-Discord table below it. */
+const LIVE_COLS =
+  "grid grid-cols-[40px_minmax(120px,0.9fr)_44px_minmax(140px,1.4fr)_auto] items-center gap-x-2";
 
 export interface RenamePreview {
   fromEmoji: string;
@@ -37,7 +46,7 @@ export function NicheManager({
   const stranded = liveBases.filter((b) => b.niche === null);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {stranded.length > 0 && (
         <div className="rounded-[14px] bg-[rgba(224,135,0,0.09)] px-4 py-3 text-[13px] text-[#a86200]">
           <p className="font-medium">
@@ -53,84 +62,108 @@ export function NicheManager({
         </div>
       )}
 
-      <div className={agTableWrap}>
-        <table className={agTable}>
-          <thead>
-            <tr>
-              <th className={agTh}>Emoji</th>
-              <th className={agTh}>Niche</th>
-              <th className={agTh}>Discord role id</th>
-              <th className={agTh}>Channels</th>
-              <th className={agTh} />
-            </tr>
-          </thead>
-          <tbody>
-            {niches.map((n) => (
-              <tr key={n.id} className={agRow}>
-                <td className={agTd} colSpan={4}>
-                  <form action={updateNiche} className="flex flex-wrap items-center gap-2">
-                    <input type="hidden" name="id" value={n.id} />
-                    <input type="hidden" name="originalName" value={n.name} />
-                    <input
-                      name="emoji"
-                      defaultValue={n.emoji ?? ""}
-                      className={`${agInput} w-16 text-center`}
-                      aria-label={`Emoji for ${n.name}`}
-                    />
-                    <input
-                      name="name"
-                      defaultValue={n.name}
-                      required
-                      className={`${agInput} w-60`}
-                      aria-label={`Name for ${n.name}`}
-                    />
-                    <input
-                      name="discordRoleId"
-                      defaultValue={n.discordRoleId ?? ""}
-                      placeholder="role id (optional)"
-                      className={`${agInput} w-44 font-mono text-[11.5px]`}
-                      aria-label={`Discord role for ${n.name}`}
-                    />
-                    <span className="text-[11.5px] text-[var(--ag-ink-4)]">
-                      {channelCounts.get(n.name) ?? 0} channels
-                    </span>
-                    {!n.isActive && <Badge status="Archived" />}
-                    <SubmitButton className={agButtonQuiet}>Save</SubmitButton>
-                  </form>
-                </td>
-                <td className={agTd}>
-                  <form action={setNicheActive}>
-                    <input type="hidden" name="id" value={n.id} />
-                    <input type="hidden" name="active" value={n.isActive ? "false" : "true"} />
-                    <SubmitButton className={agButtonQuiet}>{n.isActive ? "Archive" : "Restore"}</SubmitButton>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* A grid, not a <table>: each row is its own <form>, and a <form> cannot
+          wrap a <tr>. The old markup worked around that with a colSpan={4} cell
+          holding a flex form, which meant the fields never lined up with the
+          headers above them. `display: contents` on the form drops it out of
+          the box tree so its inputs become grid items directly — real column
+          alignment, one line per niche, and the form still posts normally.
+          Hidden inputs are display:none, so they never take a cell. */}
+      <div className="overflow-x-auto">
+        <div className="min-w-[780px]">
+          <div className={`${NICHE_COLS} px-2 pb-1.5`}>
+            <span className={agTh}>Emoji</span>
+            <span className={agTh}>Niche</span>
+            <span className={agTh}>Discord role</span>
+            <span className={`${agTh} text-right`}>Channels</span>
+            <span className={agTh} />
+            <span className={agTh} />
+          </div>
 
-        <form action={createNiche} className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--ag-hairline)] pt-4">
-          <input name="emoji" placeholder="🌱" className={`${agInput} w-16 text-center`} aria-label="New niche emoji" />
-          <input name="name" required placeholder="New niche name" className={`${agInput} w-60`} aria-label="New niche name" />
-          <input
-            name="discordRoleId"
-            placeholder="role id (optional)"
-            className={`${agInput} w-44 font-mono text-[11.5px]`}
-            aria-label="New niche Discord role id"
-          />
-          <SubmitButton className={agButton}>Add niche</SubmitButton>
-        </form>
+          {niches.map((n) => (
+            <div
+              key={n.id}
+              className={`ag-lattice-cell ${NICHE_COLS} items-center rounded-[10px] border-t border-[var(--ag-hairline)] px-2 py-1.5 ${
+                n.isActive ? "" : "opacity-55"
+              }`}
+            >
+              <form action={updateNiche} className="contents">
+                <input type="hidden" name="id" value={n.id} />
+                <input type="hidden" name="originalName" value={n.name} />
+                <input
+                  name="emoji"
+                  defaultValue={n.emoji ?? ""}
+                  className={`${agInput} w-full text-center text-[15px]`}
+                  aria-label={`Emoji for ${n.name}`}
+                />
+                <input
+                  name="name"
+                  defaultValue={n.name}
+                  required
+                  className={`${agInput} w-full`}
+                  aria-label={`Name for ${n.name}`}
+                />
+                <input
+                  name="discordRoleId"
+                  defaultValue={n.discordRoleId ?? ""}
+                  placeholder="—"
+                  className={`${agInput} w-full font-mono text-[11px]`}
+                  aria-label={`Discord role for ${n.name}`}
+                />
+                <span className="pr-1 text-right text-[12px] tabular-nums text-[var(--ag-ink-3)]">
+                  {channelCounts.get(n.name) ?? 0}
+                </span>
+                <SubmitButton className={agButtonQuiet}>Save</SubmitButton>
+              </form>
+              <form action={setNicheActive}>
+                <input type="hidden" name="id" value={n.id} />
+                <input type="hidden" name="active" value={n.isActive ? "false" : "true"} />
+                <SubmitButton className={agButtonQuiet}>
+                  {n.isActive ? "Archive" : "Restore"}
+                </SubmitButton>
+              </form>
+            </div>
+          ))}
 
-        <p className="mt-3 text-[11.5px] text-[var(--ag-ink-4)]">
-          Archiving keeps a niche classifying its existing channels — it only leaves
-          /onboard&rsquo;s picker. The workers pick up a change within a minute; no restart.
-        </p>
+          {/* Same grid, so the new-niche fields sit under the columns they fill. */}
+          <form
+            action={createNiche}
+            className={`${NICHE_COLS} mt-2 items-center border-t border-[var(--ag-hairline)] px-2 pt-3`}
+          >
+            <input
+              name="emoji"
+              placeholder="🌱"
+              className={`${agInput} w-full text-center text-[15px]`}
+              aria-label="New niche emoji"
+            />
+            <input
+              name="name"
+              required
+              placeholder="New niche"
+              className={`${agInput} w-full`}
+              aria-label="New niche name"
+            />
+            <input
+              name="discordRoleId"
+              placeholder="role id"
+              className={`${agInput} w-full font-mono text-[11px]`}
+              aria-label="New niche Discord role id"
+            />
+            <span />
+            <SubmitButton className={agButton}>Add</SubmitButton>
+            <span />
+          </form>
+        </div>
       </div>
 
-      <div className="border-t border-[var(--ag-hairline)] pt-5">
+      <p className="text-[11.5px] leading-relaxed text-[var(--ag-ink-4)]">
+        Archiving keeps a niche classifying its existing channels — it only leaves
+        /onboard&rsquo;s picker. The workers pick up a change within a minute; no restart.
+      </p>
+
+      <div className="border-t border-[var(--ag-hairline)] pt-4">
         <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--ag-ink-3)]">Emoji on live Discord channels</h3>
-        <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--ag-ink-2)]">
+        <p className="mt-1 max-w-[85ch] text-[12px] leading-relaxed text-[var(--ag-ink-3)]">
           Read from Discord, not from the table above, so an emoji nothing claims still shows up.
           Changing a niche&rsquo;s emoji never renames anything — the channels stay where they are
           until a rename is previewed and confirmed here.
@@ -146,51 +179,47 @@ export function NicheManager({
         ) : liveBases.length === 0 ? (
           <p className="mt-3 text-[11.5px] text-[var(--ag-ink-4)]">No live channel carries an emoji prefix.</p>
         ) : (
-          <div className={`${agTableWrap} mt-3`}>
-            <table className={agTable}>
-              <thead>
-                <tr>
-                  <th className={agTh}>Emoji</th>
-                  <th className={agTh}>Claimed by</th>
-                  <th className={agTh}>Channels</th>
-                  <th className={agTh}>Rename to</th>
-                </tr>
-              </thead>
-              <tbody>
-                {liveBases.map((b) => (
-                  <tr key={b.base} className={agRow}>
-                    <td className={`${agTd} text-[17px]`}>{b.display}</td>
-                    <td className={agTd}>
-                      {b.niche ?? <Badge status="No niche claims this" tone="warn" />}
-                    </td>
-                    <td className={agTd}>
-                      <span className="text-[11.5px] text-[var(--ag-ink-3)]">
-                        {b.channels.length}
-                        {b.channels.length > 0 && (
-                          <span className="ml-1.5 text-[var(--ag-ink-4)]">
-                            e.g. {b.channels.slice(0, 3).join(", ")}
-                            {b.channels.length > 3 ? "…" : ""}
-                          </span>
-                        )}
-                      </span>
-                    </td>
-                    <td className={agTd}>
-                      <form action={previewNicheChannelRenames} className="flex items-center gap-2">
-                        <input type="hidden" name="fromEmoji" value={b.base} />
-                        <input
-                          name="toEmoji"
-                          placeholder="new emoji"
-                          required
-                          className={`${agInput} w-16 text-center`}
-                          aria-label={`Rename channels on ${b.display} to a new emoji`}
-                        />
-                        <SubmitButton pendingLabel="Loading…" className={agButtonQuiet}>Preview rename</SubmitButton>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-3 overflow-x-auto">
+            <div className="min-w-[720px]">
+              <div className={`${LIVE_COLS} px-2 pb-1.5`}>
+                <span className={agTh}>Emoji</span>
+                <span className={agTh}>Claimed by</span>
+                <span className={`${agTh} text-right`}>Ch.</span>
+                <span className={agTh}>Example channels</span>
+                <span className={agTh}>Rename to</span>
+              </div>
+              {liveBases.map((b) => (
+                <div
+                  key={b.base}
+                  className={`ag-lattice-cell ${LIVE_COLS} items-center rounded-[10px] border-t border-[var(--ag-hairline)] px-2 py-1.5`}
+                >
+                  <span className="text-[16px] leading-none">{b.display}</span>
+                  <span className="min-w-0 truncate text-[12.5px] text-[var(--ag-ink-2)]">
+                    {b.niche ?? <Badge status="unclaimed" tone="warn" />}
+                  </span>
+                  <span className="pr-1 text-right text-[12px] tabular-nums text-[var(--ag-ink-3)]">
+                    {b.channels.length}
+                  </span>
+                  <span className="min-w-0 truncate font-mono text-[11px] text-[var(--ag-ink-4)]">
+                    {b.channels.slice(0, 3).join(", ")}
+                    {b.channels.length > 3 ? "…" : ""}
+                  </span>
+                  <form action={previewNicheChannelRenames} className="flex items-center gap-1.5">
+                    <input type="hidden" name="fromEmoji" value={b.base} />
+                    <input
+                      name="toEmoji"
+                      placeholder="🆕"
+                      required
+                      className={`${agInput} w-12 text-center text-[15px]`}
+                      aria-label={`Rename channels on ${b.display} to a new emoji`}
+                    />
+                    <SubmitButton pendingLabel="…" className={agButtonQuiet}>
+                      Preview
+                    </SubmitButton>
+                  </form>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
