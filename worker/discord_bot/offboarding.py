@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Iterable, Optional
 
-from discord_bot.config import PAUSED_CATEGORIES
+from discord_bot.config import PAUSED_CATEGORY_LABEL, is_paused_category
 from discord_bot.onboarding import (
     OverwriteSpec,
     _bot_top_role_name,
@@ -179,8 +179,17 @@ def build_offboard_message(*, username: Optional[str], coach_name: Optional[str]
 
 
 def _resolve_paused_category(guild: Any) -> Optional[Any]:
+    """The category offboarded channels are moved into, found by ID.
+
+    Matched on `category.id`, never on its name: the name was renamed under us
+    on 2026-09-04 (the emoji moved from the end to the front) and every
+    /offboard failed until someone noticed. `is_paused_category` falls back to
+    a loose name match only for a guild whose id we do not know.
+    """
     for category in getattr(guild, "categories", []) or []:
-        if getattr(category, "name", None) in PAUSED_CATEGORIES:
+        if is_paused_category(
+            getattr(category, "id", None), getattr(category, "name", None)
+        ):
             return category
     return None
 
@@ -352,7 +361,7 @@ async def execute_offboarding(
     )
 
     category = _resolve_paused_category(guild)
-    expected = ", ".join(sorted(PAUSED_CATEGORIES))
+    expected = PAUSED_CATEGORY_LABEL
     if category is None:
         return OffboardOutcome(
             ok=False,

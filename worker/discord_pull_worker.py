@@ -161,7 +161,31 @@ def discord_get(path: str):
 # --- discovery (pure, ported from discord-crm) ------------------------------
 
 CREATOR_PREFIXES: tuple[str, ...] = ("coaching-", "coachking-", "influencer-")
-EXCLUDE_CATEGORIES = frozenset({"👤・Creators"})
+# Categories identified by ID, because a category's name belongs to whoever
+# holds Manage Channels. On 2026-09-04 the paused category was renamed from
+# "Not Creating 🚫" to "🚫 Not Creating" and every name match here went quiet:
+# parked channels started classifying as if they carried a niche.
+EXCLUDE_CATEGORY_IDS = frozenset({1507900557174767646})   # 👤・Creators
+PAUSED_CATEGORY_IDS = frozenset({1511568384200806481})    # 🚫 Not Creating
+
+# Name fallbacks, used only when an id is unavailable (a guild we hold no ids
+# for, or a stored row predating category_id). Loose on purpose — casefolded,
+# whitespace-insensitive — so an emoji's POSITION can never matter again.
+_PAUSED_NAME = re.compile(r"not\s*creating", re.IGNORECASE)
+_EXCLUDED_NAME = re.compile(r"creators\s*$", re.IGNORECASE)
+
+
+def is_paused_category(category_id=None, name=None) -> bool:
+    """True for the category offboarded creators are parked in.
+
+    The id decides whenever there is one; the name is a last resort.
+    """
+    if category_id is not None:
+        try:
+            return int(category_id) in PAUSED_CATEGORY_IDS
+        except (TypeError, ValueError):
+            pass
+    return bool(name) and bool(_PAUSED_NAME.search(str(name)))
 # Live convention 2026-08-26: a creator channel is
 # ``<track-emoji><first>-<last>`` (``✝️jas-alcantara``, ``🤍anna-lyashenko``) —
 # the emoji alone carries the niche. Full names replaced the first-name form
@@ -178,14 +202,25 @@ LEGACY_TRACK_WORDS = frozenset({"christian", "improvement"})
 # categories (Will's Team, Luke's Team, FOLK TEAM, ...) record WHO runs the
 # channel — matched by the word "team" so a new coach's category can't
 # silently become a niche.
-NON_NICHE_CATEGORIES = frozenset({"Not Creating 🚫"})
+# Both spellings, so a name-only caller still classifies correctly across the
+# 2026-09-04 rename; the id test in niche_from_category is what really decides.
+NON_NICHE_CATEGORIES = frozenset({"Not Creating 🚫", "🚫 Not Creating"})
 _TEAM_CATEGORY = re.compile(r"\bteam\b", re.IGNORECASE)
 _NICHE_JUNK = re.compile(r"[^\w\s&/-]", re.UNICODE)
 
 
-def niche_from_category(category: str | None) -> str | None:
-    """'Creators: 💸 Finance General' -> 'Finance General'; state buckets -> None."""
-    if not category or category in NON_NICHE_CATEGORIES or _TEAM_CATEGORY.search(category):
+def niche_from_category(category: str | None, category_id=None) -> str | None:
+    """'Creators: 💸 Finance General' -> 'Finance General'; state buckets -> None.
+
+    `category_id` decides the paused case whenever the caller holds it; the
+    name is consulted only when it does not. A parked channel that still
+    reported a niche would be re-classified as an active creator channel.
+    """
+    if not category:
+        return None
+    if is_paused_category(category_id, category) or category in NON_NICHE_CATEGORIES:
+        return None
+    if _TEAM_CATEGORY.search(category):
         return None
     name = category.split(":", 1)[-1]
     name = _NICHE_JUNK.sub("", name).strip()
@@ -343,7 +378,10 @@ def classify_creator_channels(channels: list[dict]) -> list[dict]:
         lowered = name.strip().lower()
         parent_id = c.get("parent_id")
         cat = category_names.get(str(parent_id)) if parent_id is not None else None
-        if cat in EXCLUDE_CATEGORIES:
+        cat_id = int(parent_id) if parent_id is not None else None
+        if cat_id is not None and cat_id in EXCLUDE_CATEGORY_IDS:
+            continue
+        if cat_id is None and cat and _EXCLUDED_NAME.search(cat):
             continue
         if any(lowered.startswith(p) for p in CREATOR_PREFIXES):
             # Legacy convention: niche comes from the category, if it names one.
@@ -351,8 +389,9 @@ def classify_creator_channels(channels: list[dict]) -> list[dict]:
                 "channel_id": int(c["id"]),
                 "channel_name": name,
                 "creator_name": derive_creator_name(name),
-                "niche": niche_from_category(cat),
+                "niche": niche_from_category(cat, cat_id),
                 "category": cat,
+                "category_id": cat_id,
             })
             continue
         split = split_track_channel(lowered)
@@ -367,6 +406,7 @@ def classify_creator_channels(channels: list[dict]) -> list[dict]:
                 "creator_name": creator,
                 "niche": niche,
                 "category": cat,
+                "category_id": cat_id,
             })
     return rows
 

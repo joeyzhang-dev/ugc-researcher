@@ -15,6 +15,7 @@ from discord_pull_worker import (  # noqa: E402
     classify_creator_channels,
     derive_creator_name,
     match_roster,
+    niche_from_category,
     split_track_channel,
 )
 
@@ -284,6 +285,60 @@ class ClassificationFollowsTheTable(unittest.TestCase):
         with use_niches([row("Knitting", "\U0001f9f6")]):
             pass
         self.assertEqual(split_track_channel(f"{CROSS_VS}jas"), ("Christian", "jas"))
+
+
+class PausedCategoryIsKeyedOnId(unittest.TestCase):
+    """The 2026-09-04 rename, pinned on the classifier side.
+
+    "Not Creating 🚫" became "🚫 Not Creating" — same words, emoji moved to
+    the front. Every exact name match went quiet at once, and parked channels
+    started classifying as if they still carried a niche, which is how an
+    offboarded creator gets treated as active again.
+    """
+
+    PAUSED_ID = 1511568384200806481
+
+    def test_a_parked_channel_carries_no_niche_after_the_rename(self):
+        rows = classify_creator_channels([
+            text_channel(1, f"{CROSS_VS}jas-alcantara", parent_id=str(self.PAUSED_ID)),
+            category(self.PAUSED_ID, "\U0001f6ab Not Creating"),
+        ])
+        self.assertEqual(rows[0]["niche"], "Christian")
+        self.assertEqual(rows[0]["category_id"], self.PAUSED_ID)
+
+    def test_the_legacy_path_drops_the_niche_for_a_paused_category(self):
+        # coaching-<name> takes its niche FROM the category, so a paused
+        # category must yield None however it is currently spelled.
+        self.assertIsNone(niche_from_category("\U0001f6ab Not Creating", self.PAUSED_ID))
+        self.assertIsNone(niche_from_category("Not Creating \U0001f6ab", self.PAUSED_ID))
+        # Renamed to something unrecognisable: only the id can still tell.
+        self.assertIsNone(niche_from_category("parked", self.PAUSED_ID))
+
+    def test_a_real_niche_category_is_untouched(self):
+        self.assertEqual(
+            niche_from_category("Creators: \U0001f4b8 Finance General", 1234567890),
+            "Finance General",
+        )
+
+    def test_the_name_still_decides_when_no_id_is_available(self):
+        # A guild we hold no ids for, or a stored row predating category_id.
+        self.assertIsNone(niche_from_category("\U0001f6ab Not Creating"))
+        self.assertIsNone(niche_from_category("Not Creating \U0001f6ab"))
+
+
+class ChannelRowsCarryTheCategoryId(unittest.TestCase):
+    def test_every_classified_row_records_the_category_id(self):
+        rows = classify_creator_channels([
+            text_channel(1, f"{CROSS_VS}jas-alcantara", parent_id="9"),
+            category(9, "Coach: Joey's Team"),
+        ])
+        self.assertEqual(rows[0]["category_id"], 9)
+
+    def test_a_channel_with_no_category_records_none_rather_than_guessing(self):
+        rows = classify_creator_channels([
+            text_channel(1, f"{CROSS_VS}jas-alcantara", parent_id=None),
+        ])
+        self.assertIsNone(rows[0]["category_id"])
 
 
 if __name__ == "__main__":

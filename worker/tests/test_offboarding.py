@@ -63,6 +63,75 @@ class FindMemberChannel(unittest.TestCase):
         self.assertEqual(len(find_member_channel(chans, terai)), 2)
 
 
+class PausedCategoryIsFoundByIdNotName(unittest.TestCase):
+    """The 2026-09-04 outage, pinned.
+
+    The category was renamed from "Not Creating 🚫" to "🚫 Not Creating" —
+    identical words, emoji moved to the front — and every /offboard failed
+    with "couldn't find the paused category". The id never changed, and it was
+    already hardcoded elsewhere in config.py at the time.
+    """
+
+    PAUSED_ID = 1511568384200806481
+
+    def _run(self, category):
+        terai = member(42, display="TearaiBryers")
+        target = channel(2, "🌱improvement-terai", {terai: overwrite()})
+        guild = Obj(
+            text_channels=[target],
+            categories=[category],
+            me=None,
+            default_role=Obj(id=99),
+        )
+        moved = []
+
+        async def move_channel(*, channel, category, sync_permissions, reason):
+            moved.append((channel.id, getattr(category, "name", None)))
+
+        outcome = asyncio.run(execute_offboarding(
+            guild=guild,
+            member=terai,
+            kick=False,
+            creator_role_name="Folk Creator",
+            move_channel=move_channel,
+        ))
+        return outcome, moved
+
+    def test_finds_the_category_after_the_rename_that_broke_it(self):
+        renamed = Obj(
+            id=self.PAUSED_ID,
+            name="🚫 Not Creating",
+            overwrites={},
+            overwrites_for=lambda r: None,
+        )
+        outcome, moved = self._run(renamed)
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertEqual(moved, [(2, "🚫 Not Creating")])
+
+    def test_finds_it_by_id_even_when_the_name_says_nothing(self):
+        # The point of keying on the id: the name can become anything at all.
+        renamed = Obj(
+            id=self.PAUSED_ID,
+            name="parked",
+            overwrites={},
+            overwrites_for=lambda r: None,
+        )
+        outcome, moved = self._run(renamed)
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertEqual(moved, [(2, "parked")])
+
+    def test_a_different_category_with_a_similar_id_is_not_mistaken_for_it(self):
+        other = Obj(
+            id=1234567890123456789,
+            name="Coach: Will's Team",
+            overwrites={},
+            overwrites_for=lambda r: None,
+        )
+        outcome, _ = self._run(other)
+        self.assertFalse(outcome.ok)
+        self.assertIn("couldn't find the paused category", outcome.error)
+
+
 class OffboardFindsRenamedChannel(unittest.TestCase):
     def test_offboards_via_overwrite_when_name_and_crm_both_miss(self):
         terai = member(42, display="TearaiBryers")

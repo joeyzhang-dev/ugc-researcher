@@ -59,7 +59,14 @@ class OffboardCreatorChannel(unittest.TestCase):
         self.assertTrue(store.offboard_creator_channel(10))
         (_, path, body), = fake.patches("research_discord_channels")
         self.assertIn("channel_id=eq.10", path)
-        self.assertEqual(body, {"category": store.PAUSED_CATEGORY})
+        # The id is written alongside the name, and is what every later read
+        # keys on: the name was renamed under us once already (2026-09-04,
+        # "Not Creating 🚫" -> "🚫 Not Creating") and every row stopped
+        # reading as paused.
+        self.assertEqual(
+            body,
+            {"category": store.PAUSED_CATEGORY, "category_id": store.PAUSED_CATEGORY_ID},
+        )
 
     def test_archives_the_linked_creator(self):
         fake = self.use(FakeSb([{"channel_id": "10", "research_creator_id": "c1"}]))
