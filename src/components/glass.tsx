@@ -381,9 +381,17 @@ export function DiscordGlyph({ className = "" }: { className?: string }) {
 
 // ── Controls ──────────────────────────────────────────────────────────────
 
-/** The house field. One hairline, no double edge, focus handled by `.ag`. */
+/**
+ * The house field. One hairline, no double edge, focus handled by `.ag`.
+ *
+ * Carries NO width. It used to start with `w-full`, and every call site that
+ * wanted a narrow field wrote `${agInput} w-16` — which silently lost, because
+ * Tailwind resolves two width utilities by CSS source order, not by the order
+ * they appear in the string. The visible result was a 1500px-wide box holding
+ * one emoji. Width is the caller's business; add `w-full` where you want it.
+ */
 export const agInput =
-  "w-full rounded-[10px] bg-[rgba(118,128,152,0.06)] px-3 py-2 text-[13px] text-[var(--ag-ink)] " +
+  "rounded-[9px] bg-[rgba(118,128,152,0.06)] px-2.5 py-1.5 text-[13px] text-[var(--ag-ink)] " +
   "shadow-[inset_0_0_0_0.5px_rgba(16,24,40,0.10)] outline-none " +
   "placeholder:text-[var(--ag-ink-4)] transition-[background-color,box-shadow] duration-200";
 
@@ -399,16 +407,16 @@ export const agHint = "mt-1.5 block text-[11.5px] leading-snug text-[var(--ag-in
  * against the label.
  */
 export const agButton =
-  "ag-press inline-flex items-center gap-2 rounded-full bg-[var(--ag-ink)] py-2 pl-4 pr-2 " +
-  "text-[13px] font-medium text-[var(--ag-on-ink)] disabled:opacity-40";
+  "ag-press inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--ag-ink)] py-1.5 pl-3.5 pr-1.5 " +
+  "text-[12.5px] font-medium text-[var(--ag-on-ink)] disabled:opacity-40";
 
 export const agButtonQuiet =
-  "ag-press ag-glass-thin inline-flex items-center gap-2 rounded-full px-4 py-2 " +
-  "text-[13px] font-medium text-[var(--ag-ink-2)] hover:text-[var(--ag-ink)] disabled:opacity-40";
+  "ag-press ag-glass-thin inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 " +
+  "text-[12.5px] font-medium text-[var(--ag-ink-2)] hover:text-[var(--ag-ink)] disabled:opacity-40";
 
 /** The nested circle a trailing icon sits in. Never a naked arrow. */
 export const agButtonIcon =
-  "grid h-6 w-6 place-items-center rounded-full bg-[rgba(255,255,255,0.16)] " +
+  "grid h-5 w-5 place-items-center rounded-full bg-[rgba(255,255,255,0.16)] " +
   "transition-transform duration-[420ms] ease-[cubic-bezier(0.32,0.72,0,1)] " +
   "group-hover:translate-x-[2px] group-hover:scale-105";
 

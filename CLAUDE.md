@@ -526,6 +526,22 @@ or `POST /api/jobs/research {"action":"launchpoint-sync"}`. Repeat until
   digest still shows the mean one; adding the median there is pending.
 - **Weeks are Monday→Monday UTC**, passed explicitly, so a re-run reproduces
   the same digest. Quota is 7 posts/week (the program's ceiling is 21).
+- **A trial batch is dropped whole — no representative is kept.** It used to
+  keep the highest-view upload, justified as "the one that won the trial and
+  got published". Joey confirmed 2026-09-04 that the premise is false: a trial
+  reel never graduates to a normal reel and never counts toward a paid
+  deliverable, so nothing in a batch was ever published and the max of ~35
+  draws is badly upward-biased. Measured against the Trial Reels Batcher's own
+  `publish_jobs` ground truth: of 15 detected batches, **12 kept a post that
+  was itself a trial**; a single 104,179-view trial was being carried as
+  `@lockedin.lin`'s best post (average overstated 3.5x); three trials cleared
+  the 40k spike line; and `bestPost` could name one in a Discord digest.
+  `moneyRead` reads the same collapse for "awaiting payout", so the inflation
+  reached the payout view too — which is why this is **one rule everywhere**,
+  not a split between reach and pay. Expect the visible consequence: several
+  creator-weeks that read as on-quota now read as missed, correctly — one week
+  goes from 119 posts to 0. `trialUploads` is reported alongside precisely so a
+  zero explains itself.
 - **Trial-reel collapse only sees posts the loader fetched transcripts for**
   (`collapseTrialUploads`; a post without a transcript stands alone). Both
   loaders must therefore fetch `transcriptHorizon(week)` — 8 weeks, shared

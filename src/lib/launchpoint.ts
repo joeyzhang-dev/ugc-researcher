@@ -30,7 +30,11 @@
 import type { Platform } from "@/lib/types";
 
 const LP_BASE = "https://dashboard.launchpointhq.com/api/v1";
-const REQUEST_TIMEOUT_MS = 60_000;
+/** Per-request ceiling. Generous on purpose: measured 2026-09-03, a single
+ *  `/analytics/accounts` page took 43s and `/posts` pages 18-28s, so a 60s
+ *  ceiling left almost no margin and turned ordinary upstream slowness into a
+ *  hard abort of the whole pass. */
+const REQUEST_TIMEOUT_MS = 120_000;
 
 const MAX_ATTEMPTS = 3;
 const RETRY_BACKOFF_MS = 1_000;
@@ -206,8 +210,16 @@ async function lpGet<T>(
       return (await res.json()) as T;
     } catch (e) {
       if (e instanceof LaunchpointAuthError) throw e;
-      const networkError = (e as { name?: string })?.name === "TypeError";
-      const retryable = networkError || e instanceof TransientLaunchpointError;
+      // A stalled request is the same class of transient failure as a 5xx or
+      // a dropped socket, and must be retried like one. AbortSignal.timeout
+      // rejects with a DOMException named TimeoutError, which is neither a
+      // TypeError nor a TransientLaunchpointError — so before this it fell
+      // straight through to `throw`, and one slow upstream page aborted a
+      // five-minute pass with nothing to show for it.
+      const name = (e as { name?: string })?.name;
+      const networkError = name === "TypeError";
+      const timedOut = name === "TimeoutError" || name === "AbortError";
+      const retryable = networkError || timedOut || e instanceof TransientLaunchpointError;
       if (retryable && attempt < MAX_ATTEMPTS - 1) {
         // Honour the server's own reset hint when it gave one; a rate-limit
         // window does not care about our backoff curve.

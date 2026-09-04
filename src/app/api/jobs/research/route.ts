@@ -25,7 +25,9 @@ export const dynamic = "force-dynamic";
  *              budgetMs?: number } — pull creators, posts, first-party
  *              Instagram insights and daily metric curves. Idempotent and
  *              resumable; repeat until { remaining: 0 }. `metadataOnly` runs
- *              just the two cheap phases. */
+ *              just the two cheap phases; `drainOnly` skips them and spends
+ *              the whole budget on insights and history, which is what
+ *              repeating to clear a backlog wants. */
 export async function POST(request: NextRequest) {
   const denied = await authorizeJobRequest(request);
   if (denied) return denied;
@@ -39,6 +41,7 @@ export async function POST(request: NextRequest) {
     force?: boolean;
     budgetMs?: number;
     metadataOnly?: boolean;
+    drainOnly?: boolean;
   };
   try {
     body = await request.json();
@@ -59,6 +62,7 @@ export async function POST(request: NextRequest) {
         await syncLaunchpoint(createAdminClient(), {
           budgetMs: body.budgetMs,
           metadataOnly: body.metadataOnly,
+          drainOnly: body.drainOnly,
         })
       );
     }

@@ -70,8 +70,17 @@ export interface GuildChannel {
 }
 
 export interface GuildRole {
+  /** Snowflake. Discord sends these as JSON strings, so unlike a Postgres
+   *  bigint they survive JSON.parse intact. */
   id: string;
   name: string;
+  /** Managed roles belong to a bot or an integration and cannot be granted to
+   *  a member, so a role picker has to leave them out. */
+  managed?: boolean;
+  /** Higher sits higher in the guild's role list. */
+  position?: number;
+  /** Integer RGB; 0 means "no colour", which Discord renders as default grey. */
+  color?: number;
 }
 
 export interface PermissionOverwrite {

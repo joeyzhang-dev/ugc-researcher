@@ -322,10 +322,11 @@ export interface WeeklyRead {
 export { transcriptSimilarity, TRIAL_SAME_REEL, TRIAL_MIN_BATCH } from "@/lib/scripts";
 
 export interface TrialCollapse {
-  /** One representative per distinct reel — the best-performing upload of
-   *  each batch, which is the one Instagram actually published. */
+  /** Everything that is not part of a trial batch. A batch contributes
+   *  nothing — see collapseTrialUploads for why there is no representative. */
   kept: PerformanceVideo[];
-  /** How many uploads were folded away. Reported, never silently dropped. */
+  /** How many uploads were dropped, batch members included. Reported, never
+   *  silently discarded — it is what explains a week reading as zero posts. */
   suppressed: number;
 }
 
@@ -344,10 +345,22 @@ export interface TrialCollapse {
  * is identified by what actually distinguishes it: the same words, over and
  * over, from one creator inside one week.
  *
- * The representative is the highest-view upload because that is the one that
- * won the trial and got published — in the 59-upload batch it took 83k views
- * and 72k reach while its siblings sat at ~2k. Keeping the max, rather than
- * summing, is what makes "avg views" mean "how did their reel do".
+ * The whole batch is dropped, with no representative kept.
+ *
+ * This used to keep the highest-view upload, justified as "the one that won
+ * the trial and got published". Joey confirmed 2026-09-04 that the premise is
+ * false: a trial reel never graduates to a normal reel, and never counts
+ * toward a paid deliverable. So keeping the max kept a trial and counted it as
+ * a real post — and the max of ~35 draws is badly upward-biased.
+ *
+ * Measured against the batcher's own publish_jobs ground truth (2026-09-04):
+ * of 15 detected batches, 12 kept a post that was itself a trial, median 5,460
+ * views against 1,630 for trials overall. A single 104,179-view trial was
+ * being carried as @lockedin.lin's best post, overstating their average 3.5x;
+ * three trials cleared the 40k spike threshold; and bestPost could name one in
+ * a Discord digest. `moneyRead` reads the same collapse for "awaiting payout",
+ * so the inflation reached the payout view too — which is why this is one rule
+ * everywhere rather than a split between reach and pay.
  *
  * Anything without a transcript stands alone. A missing transcript is not
  * evidence of duplication, and guessing would quietly delete real posts.
@@ -364,10 +377,14 @@ export function collapseTrialUploads(videos: PerformanceVideo[]): TrialCollapse 
 
   let suppressed = 0;
   for (const group of groups) {
-    kept.push(group[0]);
+    // The whole batch goes. Nothing in it was published, so there is no
+    // member that deserves to be counted as a post.
+    if (group.length >= TRIAL_MIN_BATCH) {
+      suppressed += group.length;
+      continue;
+    }
     // A pair is not a trial run; keep both and count neither as suppressed.
-    if (group.length >= TRIAL_MIN_BATCH) suppressed += group.length - 1;
-    else for (const extra of group.slice(1)) kept.push(extra);
+    for (const v of group) kept.push(v);
   }
   return { kept, suppressed };
 }

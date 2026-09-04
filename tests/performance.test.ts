@@ -425,16 +425,25 @@ describe("collapseTrialUploads", () => {
   const SCRIPT =
     "four things you should not be doing if you claim to be a christian number one is judging people";
 
-  it("keeps only the published winner of a trial batch", () => {
-    // The live shape: one upload wins and gets pushed, the rest sit at the
-    // trial noise floor.
+  it("drops the whole trial batch, keeping no representative", () => {
+    // This used to keep the highest-view member, justified as "the one that
+    // won the trial and got published". Joey confirmed 2026-09-04 that the
+    // premise is false: a trial reel never graduates to a normal reel, and
+    // never counts toward a paid deliverable. Nothing in a batch is published,
+    // so keeping the max kept a trial and counted it as a real post — and the
+    // max of ~35 draws is badly upward-biased.
+    //
+    // Measured against the batcher's own publish_jobs ground truth: 12 of 15
+    // batches kept a post that was itself a trial, and a single 104,179-view
+    // trial was being carried as @lockedin.lin's best post, overstating their
+    // average 3.5x.
     const batch = [
-      vid("winner", 83339, SCRIPT),
+      vid("topDraw", 104179, SCRIPT),
       ...Array.from({ length: 10 }, (_, i) => vid(`trial${i}`, 2000 + i, SCRIPT)),
     ];
     const { kept, suppressed } = collapseTrialUploads(batch);
-    expect(kept.map((v) => v.shortcode)).toEqual(["winner"]);
-    expect(suppressed).toBe(10);
+    expect(kept).toEqual([]);
+    expect(suppressed).toBe(11);
   });
 
   it("does not merge two genuinely different reels", () => {
@@ -470,20 +479,43 @@ describe("collapseTrialUploads", () => {
     expect(suppressed).toBe(0);
   });
 
-  it("counts posts and averages over the survivors only", () => {
+  it("a week of nothing but trials reads as zero posts, not one", () => {
+    // The consequence coaches will see. A 21-upload trial week used to read as
+    // one 80k post comfortably on quota; it is now what it actually is — no
+    // deliverables. The trialUploads count is what explains the zero, which is
+    // why it is reported rather than silently dropped.
     const week = { start: new Date("2026-08-24T00:00:00Z"), end: new Date("2026-08-31T00:00:00Z") };
     const read = weeklyRead(
       [
-        vid("winner", 80000, SCRIPT),
+        vid("topDraw", 80000, SCRIPT),
         ...Array.from({ length: 20 }, (_, i) => vid(`t${i}`, 2000, SCRIPT)),
       ],
       week
     );
+    expect(read.posts).toBe(0);
+    expect(read.trialUploads).toBe(21);
+    // Null, not 0: there is no post to average, which is a different fact
+    // from "their posts averaged nothing".
+    expect(read.avgViews).toBeNull();
+    // The 80k draw must not register as a spike — it never reached anyone as
+    // a published reel.
+    expect(read.spikes).toHaveLength(0);
+  });
+
+  it("still counts a real post posted in the same week as a trial batch", () => {
+    // Dropping batches must not drop the creator's actual work alongside them.
+    const other = "the bible literally tells us how to turn poverty into generational wealth";
+    const week = { start: new Date("2026-08-24T00:00:00Z"), end: new Date("2026-08-31T00:00:00Z") };
+    const read = weeklyRead(
+      [
+        vid("real", 12000, other),
+        ...Array.from({ length: 12 }, (_, i) => vid(`t${i}`, 2000, SCRIPT)),
+      ],
+      week
+    );
     expect(read.posts).toBe(1);
-    expect(read.trialUploads).toBe(20);
-    // The average is the published reel's views, not dragged to the trial floor.
-    expect(read.avgViews).toBe(80000);
-    expect(read.spikes).toHaveLength(1);
+    expect(read.trialUploads).toBe(12);
+    expect(read.avgViews).toBe(12000);
   });
 });
 
@@ -501,25 +533,35 @@ describe("transcriptHorizon", () => {
   });
 
   it("with transcripts across the horizon, identical trial weeks show no projected change", () => {
-    // Two weeks that are the same: one real reel that did 30k, uploaded as a
-    // 12-copy trial batch at ~2k each. Only the transcripts make them the same
-    // post — and only if the loader attached them to BOTH weeks.
-    // Different words each week, or the 30-day window folds them into one.
-    const trialWeek = (monday: Date, tag: string, words: string): PerformanceVideo[] =>
-      Array.from({ length: 12 }, (_, i) => ({
-        ...video(new Date(monday.getTime() + i * 3_600_000).toISOString(), i === 0 ? 30_000 : 2_000 + i, null, `${tag}${i}`),
+    // Two weeks that are the same: one genuine reel that did 30k, plus a
+    // 12-copy trial batch at ~2k each. Only the transcripts tell the batch
+    // apart from the real post — and only if the loader attached them to BOTH
+    // weeks. Different words each week, or the 30-day window folds them
+    // into one.
+    //
+    // The real post is what makes this test able to say anything: a week of
+    // nothing but trials now has no deliverables and therefore no projected
+    // CPM, so two such weeks would be trivially equal and would pin nothing.
+    const trialWeek = (monday: Date, tag: string, words: string): PerformanceVideo[] => [
+      { ...video(new Date(monday.getTime()).toISOString(), 30_000, null, `${tag}real`),
+        transcript_text: `${words} and here is the part only the real cut has` },
+      ...Array.from({ length: 12 }, (_, i) => ({
+        ...video(new Date(monday.getTime() + (i + 1) * 3_600_000).toISOString(), 2_000 + i, null, `${tag}${i}`),
         transcript_text: words,
-      }));
+      })),
+    ];
     const prev = previousWeek(WEEK);
     const videos = [
       ...trialWeek(WEEK.start, "cur", "morning routine that fixed my focus in seven days flat"),
       ...trialWeek(prev.start, "prev", "three apps i deleted and why my sleep came back overnight"),
     ];
     const p = creatorPerformance({ videos, joinedAt: null, week: WEEK });
+    // The batch drops whole; the real reel survives in each week.
     expect(p.weekly.posts).toBe(1);
-    expect(p.weekly.trialUploads).toBe(11);
+    expect(p.weekly.trialUploads).toBe(12);
     expect(p.weeklyPrev.posts).toBe(1);
     expect(p.cpm30.posts).toBe(2);
+    // Identical weeks, so nothing should read as a change.
     expect(p.projectedDelta?.usd).toBeCloseTo(0, 6);
 
     // The bug this pins: drop the previous week's transcripts — what a
@@ -527,7 +569,7 @@ describe("transcriptHorizon", () => {
     // dollars of CPM while nothing changed.
     const halfBlind = videos.map((v) => (v.shortcode?.startsWith("prev") ? { ...v, transcript_text: null } : v));
     const q = creatorPerformance({ videos: halfBlind, joinedAt: null, week: WEEK });
-    expect(q.weeklyPrev.posts).toBe(12);
+    expect(q.weeklyPrev.posts).toBe(13);
     expect(q.projectedDelta!.usd).toBeLessThan(-1);
   });
 });
@@ -550,9 +592,11 @@ describe("team reads", () => {
     // same script once. That is two reels, not one.
     const a = [0, 1, 2].map((i) => ({ ...video(at(i), 2_000 + i, null, `a${i}`), transcript_text: words }));
     const b = [{ ...video(at(5), 9_000, null, "b0"), transcript_text: words }];
-    expect(teamCpmRead([a, b], WEEK.end).posts).toBe(2);
-    // Pooled first, the same words would have folded B's reel into A's batch.
-    expect(teamCpmRead([[...a, ...b]], WEEK.end).posts).toBe(1);
+    // A's batch drops whole; B's single real post survives.
+    expect(teamCpmRead([a, b], WEEK.end).posts).toBe(1);
+    // Pooled first, the same words fold B's reel into A's batch — and now that
+    // a batch is dropped entirely, B's genuine post disappears with it.
+    expect(teamCpmRead([[...a, ...b]], WEEK.end).posts).toBe(0);
   });
 
   it("sums the week and counts buckets from the members' own reads", () => {
