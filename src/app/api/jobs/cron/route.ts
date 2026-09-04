@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { scrapeAll } from "@/lib/jobs/scrape-all";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchScriptPosts } from "@/lib/jobs/match-scripts";
+import { syncTrialUploads } from "@/lib/jobs/trial-sync";
 import { syncLaunchpoint } from "@/lib/jobs/launchpoint";
 import { isDigestHour, sendCoachDigests } from "@/lib/jobs/coach-digest";
 import {
@@ -93,6 +94,12 @@ export async function GET(request: NextRequest) {
     const scrape = await scrapeAll(false);
     // Only once the scrape queue is empty — mid-drain the budget is spoken for.
     const idle = scrape.remaining === 0;
+    // Flag trial uploads before matching. A batch is the same words filmed ~35
+    // times, so every member scores almost identically against the script it
+    // came from — manufacturing exactly the near-tie MATCH_AUTO_MARGIN refuses
+    // to auto-link, and filling /scripts/review with pileups of one reel.
+    // Cheap: one read of the batcher's publish log plus a per-creator pass.
+    const trials = idle ? await syncTrialUploads(createAdminClient()) : null;
     const matched = idle ? await matchScriptPosts(createAdminClient()) : null;
     // Launchpoint gets whatever is left of the tick. Its two expensive phases
     // are budget-aware and resume from the table on the next run, so a short
@@ -102,7 +109,7 @@ export async function GET(request: NextRequest) {
           budgetMs: Math.max(0, LAUNCHPOINT_BUDGET_MS - (Date.now() - startedAt)),
         })
       : null;
-    return NextResponse.json({ ...scrape, matched, launchpoint, digest, creatorWeekly, creatorDaily });
+    return NextResponse.json({ ...scrape, trials, matched, launchpoint, digest, creatorWeekly, creatorDaily });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
