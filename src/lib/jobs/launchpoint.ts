@@ -1101,16 +1101,35 @@ export interface LaunchpointSyncResult {
  * `metadataOnly` runs just the two cheap phases, which is what an hourly cron
  * wants when it is sharing its budget with a scrape. The default runs all
  * four and splits the remaining budget between insights and history.
+ *
+ * `drainOnly` is the mirror image: skip the metadata phases and spend the
+ * whole budget on insights and history. It exists because the drain is capped
+ * at 500 rows a pass, so catching up a real backlog takes several passes — and
+ * re-running the metadata phases each time re-pays their cost for nothing.
+ * That cost is not hypothetical: measured 2026-09-03 against a degraded
+ * upstream, one metadata pass took 578s, which would have dwarfed the draining
+ * it was there to precede.
  */
 export async function syncLaunchpoint(
   admin: SupabaseClient,
-  opts: { budgetMs?: number; metadataOnly?: boolean } = {}
+  opts: { budgetMs?: number; metadataOnly?: boolean; drainOnly?: boolean } = {}
 ): Promise<LaunchpointSyncResult> {
   if (!hasLaunchpointKey()) {
     return { skipped: "LAUNCHPOINT_API_KEY is not set", remaining: 0 };
   }
   const budgetMs = opts.budgetMs ?? DEFAULT_BUDGET_MS;
   const startedAt = Date.now();
+
+  if (opts.drainOnly) {
+    const remainingBudget = () => Math.max(0, budgetMs - (Date.now() - startedAt));
+    const insightsOnly = await syncLaunchpointInsights(admin, Math.floor(remainingBudget() * 0.6));
+    const historyOnly = await syncLaunchpointHistory(admin, remainingBudget());
+    return {
+      insights: insightsOnly,
+      history: historyOnly,
+      remaining: insightsOnly.remaining + historyOnly.remaining,
+    };
+  }
 
   // One accounts fetch, shared: the creator and socials phases read the same
   // endpoint and there is no reason to pay for it twice.
