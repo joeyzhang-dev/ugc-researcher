@@ -248,6 +248,14 @@ export function SendBar({
                     duplicate. Reconcile by hand before retrying.
                   </p>
                 )}
+                {r.duplicatePosted.length > 0 && (
+                  <p className="text-danger">
+                    {r.duplicatePosted.length} card{r.duplicatePosted.length === 1 ? "" : "s"} posted
+                    live to #{r.channel} a second time — {r.duplicatePosted.length === 1 ? "it was" : "they were"}{" "}
+                    already recorded there before this run started. Delete the extra card
+                    {r.duplicatePosted.length === 1 ? "" : "s"} in Discord by hand.
+                  </p>
+                )}
               </div>
             );
           })()}
