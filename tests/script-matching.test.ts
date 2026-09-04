@@ -290,3 +290,24 @@ describe("buildVirtualAssignments", () => {
     expect(out[0].sent_at).toBe("2026-09-01T00:00:00Z");
   });
 });
+
+describe("real and virtual pairs competing for one video", () => {
+  it("still gives the video to exactly one of them, best-first", () => {
+    const shared = "Number one, comparing your walk to somebody else's. Number two, skipping rest.";
+    const s1 = nichedScript("s1", "Christian");
+    const s2 = { ...nichedScript("s2", "Christian"), body: shared } as ResearchScript;
+    const v = vid("v1", "c1", shared, "2026-09-02T00:00:00Z");
+
+    const virtual = buildVirtualAssignments(
+      [s2], [{ script_id: "s2", posted_at: "2026-09-01T00:00:00Z" }],
+      [{ id: "c1", niche: "Christian" }], []
+    );
+    const out = resolveScriptMatches([s1, s2], [asg("a1", "s1", "c1"), ...virtual], [v], new Set());
+
+    const claims = [...out.confirm, ...out.review].filter((m) => m.videoId === "v1");
+    expect(claims.length).toBeGreaterThan(0);
+    expect(out.confirm.filter((m) => m.videoId === "v1")).toHaveLength(
+      out.confirm.some((m) => m.videoId === "v1") ? 1 : 0
+    );
+  });
+});

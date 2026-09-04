@@ -1,9 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  buildVirtualAssignments,
   MATCH_DATE_RADIUS_DAYS,
+  parseVirtualAssignmentId,
   resolveScriptMatches,
   type MatchResolution,
   type ResolvedMatch,
+  type ScopedCreator,
+  type ScriptPosting,
 } from "@/lib/scripts";
 import type { ResearchCreator, ResearchScript, ResearchScriptAssignment, ResearchVideo } from "@/lib/types";
 
@@ -32,6 +36,43 @@ async function page<T>(db: SupabaseClient, table: string, columns: string): Prom
     out.push(...rows);
     if (rows.length < PAGE) return out;
   }
+}
+
+/**
+ * Candidate (script, creator) pairs for every script published to a format
+ * channel — the synthetic stand-ins for an assignment that a library script
+ * never gets. Shared by `resolveOpenAssignments` and `requeueMatchCandidates`
+ * so the two never disagree about what is still open: two separate loads of
+ * the same postings/membership data would drift the moment one changed.
+ *
+ * Membership niche wins, then any niche the creator holds — the same
+ * precedence `buildSendTargets` uses.
+ */
+async function loadVirtualAssignments(
+  db: SupabaseClient,
+  scripts: ResearchScript[],
+  creators: ResearchCreator[],
+  existing: ResearchScriptAssignment[]
+): Promise<ResearchScriptAssignment[]> {
+  const [postings, memberships] = await Promise.all([
+    page<ScriptPosting>(db, "research_script_posts", "script_id, posted_at"),
+    page<{ research_creator_id: string; niche: string | null }>(
+      db,
+      "research_app_creators",
+      "research_creator_id, niche"
+    ),
+  ]);
+  const nicheByCreator = new Map<string, string | null>();
+  for (const m of memberships) {
+    if (m.niche && !nicheByCreator.get(m.research_creator_id)) {
+      nicheByCreator.set(m.research_creator_id, m.niche);
+    }
+  }
+  const scoped: ScopedCreator[] = creators.map((c) => ({
+    id: c.id,
+    niche: nicheByCreator.get(c.id) ?? null,
+  }));
+  return buildVirtualAssignments(scripts, postings, scoped, existing);
 }
 
 export interface MatchContext extends MatchResolution {
@@ -70,14 +111,17 @@ export async function requeueMatchCandidates(db: SupabaseClient): Promise<{
   requeued: number;
   unblocks: number;
 }> {
-  const [assignments, videos] = await Promise.all([
+  const [assignments, videos, scripts, creators] = await Promise.all([
     page<ResearchScriptAssignment>(db, "research_script_assignments", "*"),
     page<ResearchVideo>(
       db,
       "research_videos",
       "id, research_creator_id, transcript_text, transcript_status, posted_at"
     ),
+    page<ResearchScript>(db, "research_scripts", "*"),
+    page<ResearchCreator>(db, "research_creators", "*"),
   ]);
+  const virtual = await loadVirtualAssignments(db, scripts, creators, assignments);
 
   const taken = new Set(
     assignments.map((a) => a.research_video_id).filter((id): id is string => !!id)
@@ -87,7 +131,13 @@ export async function requeueMatchCandidates(db: SupabaseClient): Promise<{
     byCreator.set(v.research_creator_id, [...(byCreator.get(v.research_creator_id) ?? []), v]);
   }
 
-  const open = assignments.filter((a) => !a.research_video_id && a.status !== "Skipped");
+  // Same scope the resolver uses, so requeueing and matching agree on what is
+  // still open. MATCH_DATE_RADIUS_DAYS stays applied below — without it a
+  // wider candidate set would requeue the entire back catalogue for
+  // transcription.
+  const open = [...assignments, ...virtual].filter(
+    (a) => !a.research_video_id && a.status !== "Skipped"
+  );
   const wanted = new Set<string>();
   let unblocks = 0;
 
@@ -131,17 +181,25 @@ export async function resolveOpenAssignments(db: SupabaseClient): Promise<MatchC
     page<ResearchCreator>(db, "research_creators", "*"),
   ]);
 
+  // Published scripts have no assignment row until a match confirms one — the
+  // virtual pairs stand in as candidates so the resolver can settle a library
+  // script against a creator's library exactly as it would a real send.
+  const virtual = await loadVirtualAssignments(db, scripts, creators, assignments);
+
   const taken = new Set(
     assignments.map((a) => a.research_video_id).filter((id): id is string => !!id)
   );
-  const resolution = resolveScriptMatches(scripts, assignments, videos, taken);
+  const resolution = resolveScriptMatches(scripts, [...assignments, ...virtual], videos, taken);
 
   return {
     ...resolution,
     scriptById: new Map(scripts.map((s) => [s.id, s])),
     creatorById: new Map(creators.map((c) => [c.id, c])),
     videoById: new Map(videos.map((v) => [v.id, v])),
-    assignmentById: new Map(assignments.map((a) => [a.id, a])),
+    // Includes the virtual rows: /scripts/review looks up every candidate's
+    // assignment here, and a virtual candidate missing from the map would
+    // render blank or crash the page.
+    assignmentById: new Map([...assignments, ...virtual].map((a) => [a.id, a])),
   };
 }
 
@@ -163,20 +221,37 @@ export async function applyMatches(
   let conflicts = 0;
 
   for (const m of matches) {
-    const { error } = await db
-      .from("research_script_assignments")
-      .update({
-        research_video_id: m.videoId,
-        status: "Posted",
-        // The date the creator posted, not the date we noticed — a backfill
-        // would otherwise stamp hundreds of old posts with today.
-        posted_at: videoById.get(m.videoId)?.posted_at ?? new Date().toISOString(),
-      })
-      .eq("id", m.assignmentId)
-      // Never overwrite a link a human already made.
-      .is("research_video_id", null);
+    // The date the creator posted, not the date we noticed — a backfill
+    // would otherwise stamp hundreds of old posts with today.
+    const postedAt = videoById.get(m.videoId)?.posted_at ?? new Date().toISOString();
+    const virtual = parseVirtualAssignmentId(m.assignmentId);
+
+    // A published script has no assignment row until someone is shown to have
+    // made it — the row is the OUTPUT of matching here, not its input.
+    const { error } = virtual
+      ? await db.from("research_script_assignments").insert({
+          script_id: virtual.scriptId,
+          research_creator_id: virtual.creatorId,
+          research_video_id: m.videoId,
+          status: "Posted",
+          assigned_at: postedAt,
+          posted_at: postedAt,
+        })
+      : await db
+          .from("research_script_assignments")
+          .update({
+            research_video_id: m.videoId,
+            status: "Posted",
+            posted_at: postedAt,
+          })
+          .eq("id", m.assignmentId)
+          // Never overwrite a link a human already made.
+          .is("research_video_id", null);
 
     if (error) {
+      // The partial unique index (one video backs one assignment) is what
+      // stops two confirmations claiming one video. A wider candidate set
+      // makes this collision MORE likely, not less — count it, never throw.
       if (error.code === "23505") conflicts++;
       else throw new Error(error.message);
       continue;

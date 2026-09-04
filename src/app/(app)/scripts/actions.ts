@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
+import { parseVirtualAssignmentId } from "@/lib/scripts";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ResearchAssignmentStatus, ResearchScriptStatus } from "@/lib/types";
 import { titleFromHook } from "./doc";
@@ -127,6 +128,33 @@ export async function linkAssignmentVideo(assignmentId: string, formData: FormDa
       .eq("id", videoId)
       .maybeSingle();
     postedAt = (video?.posted_at as string | null) ?? new Date().toISOString();
+  }
+
+  // A published script has no assignment row until someone is shown to have
+  // made it. An UPDATE by id would match nothing here and report success —
+  // the queue this button drains is exactly the contested pairs the
+  // auto-matcher refused, so it cannot be left silently broken.
+  const virtual = parseVirtualAssignmentId(assignmentId);
+  if (virtual) {
+    if (!videoId) redirect("/scripts/review"); // nothing to unlink yet
+    const { error: insertError } = await db.from("research_script_assignments").insert({
+      script_id: virtual.scriptId,
+      research_creator_id: virtual.creatorId,
+      research_video_id: videoId,
+      status: "Posted",
+      assigned_at: postedAt,
+      posted_at: postedAt,
+    });
+    if (insertError) {
+      fail(
+        insertError.code === "23505"
+          ? "That post is already linked to another script."
+          : insertError.message
+      );
+    }
+    revalidatePath("/scripts");
+    revalidatePath("/scripts/review");
+    redirect("/scripts/review?status=Linked");
   }
 
   const { error } = await db
