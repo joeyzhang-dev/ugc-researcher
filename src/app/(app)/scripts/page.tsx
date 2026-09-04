@@ -7,7 +7,7 @@ import type {
   ResearchScriptAssignment,
   ResearchVideo,
 } from "@/lib/types";
-import { resolveScriptMatches, summarizeScripts } from "@/lib/scripts";
+import { resolveScriptMatches, summarizeScripts, type ScriptPosting } from "@/lib/scripts";
 import { createScript } from "./actions";
 import { SubmitButton } from "@/components/submit-button";
 import Link from "next/link";
@@ -21,6 +21,8 @@ import type { SendTarget } from "./send-bar";
 import { buildSendTargets, type SendTargetInput } from "@/lib/send-targets";
 import { loadViewCurves, videoSelect } from "@/lib/video-metrics";
 import { loadNiches, nicheEmojis } from "@/lib/niches";
+import { listFormatChannels } from "@/lib/format-channels";
+import { isMissingRelation, scopeVirtualAssignments } from "@/lib/virtual-assignments";
 
 export const dynamic = "force-dynamic";
 // Server actions invoked from this page inherit this budget — a full-batch
@@ -62,17 +64,51 @@ export default async function ScriptsPage({
     { data: assignmentsData },
     { data: creatorsData },
     { data: membershipsData },
+    { data: channelsData },
+    { data: postingsData, error: postingsError },
   ] = await Promise.all([
     supabase.from("research_scripts").select("*").order("created_at", { ascending: false }),
     supabase.from("research_script_assignments").select("*"),
     supabase.from("research_creators").select("*").eq("kind", "roster"),
     supabase.from("research_app_creators").select("*"),
+    // EVERY channel, tracked or not. The send picker still wants only the
+    // tracked ones (filtered below, so its list is unchanged), but the review
+    // count's niche fallback reads all of them, the way the matching job does
+    // — a parked channel still says which niche its creator is on. Widening
+    // the read cannot cost the picker a channel: a Discord guild holds at most
+    // 500, so this stays inside PostgREST's 1,000-row ceiling either way.
+    // Snowflake ids cast to text: they overflow JS numbers otherwise.
+    supabase
+      .from("research_discord_channels")
+      .select("channel_id::text, channel_name, research_creator_id, niche, is_tracked"),
+    // Publishes to a format channel — the other half of what the review queue
+    // scores. See `needsReview` below.
+    supabase.from("research_script_posts").select("script_id, posted_at"),
   ]);
 
   const allScripts = (scriptsData ?? []) as ResearchScript[];
   const assignments = (assignmentsData ?? []) as ResearchScriptAssignment[];
   const creators = (creatorsData ?? []) as ResearchCreator[];
   const memberships = (membershipsData ?? []) as ResearchAppCreator[];
+  const channels = (channelsData ?? []) as unknown as (SendTargetInput["channels"][number] & {
+    is_tracked: boolean;
+  })[];
+  // `research_script_posts` ships its migration separately from the code that
+  // reads it, so a render can precede the table existing — and a select naming
+  // a missing relation is a hard PostgREST 400, not an empty result. Same
+  // "tolerate a schema that has not caught up" rule videoSelect() follows, and
+  // there [] is the true answer: no table, no publishes, no virtual pairs.
+  //
+  // Every OTHER error degrades to [] too, which is the part worth stating: the
+  // job throws on this same read because a short read there writes fewer links
+  // while still reporting success, whereas here the rows feed one badge and
+  // the worst case is precisely the undercount this page shipped with before.
+  // Every other read in the batch above swallows its error the same way —
+  // 500ing /scripts to protect a count would be the worse trade.
+  const postings: ScriptPosting[] =
+    postingsError && !isMissingRelation(postingsError)
+      ? []
+      : ((postingsData ?? []) as unknown as ScriptPosting[]);
 
   // Scripts follow the workspace, same as the roster does.
   const inWorkspace = allScripts.filter((s) => !appFilter || s.app_id === appFilter);
@@ -102,13 +138,34 @@ export default async function ScriptsPage({
   // Perf for the whole workspace once — the explorer filters client-side.
   const perf = summarizeScripts(inWorkspace, assignments, videosByCreator);
 
-  // How many open assignments the matcher cannot settle on its own. Computed
-  // from rows already in hand rather than re-fetching — it is pure arithmetic
-  // over data this page loads anyway, and it is what makes the review link
-  // worth showing at all.
+  // How many pairs the matcher cannot settle on its own — what the "Match
+  // review" link promises. It counts REAL open assignments AND the VIRTUAL
+  // (published script x roster creator) candidates the queue synthesises;
+  // counting only the first is why the badge undercounted, routinely showing
+  // fewer than /scripts/review then held. `scopeVirtualAssignments` is the
+  // same judgement `loadVirtualAssignments` makes for the job, so the badge and
+  // the queue cannot drift. What the page cannot afford is that job's reads:
+  // `resolveOpenAssignments` pages every research_videos row (~40k, transcripts
+  // included) on what is otherwise a page render. Still pure arithmetic over
+  // rows in hand, plus the two selects above.
+  //
+  // One divergence from the queue survives, and it is the video set: this page
+  // loads roster creators' videos, the job loads every creator's. Virtual pairs
+  // are roster-only by construction, so the two can differ only where a REAL
+  // assignment names a non-roster creator. (Unrelatedly, the unpaged reads here
+  // share PostgREST's 1,000-row ceiling, which the job's page() does not — a
+  // pre-existing gap this count inherits rather than introduces.)
+  const { virtual } = scopeVirtualAssignments({
+    scripts: allScripts,
+    creators,
+    existing: assignments,
+    postings,
+    memberships,
+    channels,
+  });
   const needsReview = resolveScriptMatches(
     allScripts,
-    assignments,
+    [...assignments, ...virtual],
     videos,
     new Set(assignments.map((a) => a.research_video_id).filter((id): id is string => !!id))
   ).review.length;
@@ -177,17 +234,19 @@ export default async function ScriptsPage({
   // onboarded in Discord has a channel days before they have a handle to link,
   // and building this list from research_creators alone left them out of the
   // picker entirely — which is how a send missed the newest people.
-  // Snowflake ids cast to text — they overflow JS numbers otherwise.
-  const { data: channelsData } = await supabase
-    .from("research_discord_channels")
-    .select("channel_id::text, channel_name, research_creator_id, niche")
-    .eq("is_tracked", true);
+  // The read moved up into the batch (which takes untracked channels too, for
+  // the review count's niche fallback), so `is_tracked` is applied here
+  // instead: this list is exactly what the server-side filter used to return.
   const sendTargets: SendTarget[] = buildSendTargets({
     appId: appFilter,
     creators,
     memberships,
-    channels: (channelsData ?? []) as SendTargetInput["channels"],
+    channels: channels.filter((c) => c.is_tracked),
   });
+
+  // Discord unreachable must degrade the picker to empty, never take
+  // /scripts down — the channel-send path is a nicety, not a dependency.
+  const formatChannels = await listFormatChannels().catch(() => []);
 
   return (
     <>
@@ -222,6 +281,7 @@ export default async function ScriptsPage({
         initialSents={sentFilters}
         currentAppId={appFilter}
         sendTargets={sendTargets}
+        formatChannels={formatChannels}
         footnote={
           scopedCreators.length === 0 ? (
             <p className="mt-3 text-xs text-neutral-400">

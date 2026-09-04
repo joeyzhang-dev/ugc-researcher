@@ -281,7 +281,11 @@ export function rankScore(textScore: number, proximity: number): number {
 }
 
 /** Why a pair needs eyes on it rather than being linked outright. */
-export type MatchReviewReason = "contested" | "low-confidence" | "posted-before-send";
+export type MatchReviewReason =
+  | "contested"
+  | "low-confidence"
+  | "posted-before-send"
+  | "awaiting-siblings";
 
 export interface ResolvedMatch {
   assignmentId: string;
@@ -297,12 +301,21 @@ export interface ResolvedMatch {
   rank: number;
   /** Best rank any rival pair reached for this video or this assignment. */
   runnerUp: number;
+  /** Same-creator uploads inside this video's burst window whose transcripts
+   *  have not landed yet. Any one of them could come back as the same reel,
+   *  which would make this a trial upload rather than a post — so a non-zero
+   *  count is what holds the pair back. */
+  pendingSiblings: number;
   reason?: MatchReviewReason;
 }
 
 export interface MatchResolution {
   confirm: ResolvedMatch[];
   review: ResolvedMatch[];
+  /** Videos excluded as trial-batch members. Reported so the review queue and
+   *  the script detail page can drop them from the candidates they offer a
+   *  human — the resolver refusing to link one is only half the guarantee. */
+  trialVideoIds: Set<string>;
 }
 
 /** Pre-tokenized transcript, so a creator's library is tokenized once. */
@@ -326,6 +339,243 @@ function scoreTokens(scriptTokens: string[], have: Map<string, number>): number 
   }
   return hit / scriptTokens.length;
 }
+// ===========================================================================
+// Trial-reel batches
+// ===========================================================================
+
+/**
+ * Creators run Instagram Trials through a tool that uploads the same reel
+ * dozens of times, and those uploads are not posts: a trial reel never
+ * graduates and never counts toward a deliverable.
+ *
+ * The detection lives HERE, next to transcript matching, rather than in
+ * performance.ts where it started, because two readers depend on it and they
+ * must not be able to disagree. `collapseTrialUploads` drops a detected batch
+ * out of every performance figure; `resolveScriptMatches` refuses to link one
+ * to a script. A second copy of the heuristic would drift, and the two halves
+ * would then disagree about which uploads exist at all. performance.ts
+ * re-exports these so its own surface is unchanged.
+ */
+
+/**
+ * How alike two transcripts are, symmetrically (0–1).
+ *
+ * `transcriptMatchScore` is deliberately asymmetric — it asks "how much of the
+ * script survived into the transcript", which is the right question when
+ * matching a script to a post. Here both sides are transcripts of the same
+ * length, and we want "are these the same video", so we take the weaker of the
+ * two directions: a short clip fully contained in a long ramble is not the
+ * same reel, and only requiring both directions rules that out.
+ */
+export function transcriptSimilarity(a: string, b: string): number {
+  return Math.min(transcriptMatchScore(a, b), transcriptMatchScore(b, a));
+}
+
+/** Above this, two posts are the same reel uploaded twice. Measured against
+ *  the live corpus (2026-08-31): a real trial batch scores ~1.0 across its
+ *  members, while two genuinely different scripts by the same creator on the
+ *  same theme topped out around 0.5. */
+export const TRIAL_SAME_REEL = 0.8;
+
+/** A batch has to be more than a pair before we call it a trial run. Posting
+ *  the same reel twice is something creators do by hand; twenty times is the
+ *  trial-reel tool. */
+export const TRIAL_MIN_BATCH = 3;
+
+/** The two fields the batch heuristic reads. Both `PerformanceVideo` and
+ *  `ResearchVideo` satisfy it, which is what lets one implementation serve
+ *  the performance collapse and the matcher's exclusion. */
+export interface TrialGroupable {
+  transcript_text?: string | null;
+  view_count: number | null;
+}
+
+/**
+ * Partition uploads into same-reel groups, most-viewed first.
+ *
+ * Greedy against each group's first member: the walk is most-viewed first, so
+ * that member is already the group's winner — which is the one
+ * `collapseTrialUploads` used to keep. Groups come back in creation order and
+ * members in view order, so a caller can read `group[0]` as the batch's best
+ * upload without sorting again.
+ *
+ * `similarity` is injectable only so a caller comparing one creator's whole
+ * burst can memoize and pre-tokenize it. The default is the real rule; passing
+ * anything else changes the cost, never the policy.
+ */
+export function groupTrialUploads<T extends TrialGroupable>(
+  videos: T[],
+  similarity: (a: string, b: string) => number = transcriptSimilarity
+): T[][] {
+  // Most-viewed first, so the first member of a group is already its winner.
+  const ordered = [...videos].sort((a, b) => (b.view_count ?? 0) - (a.view_count ?? 0));
+  const groups: T[][] = [];
+  for (const v of ordered) {
+    const text = v.transcript_text ?? "";
+    const group = groups.find((g) => similarity(g[0].transcript_text ?? "", text) >= TRIAL_SAME_REEL);
+    if (group) group.push(v);
+    else groups.push([v]);
+  }
+  return groups;
+}
+
+/**
+ * How far either side of an upload we look for the rest of its batch: ±24h,
+ * rolling on the actual instants, never snapped to a calendar day.
+ *
+ * There is no creator-local time anywhere in this codebase — performance.ts
+ * works in UTC instants (`inWindow`, the rolling `trailingWindow`) and in
+ * reproducible UTC Monday weeks for its reporting keys, and daily-recap's
+ * `collapseByDay` buckets by UTC calendar day for a recap. A calendar day is
+ * the wrong shape for a GUARD: 8pm US Eastern is 00:00 UTC, so a burst posted
+ * around then straddles the day boundary, and the lone member on the sparse
+ * side would have no visible siblings and no detectable batch — reopening
+ * exactly the hole this closes. A recap that splits a batch across two days
+ * shows a wrong count for a day; a matcher that splits one makes a permanent
+ * wrong link.
+ */
+export const TRIAL_BURST_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** An upload as the burst detector reads it: one creator's, under the id it is
+ *  reported by. */
+export interface TrialUpload extends TrialGroupable {
+  id: string;
+  posted_at: string | null;
+}
+
+/**
+ * `transcriptSimilarity`, memoized across one creator's uploads.
+ *
+ * Every member of a burst is compared against every distinct reel in it, once
+ * per member, so the naive call tokenizes the same transcripts thousands of
+ * times. Here each transcript is tokenized once and each unordered pair scored
+ * once — a live 104-upload burst day is ~5.4k unique pairs, not a million.
+ *
+ * The counted form is exactly `transcriptMatchScore`: its per-word cap makes a
+ * word contribute min(count in a, count in b) hits, over a's token count.
+ */
+function memoizedSimilarity(): (a: string, b: string) => number {
+  const idByText = new Map<string, number>();
+  const counts: Map<string, number>[] = [];
+  const totals: number[] = [];
+  const cache = new Map<string, number>();
+
+  const idOf = (text: string): number => {
+    let id = idByText.get(text);
+    if (id === undefined) {
+      id = counts.length;
+      idByText.set(text, id);
+      const have = counted(text);
+      let total = 0;
+      for (const n of have.values()) total += n;
+      counts.push(have);
+      totals.push(total);
+    }
+    return id;
+  };
+
+  const contains = (a: number, b: number): number => {
+    if (totals[a] === 0 || totals[b] === 0) return 0;
+    let hit = 0;
+    for (const [w, n] of counts[a]) hit += Math.min(n, counts[b].get(w) ?? 0);
+    return hit / totals[a];
+  };
+
+  return (a, b) => {
+    const x = idOf(a);
+    const y = idOf(b);
+    const key = x < y ? `${x}:${y}` : `${y}:${x}`;
+    let score = cache.get(key);
+    if (score === undefined) {
+      score = Math.min(contains(x, y), contains(y, x));
+      cache.set(key, score);
+    }
+    return score;
+  };
+}
+
+/**
+ * Which of ONE creator's uploads sit inside a trial batch.
+ *
+ * An upload V is a trial upload when grouping its burst neighbourhood — the
+ * same-creator transcribed uploads within `TRIAL_BURST_WINDOW_MS` of it, V
+ * included — puts V in a group of at least `TRIAL_MIN_BATCH` members. The
+ * neighbourhood is rolled around V rather than cut into fixed buckets, so no
+ * boundary can hide a sibling from it.
+ *
+ * Callers pass one creator's whole library, claimed posts included: a sibling
+ * already linked to some script is still evidence that this upload was part of
+ * a batch. Untranscribed and undated uploads are never members — an absent
+ * transcript is not evidence of duplication (the same call
+ * `collapseTrialUploads` makes), and an undated upload has no burst to sit in.
+ *
+ * Cost is bounded on purpose: an upload with fewer than `TRIAL_MIN_BATCH`
+ * neighbours is never similarity-checked at all (a creator posting twice in
+ * two days costs nothing), each distinct neighbourhood is grouped once, and
+ * similarity is memoized per unordered pair across the whole call.
+ */
+export function trialUploadIds<T extends TrialUpload>(videos: T[]): Set<string> {
+  const trial = new Set<string>();
+
+  const rows: { video: T; at: number }[] = [];
+  for (const v of videos) {
+    if ((v.transcript_text ?? "").trim().length === 0) continue;
+    if (!v.posted_at) continue;
+    const at = Date.parse(v.posted_at);
+    if (Number.isNaN(at)) continue;
+    rows.push({ video: v, at });
+  }
+  if (rows.length < TRIAL_MIN_BATCH) return trial;
+  rows.sort((a, b) => a.at - b.at || a.video.id.localeCompare(b.video.id));
+
+  const similarity = memoizedSimilarity();
+  // A neighbourhood is a contiguous run of the time-sorted rows, so both
+  // bounds only ever move forward and each distinct run is grouped once.
+  const sizesBySlice = new Map<string, Map<string, number>>();
+  let lo = 0;
+  let hi = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const at = rows[i].at;
+    while (rows[lo].at < at - TRIAL_BURST_WINDOW_MS) lo++;
+    // hi lands on at least i on its own: every row up to i is within the
+    // window of row i by construction.
+    while (hi + 1 < rows.length && rows[hi + 1].at <= at + TRIAL_BURST_WINDOW_MS) hi++;
+    if (hi - lo + 1 < TRIAL_MIN_BATCH) continue;
+
+    const key = `${lo}:${hi}`;
+    let sizes = sizesBySlice.get(key);
+    if (!sizes) {
+      sizes = new Map<string, number>();
+      const near = rows.slice(lo, hi + 1).map((r) => r.video);
+      for (const group of groupTrialUploads(near, similarity)) {
+        for (const member of group) sizes.set(member.id, group.length);
+      }
+      sizesBySlice.set(key, sizes);
+    }
+    if ((sizes.get(rows[i].video.id) ?? 0) >= TRIAL_MIN_BATCH) trial.add(rows[i].video.id);
+  }
+
+  return trial;
+}
+
+/**
+ * A sibling whose transcript is still coming.
+ *
+ * "pending" and "fetching" mean the worker has it or shortly will; "failed"
+ * and "skipped" are terminal ON THIS READ. `requeueMatchCandidates` runs at
+ * the top of the same `matchScriptPosts` call and has already flipped every
+ * in-radius failed/skipped row back to "pending", so a row still reading
+ * terminal here is one nothing is coming for — usually a deleted post, whose
+ * media is simply gone. Treating those as in flight would hold a real post
+ * forever, since the requeue re-arms them on every tick.
+ */
+function inFlight(v: ResearchVideo): boolean {
+  return (
+    !v.transcript_text &&
+    (v.transcript_status === "pending" || v.transcript_status === "fetching")
+  );
+}
 
 /**
  * Match every open assignment to the video it produced, in one pass.
@@ -340,6 +590,23 @@ function scoreTokens(scriptTokens: string[], have: Map<string, number>): number 
  * nearest rival; everything else is returned for a human to confirm. That
  * keeps the original guarantee — two similar scripts are never silently
  * swapped — while sparing the ~600 open assignments that have no rival at all.
+ *
+ * Two rules keep a trial reel out of all of this. Creators upload one reel
+ * fifteen-plus times in a sitting through the Instagram Trials tool; a trial
+ * reel never graduates and never counts as a post, so no member of a batch may
+ * ever back a script. Where the batch is visible every member is excluded from
+ * the pool outright, by `trialUploadIds` — the same detection /performance
+ * collapses by, so the matcher and the numbers cannot disagree about which
+ * uploads are real. Where it is NOT visible — fewer than `TRIAL_MIN_BATCH`
+ * transcripts back, which is the normal state for hours after a burst, and
+ * exactly the shape that used to auto-link against a runner-up of 0.000 — a
+ * pair whose video still has an untranscribed sibling inside its burst window
+ * is held as `awaiting-siblings` instead of being linked or called contested.
+ *
+ * The hold goes to review rather than to a silent fourth list on purpose: a
+ * real post whose only same-day sibling is a deleted reel — permanently
+ * `failed`, and re-armed to `pending` by `requeueMatchCandidates` on every
+ * tick — would otherwise be held forever with nobody able to see it.
  *
  * `takenVideoIds` are videos already linked to some assignment; they are never
  * offered again.
@@ -357,13 +624,59 @@ export function resolveScriptMatches(
   const open = assignments.filter(
     (a) => !a.research_video_id && a.status !== "Skipped" && scriptById.has(a.script_id)
   );
-  if (!open.length) return { confirm: [], review: [] };
+  if (!open.length) return { confirm: [], review: [], trialVideoIds: new Set() };
 
   const wanted = new Set(open.map((a) => a.research_creator_id));
+
+  // Everything trial-related below is scoped to creators with something open.
+  // Nobody is waiting on anyone else's uploads, and this runs on every hourly
+  // tick and every review-page load.
+  const libraryByCreator = new Map<string, ResearchVideo[]>();
+  for (const v of videos) {
+    if (!wanted.has(v.research_creator_id)) continue;
+    (libraryByCreator.get(v.research_creator_id) ??
+      libraryByCreator.set(v.research_creator_id, []).get(v.research_creator_id)!).push(v);
+  }
+
+  // Detection runs over the creator's whole library, claimed posts included: a
+  // sibling already linked to some script is still evidence that this upload
+  // came out of a batch, and dropping it from the count is what would let a
+  // three-upload batch read as a hand-posted pair.
+  const trialVideoIds = new Set<string>();
+  for (const library of libraryByCreator.values()) {
+    for (const id of trialUploadIds(library)) trialVideoIds.add(id);
+  }
+
+  // When each still-transcribing upload was posted, per creator — the only
+  // thing that can be known about a sibling before its words arrive.
+  const inFlightAt = new Map<string, number[]>();
+  for (const [creatorId, library] of libraryByCreator) {
+    const at: number[] = [];
+    for (const v of library) {
+      if (!inFlight(v) || !v.posted_at) continue;
+      const t = Date.parse(v.posted_at);
+      if (!Number.isNaN(t)) at.push(t);
+    }
+    inFlightAt.set(creatorId, at);
+  }
+
   const poolByCreator = new Map<string, ResearchVideo[]>();
+  const pendingSiblings = new Map<string, number>();
   for (const v of videos) {
     if (!v.transcript_text || takenVideoIds.has(v.id)) continue;
     if (!wanted.has(v.research_creator_id)) continue;
+    // A trial upload is never a post, so it is never a candidate and never a
+    // rival either — it must not be able to contest a real post for its own
+    // assignment.
+    if (trialVideoIds.has(v.id)) continue;
+    const posted = v.posted_at ? Date.parse(v.posted_at) : NaN;
+    let waiting = 0;
+    if (!Number.isNaN(posted)) {
+      for (const t of inFlightAt.get(v.research_creator_id) ?? []) {
+        if (Math.abs(t - posted) <= TRIAL_BURST_WINDOW_MS) waiting++;
+      }
+    }
+    pendingSiblings.set(v.id, waiting);
     (poolByCreator.get(v.research_creator_id) ??
       poolByCreator.set(v.research_creator_id, []).get(v.research_creator_id)!).push(v);
   }
@@ -424,6 +737,7 @@ export function resolveScriptMatches(
         proximity,
         rank,
         runnerUp: 0,
+        pendingSiblings: pendingSiblings.get(v.id) ?? 0,
       });
       // Rivalry is judged on rank: two scripts the words cannot separate are
       // separated here by which one was actually sent near the post.
@@ -460,6 +774,14 @@ export function resolveScriptMatches(
       // The post predates its own script. Almost always a stale assignment or
       // a recycled script, never a real link — but a human should say so.
       review.push({ ...resolved, reason: "posted-before-send" });
+    } else if (p.pendingSiblings > 0) {
+      // Strong enough to link, and we still do not know what this post IS: a
+      // sibling inside its burst window is still transcribing, and if it comes
+      // back as the same reel then both are trial uploads rather than posts.
+      // The pair has already consumed its assignment and its video above, so a
+      // weaker rival cannot take the assignment this tick — it is held, not
+      // dropped.
+      review.push({ ...resolved, reason: "awaiting-siblings" });
     } else if (p.rank - rival < MATCH_AUTO_MARGIN) {
       review.push({ ...resolved, reason: "contested" });
     } else {
@@ -467,5 +789,105 @@ export function resolveScriptMatches(
     }
   }
 
-  return { confirm, review };
+  return { confirm, review, trialVideoIds };
+}
+
+/* --- library scripts: candidates without an assignment -------------------
+ *
+ * A script published to a format channel is not assigned to anyone. To keep
+ * matching working we synthesise the pairs an assignment used to provide:
+ * (published script) x (creator whose niche it fits). The resolver cannot
+ * tell these from real open assignments, which is the point — its
+ * best-first settling still arbitrates between them and the real ones.
+ */
+
+export const VIRTUAL_ASSIGNMENT_PREFIX = "virtual:";
+
+/** uuids contain no colons, so this is unambiguous to parse back. */
+export function virtualAssignmentId(scriptId: string, creatorId: string): string {
+  return `${VIRTUAL_ASSIGNMENT_PREFIX}${scriptId}:${creatorId}`;
+}
+
+export function isVirtualAssignmentId(id: string): boolean {
+  return id.startsWith(VIRTUAL_ASSIGNMENT_PREFIX);
+}
+
+export function parseVirtualAssignmentId(
+  id: string
+): { scriptId: string; creatorId: string } | null {
+  if (!isVirtualAssignmentId(id)) return null;
+  // Exactly two segments. A uuid never contains a colon, so anything other
+  // than scriptId:creatorId means this string was not built by
+  // virtualAssignmentId — silently keeping only the first two parts would
+  // risk attaching a match to the wrong creator instead of failing loudly.
+  const parts = id.slice(VIRTUAL_ASSIGNMENT_PREFIX.length).split(":");
+  if (parts.length !== 2) return null;
+  const [scriptId, creatorId] = parts;
+  return scriptId && creatorId ? { scriptId, creatorId } : null;
+}
+
+/** One publication of a script to a channel — only what scoping needs. */
+export interface ScriptPosting {
+  script_id: string;
+  posted_at: string;
+}
+
+/** A creator and the niche that decides which scripts they are a candidate for. */
+export interface ScopedCreator {
+  id: string;
+  niche: string | null;
+}
+
+/**
+ * Candidate (script, creator) pairs for every published script.
+ *
+ * A creator is a candidate when the script's niche matches theirs, or when the
+ * script carries no niche at all — a null niche is what makes a script
+ * universal, and is how #broad works without a schema for formats.
+ *
+ * `sent_at` is the EARLIEST posting: a script cross-posted to two channels was
+ * available to the creator from the first one, and date proximity should
+ * measure against when they could first have seen it.
+ *
+ * Creators who already hold a real assignment for a script are skipped, so a
+ * script sent the old way and published the new way is never scored twice.
+ */
+export function buildVirtualAssignments(
+  scripts: ResearchScript[],
+  postings: ScriptPosting[],
+  creators: ScopedCreator[],
+  existing: ResearchScriptAssignment[]
+): ResearchScriptAssignment[] {
+  const firstPostingByScript = new Map<string, string>();
+  for (const p of postings) {
+    const seen = firstPostingByScript.get(p.script_id);
+    if (!seen || p.posted_at < seen) firstPostingByScript.set(p.script_id, p.posted_at);
+  }
+  if (!firstPostingByScript.size) return [];
+
+  const claimed = new Set(existing.map((a) => `${a.script_id}:${a.research_creator_id}`));
+  const out: ResearchScriptAssignment[] = [];
+
+  for (const s of scripts) {
+    const sentAt = firstPostingByScript.get(s.id);
+    if (!sentAt) continue;
+    for (const c of creators) {
+      if (s.niche !== null && s.niche !== c.niche) continue;
+      if (claimed.has(`${s.id}:${c.id}`)) continue;
+      out.push({
+        id: virtualAssignmentId(s.id, c.id),
+        script_id: s.id,
+        research_creator_id: c.id,
+        research_video_id: null,
+        status: "Assigned",
+        notes: null,
+        assigned_at: sentAt,
+        posted_at: null,
+        discord_channel_id: null,
+        discord_message_id: null,
+        sent_at: sentAt,
+      });
+    }
+  }
+  return out;
 }

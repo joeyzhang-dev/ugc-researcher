@@ -241,6 +241,20 @@ only by hand, one assignment at a time, so 1,036 of 1,073 assignments were
 unlinked and nearly every script read "0 posts" while the posts sat in the
 database, scraped and transcribed. A 2026-08-22 backfill linked 350 of them.
 
+**Since 2026-09-04 an assignment can also be the OUTPUT of matching rather than
+its input.** Scripts published to a channel under the `scripts / formats`
+category (`research_script_posts`) are assigned to nobody. `buildVirtualAssignments`
+synthesises (script, creator) candidates from niche scope — a script's niche
+matching the creator's, or a **null niche, which makes it universal and is the
+only thing that makes `#broad` work**. Confirming such a match INSERTs the
+assignment row. Creators already holding a real assignment for that script are
+skipped, so nothing is scored twice.
+
+The candidate set is much wider than a creator's open assignments, so expect
+/scripts/review to carry more. That is the designed failure mode —
+`MATCH_AUTO_MIN` and `MATCH_AUTO_MARGIN` still gate on the words alone. Do not
+lower the margin to drain the queue.
+
 `resolveScriptMatches` scores each open assignment's script against its
 creator's transcripts (containment, via `transcriptMatchScore`) and settles all
 pairs **globally, best-first** — never per assignment. That is load-bearing: a

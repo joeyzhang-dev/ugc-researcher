@@ -7,8 +7,9 @@ import { discordConfigured, postChannelMessage } from "@/lib/discord";
 import { buildScriptPage, testSendContent, type SendableScript } from "@/lib/discord-send";
 import { resolveInspoVideoUrl } from "@/lib/inspo-media";
 import { isChannelTarget } from "@/lib/send-targets";
+import { listFormatChannels } from "@/lib/format-channels";
 import { assignScriptNumbers } from "./doc";
-import type { ResearchScript } from "@/lib/types";
+import type { ResearchScript, ResearchScriptPost } from "@/lib/types";
 
 /** Canonical #N for every script (Doc position within week+niche) — computed
  *  over the WHOLE table so a subset send still carries the real numbers. */
@@ -291,4 +292,151 @@ export async function sendScriptsTest(scriptIds: string[]): Promise<SendReport> 
       }],
     };
   }
+}
+
+export interface ChannelSendReport {
+  channel: string;
+  /** Cards actually posted in this run. */
+  posted: number;
+  /** Skipped because this script is already in this channel. */
+  alreadyPosted: number;
+  /**
+   * Script ids whose card posted to Discord but whose research_script_posts
+   * row failed to write for a reason other than "already published here"
+   * (23505 — see below). Each one is a live card the dedupe `already` set
+   * cannot see, so a retry of this batch will post it again as a genuine
+   * second card. Reconciling an unrecorded id (find the card, insert the
+   * missing row by hand) is a manual step; nothing here does it for you.
+   */
+  unrecorded: string[];
+  /**
+   * Script ids whose 23505 on insert meant the row already existed for this
+   * channel — but the card had already gone out to Discord before the insert
+   * ran, because the `already` set was read at the top of this batch and this
+   * script slipped through it (a concurrent run, or two overlapping batches).
+   * That is a genuine second live card in the channel even though the row
+   * count didn't move, which is why it used to read as a clean `posted++`
+   * with nothing to distinguish it. Reported separately from `unrecorded`:
+   * that one means "no row for a posted card", this one means "an extra
+   * card for a row that already existed".
+   */
+  duplicatePosted: string[];
+  error?: string;
+}
+
+/**
+ * Publish a batch of scripts to one format channel.
+ *
+ * No creator loop, no assignments, no ping: the card is a library entry, and
+ * whoever wants it takes it. The research_script_posts row is the record, and
+ * its unique index is the dedupe — re-running is a no-op per script.
+ */
+export async function sendScriptsToChannel(input: {
+  scriptIds: string[];
+  channelId: string;
+}): Promise<ChannelSendReport> {
+  await requireAdmin();
+  if (!discordConfigured()) {
+    return { channel: input.channelId, posted: 0, alreadyPosted: 0, unrecorded: [], duplicatePosted: [],
+      error: "DISCORD_BOT_TOKEN is not set in .env.local — add it and retry." };
+  }
+  const scriptIds = [...new Set(input.scriptIds)].filter(Boolean);
+  if (!scriptIds.length || !input.channelId) {
+    return { channel: input.channelId, posted: 0, alreadyPosted: 0, unrecorded: [], duplicatePosted: [],
+      error: "Pick at least one script and a channel." };
+  }
+
+  const channels = await listFormatChannels();
+  const channel = channels.find((c) => c.id === input.channelId);
+  if (!channel) {
+    return { channel: input.channelId, posted: 0, alreadyPosted: 0, unrecorded: [], duplicatePosted: [],
+      error: "That channel isn't under the scripts / formats category any more." };
+  }
+
+  const db = createAdminClient();
+  const [{ data: scriptsData }, { data: postedData }] = await Promise.all([
+    db.from("research_scripts").select("*").in("id", scriptIds),
+    // ::text — a snowflake read as a JS number rounds past 2^53 and would
+    // compare unequal to the id we are about to post to.
+    db
+      .from("research_script_posts")
+      .select("script_id, discord_channel_id::text")
+      .in("script_id", scriptIds),
+  ]);
+
+  const already = new Set(
+    ((postedData ?? []) as Pick<ResearchScriptPost, "script_id" | "discord_channel_id">[])
+      .filter((p) => String(p.discord_channel_id) === input.channelId)
+      .map((p) => p.script_id)
+  );
+  const scripts = ((scriptsData ?? []) as ResearchScript[])
+    .slice()
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const batch = scripts.filter((s) => !already.has(s.id));
+  if (!batch.length) {
+    return { channel: channel.name, posted: 0, alreadyPosted: scripts.length, unrecorded: [], duplicatePosted: [] };
+  }
+
+  const numbering = await scriptNumbering(db);
+  const sendable: SendableScript[] = batch.map((s) => ({
+    ...toSendable(s),
+    number: numbering.get(s.id) ?? null,
+  }));
+
+  const inspoFor = inspoCache();
+  let posted = 0;
+  const unrecorded: string[] = [];
+  const duplicatePosted: string[] = [];
+  try {
+    for (let i = 0; i < sendable.length; i++) {
+      // No header and no mention: a library entry pings nobody.
+      const messageId = await postPage(input.channelId, sendable, i, {
+        videoUrl: await inspoFor(sendable[i]),
+        paged: false,
+        header: null,
+        mentionUserId: null,
+      });
+      const { error } = await db.from("research_script_posts").insert({
+        script_id: batch[i].id,
+        discord_channel_id: input.channelId,
+        channel_label: channel.name,
+        discord_message_id: messageId,
+        posted_at: new Date().toISOString(),
+      });
+      if (error) {
+        if (error.code === "23505") {
+          // The row already existed by the time this insert ran — the
+          // `already` set was read once at the top of this batch, and this
+          // script slipped past it (a concurrent run, or another batch
+          // publishing the same script to this channel in the meantime).
+          // The card above still went out to Discord, so this IS a second
+          // live card even though the table's row count did not change —
+          // that is a real duplicate, not a clean no-op, and must not be
+          // folded into `posted` as if nothing happened.
+          duplicatePosted.push(batch[i].id);
+        } else {
+          // The row genuinely failed to write, so the card that's live in
+          // Discord right now has no record at all. Throwing here would
+          // abandon every later script in the batch with nothing to show
+          // for it beyond one error message, so instead note the id as
+          // unrecorded and keep going; the rest of the batch is unrelated
+          // to why this one insert failed.
+          unrecorded.push(batch[i].id);
+        }
+      }
+      posted++;
+    }
+  } catch (e) {
+    // Only postPage (the Discord call) throws past this point — nothing was
+    // posted for this script, so the rest of the batch is genuinely unsafe
+    // to continue and aborting here (unlike an insert failure, above) is
+    // correct.
+    return {
+      channel: channel.name, posted, alreadyPosted: already.size, unrecorded, duplicatePosted,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+
+  revalidatePath("/scripts");
+  return { channel: channel.name, posted, alreadyPosted: already.size, unrecorded, duplicatePosted };
 }

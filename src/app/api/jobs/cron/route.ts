@@ -99,12 +99,19 @@ export async function GET(request: NextRequest) {
     // came from — manufacturing exactly the near-tie MATCH_AUTO_MARGIN refuses
     // to auto-link, and filling /scripts/review with pileups of one reel.
     // Cheap: one read of the batcher's publish log plus a per-creator pass.
+    //
     // Non-fatal, the same contract as Launchpoint's accounts phase: this is
     // the only phase that reads a SECOND Supabase project (the trial
     // batcher's), which can be down, rotated or paused on a schedule nothing
     // here controls. Uncaught, that would 500 the whole tick and silently skip
     // matching and the Launchpoint drain below it — so the failure is caught
     // and reported in the response instead of taking the hour with it.
+    //
+    // Catching is only half of it: `fetch` has no default timeout, so an
+    // unroutable host does not throw, it WAITS — which on a 300s serverless
+    // ceiling turns a loud 500 into a silent stall that skips the same two
+    // phases. fetchPublishedTrials aborts at BATCHER_TIMEOUT_MS for that
+    // reason; the try/catch alone would not have saved the tick.
     let trials: Awaited<ReturnType<typeof syncTrialUploads>> | { failed: string } | null = null;
     if (idle) {
       try {
@@ -113,7 +120,18 @@ export async function GET(request: NextRequest) {
         trials = { failed: error instanceof Error ? error.message : String(error) };
       }
     }
-    const matched = idle ? await matchScriptPosts(createAdminClient()) : null;
+    // Guarded for its own reason: matchScriptPosts reads research_script_posts,
+    // whose migration ships separately from this code and can land on Vercel
+    // second. Uncaught, a missing relation would skip the Launchpoint drain
+    // below with nothing in the response saying why.
+    let matched: Awaited<ReturnType<typeof matchScriptPosts>> | { failed: string } | null = null;
+    if (idle) {
+      try {
+        matched = await matchScriptPosts(createAdminClient());
+      } catch (error) {
+        matched = { failed: error instanceof Error ? error.message : String(error) };
+      }
+    }
     // Launchpoint gets whatever is left of the tick. Its two expensive phases
     // are budget-aware and resume from the table on the next run, so a short
     // remainder here is progress rather than a wasted call.
