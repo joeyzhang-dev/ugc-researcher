@@ -292,9 +292,19 @@ describe("buildVirtualAssignments", () => {
 });
 
 describe("real and virtual pairs competing for one video", () => {
-  it("still gives the video to exactly one of them, best-first", () => {
+  // The case the whole margin exists for, now proven across a real
+  // assignment and a virtual (published-script) pair rather than two real
+  // ones: two near-duplicate scripts both bid on the one post a creator
+  // made, and global best-first settling has to pick a single winner without
+  // ever letting a video back two assignments.
+  it("settles global best-first when a real assignment and a virtual pair both bid on it", () => {
     const shared = "Number one, comparing your walk to somebody else's. Number two, skipping rest.";
-    const s1 = nichedScript("s1", "Christian");
+    // s1 (real) overlaps `shared` almost completely but not quite — one word
+    // ("Truly.") the transcript never says, the same one-word gap that
+    // produced the live 0.97-vs-0.91 pair MATCH_AUTO_MARGIN was built for.
+    const s1 = { ...nichedScript("s1", "Christian"), body: shared + " Truly." } as ResearchScript;
+    // s2 (virtual, published to #christian-4things) is a perfect containment
+    // match for the same transcript.
     const s2 = { ...nichedScript("s2", "Christian"), body: shared } as ResearchScript;
     const v = vid("v1", "c1", shared, "2026-09-02T00:00:00Z");
 
@@ -302,12 +312,56 @@ describe("real and virtual pairs competing for one video", () => {
       [s2], [{ script_id: "s2", posted_at: "2026-09-01T00:00:00Z" }],
       [{ id: "c1", niche: "Christian" }], []
     );
-    const out = resolveScriptMatches([s1, s2], [asg("a1", "s1", "c1"), ...virtual], [v], new Set());
-
-    const claims = [...out.confirm, ...out.review].filter((m) => m.videoId === "v1");
-    expect(claims.length).toBeGreaterThan(0);
-    expect(out.confirm.filter((m) => m.videoId === "v1")).toHaveLength(
-      out.confirm.some((m) => m.videoId === "v1") ? 1 : 0
+    // a1 is sent close enough to the post that both pairs get full date
+    // credit — the contest has to be decided on text, not timing.
+    const out = resolveScriptMatches(
+      [s1, s2],
+      [asg("a1", "s1", "c1", "2026-08-25T00:00:00Z"), ...virtual],
+      [v],
+      new Set()
     );
+
+    // The partial unique index means only one assignment can ever claim v1.
+    // Resolution is global, so the loser (s1's real assignment) must not
+    // survive anywhere — not in confirm, not in review — once the winner has
+    // taken the video; it simply has nothing left to be matched against.
+    const claims = [...out.confirm, ...out.review].filter((m) => m.videoId === "v1");
+    expect(claims).toHaveLength(1);
+    expect(claims[0].scriptId).toBe("s2");
+    expect(claims[0].assignmentId).toBe(virtual[0].id);
+
+    // s2's perfect score still isn't enough to auto-link: it beats s1's
+    // near-identical pair by less than MATCH_AUTO_MARGIN, so a human has to
+    // look — exactly the ambiguity the margin exists to catch, now shown to
+    // hold when one side of the contest is a virtual pair.
+    expect(claims[0].reason).toBe("contested");
+    expect(out.confirm).toHaveLength(0);
+  });
+
+  // The spec's other named case: a virtual pair's own anchor date can be
+  // impossible too, and that must route to review exactly like a real
+  // assignment's does — never auto-link just because the text is a perfect
+  // match.
+  it("sends a virtual pair to review as posted-before-send when its anchor postdates the video", () => {
+    const words =
+      "morning routine peak male twenties edition cold shower journal gym protein sunlight";
+    const s = { ...nichedScript("s1", "Christian"), body: words } as ResearchScript;
+    // The script's earliest posting (its virtual sent_at) is AFTER the video
+    // already existed — the video cannot be this publish's output.
+    const virtual = buildVirtualAssignments(
+      [s],
+      [{ script_id: "s1", posted_at: "2026-09-10T00:00:00Z" }],
+      [{ id: "c1", niche: "Christian" }],
+      []
+    );
+    const v = vid("v1", "c1", words, "2026-08-01T00:00:00Z");
+    const out = resolveScriptMatches([s], virtual, [v], new Set());
+
+    expect(out.confirm).toHaveLength(0);
+    expect(out.review).toHaveLength(1);
+    expect(out.review[0]).toMatchObject({
+      assignmentId: virtual[0].id,
+      reason: "posted-before-send",
+    });
   });
 });
