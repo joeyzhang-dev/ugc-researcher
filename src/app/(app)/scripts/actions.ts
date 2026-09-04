@@ -154,6 +154,11 @@ export async function linkAssignmentVideo(assignmentId: string, formData: FormDa
     }
     revalidatePath("/scripts");
     revalidatePath("/scripts/review");
+    // The real path below does this too — a confirmed virtual match changes
+    // this script's post count exactly the same way, and skipping it here
+    // would leave /scripts/[id] showing stale data until something else
+    // revalidates it.
+    revalidatePath(`/scripts/${virtual.scriptId}`);
     redirect("/scripts/review?status=Linked");
   }
 
