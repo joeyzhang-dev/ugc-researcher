@@ -300,6 +300,15 @@ export interface ChannelSendReport {
   posted: number;
   /** Skipped because this script is already in this channel. */
   alreadyPosted: number;
+  /**
+   * Script ids whose card posted to Discord but whose research_script_posts
+   * row failed to write for a reason other than "already published here"
+   * (23505 — see below). Each one is a live card the dedupe `already` set
+   * cannot see, so a retry of this batch will post it again as a genuine
+   * second card. Reconciling an unrecorded id (find the card, insert the
+   * missing row by hand) is a manual step; nothing here does it for you.
+   */
+  unrecorded: string[];
   error?: string;
 }
 
@@ -316,19 +325,19 @@ export async function sendScriptsToChannel(input: {
 }): Promise<ChannelSendReport> {
   await requireAdmin();
   if (!discordConfigured()) {
-    return { channel: input.channelId, posted: 0, alreadyPosted: 0,
+    return { channel: input.channelId, posted: 0, alreadyPosted: 0, unrecorded: [],
       error: "DISCORD_BOT_TOKEN is not set in .env.local — add it and retry." };
   }
   const scriptIds = [...new Set(input.scriptIds)].filter(Boolean);
   if (!scriptIds.length || !input.channelId) {
-    return { channel: input.channelId, posted: 0, alreadyPosted: 0,
+    return { channel: input.channelId, posted: 0, alreadyPosted: 0, unrecorded: [],
       error: "Pick at least one script and a channel." };
   }
 
   const channels = await listFormatChannels();
   const channel = channels.find((c) => c.id === input.channelId);
   if (!channel) {
-    return { channel: input.channelId, posted: 0, alreadyPosted: 0,
+    return { channel: input.channelId, posted: 0, alreadyPosted: 0, unrecorded: [],
       error: "That channel isn't under the scripts / formats category any more." };
   }
 
@@ -353,7 +362,7 @@ export async function sendScriptsToChannel(input: {
     .sort((a, b) => a.created_at.localeCompare(b.created_at));
   const batch = scripts.filter((s) => !already.has(s.id));
   if (!batch.length) {
-    return { channel: channel.name, posted: 0, alreadyPosted: scripts.length };
+    return { channel: channel.name, posted: 0, alreadyPosted: scripts.length, unrecorded: [] };
   }
 
   const numbering = await scriptNumbering(db);
@@ -364,6 +373,7 @@ export async function sendScriptsToChannel(input: {
 
   const inspoFor = inspoCache();
   let posted = 0;
+  const unrecorded: string[] = [];
   try {
     for (let i = 0; i < sendable.length; i++) {
       // No header and no mention: a library entry pings nobody.
@@ -380,20 +390,31 @@ export async function sendScriptsToChannel(input: {
         discord_message_id: messageId,
         posted_at: new Date().toISOString(),
       });
+      if (error && error.code !== "23505") {
+        // Not "already published here" (that's 23505, handled below) — the
+        // row genuinely failed to write, so the card that's live in Discord
+        // right now has no record at all. Throwing here would abandon every
+        // later script in the batch with nothing to show for it beyond one
+        // error message, so instead note the id as unrecorded and keep
+        // going; the rest of the batch is unrelated to why this one insert
+        // failed.
+        unrecorded.push(batch[i].id);
+      }
       // 23505 means it was already published here — the card is a duplicate we
       // just posted, but the record stands; do not fail the batch over it.
-      if (error && error.code !== "23505") {
-        throw new Error(`posted, but recording it failed: ${error.message}`);
-      }
       posted++;
     }
   } catch (e) {
+    // Only postPage (the Discord call) throws past this point — nothing was
+    // posted for this script, so the rest of the batch is genuinely unsafe
+    // to continue and aborting here (unlike an insert failure, above) is
+    // correct.
     return {
-      channel: channel.name, posted, alreadyPosted: already.size,
+      channel: channel.name, posted, alreadyPosted: already.size, unrecorded,
       error: e instanceof Error ? e.message : String(e),
     };
   }
 
   revalidatePath("/scripts");
-  return { channel: channel.name, posted, alreadyPosted: already.size };
+  return { channel: channel.name, posted, alreadyPosted: already.size, unrecorded };
 }
