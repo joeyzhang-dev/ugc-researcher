@@ -37,3 +37,6 @@ worker/.venv-transcribe/
 
 # Personal Claude Code permissions (deploy allowlist) — not the team's call.
 .claude/settings.local.json
+
+# Agent worktrees (isolated workspaces, never committed)
+.claude/worktrees/
