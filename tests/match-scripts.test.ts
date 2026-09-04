@@ -1,15 +1,31 @@
 import { describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { resolveOpenAssignments } from "@/lib/jobs/match-scripts";
+import { matchScriptPosts, resolveOpenAssignments } from "@/lib/jobs/match-scripts";
 import { virtualAssignmentId } from "@/lib/scripts";
-import type { ResearchCreator, ResearchScript } from "@/lib/types";
+import type {
+  ResearchCreator,
+  ResearchScript,
+  ResearchScriptAssignment,
+  ResearchVideo,
+} from "@/lib/types";
+
+/** One write the job attempted, in the order it attempted it. */
+type Write = { table: string; op: "insert" | "update"; payload: unknown };
 
 /**
  * A minimal stand-in for the Supabase client, covering exactly the
  * `.from(table).select(cols).range(from, to)` shape `page()`/`pageOptional()`
  * use in src/lib/jobs/match-scripts.ts. Every table not listed answers empty.
+ *
+ * Writes are recorded rather than performed, so a test can assert what the job
+ * would have done to the database — the interesting assertion for a matcher
+ * whose whole job is to not link the wrong thing. `update()` returns a
+ * thenable that swallows `.eq()` / `.is()`, matching both call sites.
  */
-function fakeDb(tables: Record<string, unknown[] | { error: { code: string; message: string } }>): SupabaseClient {
+function fakeDb(
+  tables: Record<string, unknown[] | { error: { code: string; message: string } }>,
+  writes: Write[] = []
+): SupabaseClient {
   return {
     from(table: string) {
       return {
@@ -21,6 +37,20 @@ function fakeDb(tables: Record<string, unknown[] | { error: { code: string; mess
               return { data: t ?? [], error: null };
             },
           };
+        },
+        insert(payload: unknown) {
+          writes.push({ table, op: "insert", payload });
+          return Promise.resolve({ error: null });
+        },
+        update(payload: unknown) {
+          writes.push({ table, op: "update", payload });
+          const chain = {
+            eq: () => chain,
+            is: () => chain,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            then: (resolve: any) => Promise.resolve({ error: null }).then(resolve),
+          };
+          return chain;
         },
       };
     },
@@ -109,5 +139,98 @@ describe("resolveOpenAssignments — research_script_posts not yet migrated", ()
     });
 
     await expect(resolveOpenAssignments(db)).rejects.toThrow(/permission denied/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Trial bursts, at the loader and the job
+// ---------------------------------------------------------------------------
+
+const HOOK = "Four things you should not be doing if you want to lock in this year";
+const BODY =
+  "Number one, comparing your progress to somebody who started five years earlier. " +
+  "Number two, skipping rest because you think exhaustion equals discipline. " +
+  "Number three, chasing approval from strangers online instead of building something quietly.";
+const SPOKEN = `${HOOK}. ${BODY}`;
+
+const burstScript = {
+  id: "s1", app_id: null, title: HOOK, hook: HOOK, body: BODY, niche: null,
+  inspo_url: null, demo: null, songs: null, status: "Sent",
+  created_at: "2026-08-01T00:00:00Z",
+} as unknown as ResearchScript;
+
+const burstAsg: ResearchScriptAssignment = {
+  id: "a1", script_id: "s1", research_creator_id: "c1", research_video_id: null,
+  status: "Assigned", notes: null, assigned_at: "2026-08-30T00:00:00Z", posted_at: null,
+  discord_channel_id: null, discord_message_id: null, sent_at: "2026-08-30T00:00:00Z",
+};
+
+/** The live shape: one reel uploaded fifteen times in a sitting, of which
+ *  `transcribed` have come back from the worker's one-row-per-60s poll. */
+function burstVideos(transcribed: number): ResearchVideo[] {
+  const start = Date.parse("2026-09-01T18:00:00Z");
+  return Array.from({ length: 15 }, (_, i) => ({
+    id: `v${i}`,
+    research_creator_id: "c1",
+    url: `https://x/v${i}`,
+    shortcode: `v${i}`,
+    posted_at: new Date(start + i * 5 * 60_000).toISOString(),
+    transcript_text: i < transcribed ? SPOKEN : null,
+    transcript_status: i < transcribed ? "transcribed" : "pending",
+  })) as unknown as ResearchVideo[];
+}
+
+const burstTables = (transcribed: number) => ({
+  research_scripts: [burstScript],
+  research_script_assignments: [burstAsg],
+  research_videos: burstVideos(transcribed),
+  research_creators: [creator("c1", "roster")],
+  research_script_posts: [],
+  research_app_creators: [],
+  research_discord_channels: [],
+});
+
+describe("resolveOpenAssignments — a burst still transcribing", () => {
+  it("holds the one transcribed upload rather than confirming it", async () => {
+    const ctx = await resolveOpenAssignments(fakeDb(burstTables(1)));
+    expect(ctx.confirm).toHaveLength(0);
+    expect(ctx.review.map((r) => r.reason)).toEqual(["awaiting-siblings"]);
+    expect(ctx.review[0].pendingSiblings).toBe(14);
+    // Nothing is excluded yet — three transcripts are needed before the batch
+    // is even visible, which is precisely why the hold has to exist.
+    expect(ctx.trialVideoIds.size).toBe(0);
+  });
+
+  it("excludes the whole batch once it becomes visible", async () => {
+    const ctx = await resolveOpenAssignments(fakeDb(burstTables(3)));
+    expect(ctx.trialVideoIds.size).toBe(3);
+    expect(ctx.confirm).toHaveLength(0);
+    expect(ctx.review).toHaveLength(0);
+  });
+});
+
+describe("matchScriptPosts — a burst still transcribing", () => {
+  it("writes no assignment at all, and says why in the result", async () => {
+    const writes: Write[] = [];
+    const result = await matchScriptPosts(fakeDb(burstTables(1), writes));
+
+    // The whole point: this state used to link a trial upload permanently.
+    expect(writes.filter((w) => w.table === "research_script_assignments")).toEqual([]);
+    expect(result.linked).toBe(0);
+    expect(result.awaitingSiblings).toBe(1);
+    expect(result.contested).toBe(0);
+    expect(result.trialUploads).toBe(0);
+    // The requeue still runs and still asks for the fourteen missing
+    // transcripts — the hold is what buys the time for them to land.
+    expect(result.requeuedForTranscription).toBe(14);
+  });
+
+  it("reports the excluded uploads once the batch is visible", async () => {
+    const writes: Write[] = [];
+    const result = await matchScriptPosts(fakeDb(burstTables(3), writes));
+    expect(writes.filter((w) => w.table === "research_script_assignments")).toEqual([]);
+    expect(result.linked).toBe(0);
+    expect(result.review).toBe(0);
+    expect(result.trialUploads).toBe(3);
   });
 });

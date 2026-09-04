@@ -363,6 +363,14 @@ export interface MatchRunResult {
   lowConfidence: number;
   /** Held back because the post predates the script that supposedly made it. */
   backdated: number;
+  /** Held back because a same-day sibling of the post is still transcribing,
+   *  so a real post cannot yet be told apart from a trial upload. */
+  awaitingSiblings: number;
+  /** Uploads excluded outright as members of a detected trial batch. A trial
+   *  reel never graduates and never counts as a post, so it can never back a
+   *  script — reported rather than silently dropped, the same way
+   *  /performance reports the batches it collapses. */
+  trialUploads: number;
   /** Untranscribed posts asked for on this pass because they are the only
    *  thing standing between an open assignment and a match. */
   requeuedForTranscription: number;
@@ -387,6 +395,8 @@ export async function matchScriptPosts(db: SupabaseClient): Promise<MatchRunResu
     contested: ctx.review.filter((r) => r.reason === "contested").length,
     lowConfidence: ctx.review.filter((r) => r.reason === "low-confidence").length,
     backdated: ctx.review.filter((r) => r.reason === "posted-before-send").length,
+    awaitingSiblings: ctx.review.filter((r) => r.reason === "awaiting-siblings").length,
+    trialUploads: ctx.trialVideoIds.size,
     requeuedForTranscription: requeue.requeued,
     deadPublishes: ctx.deadPublishes.length,
   };

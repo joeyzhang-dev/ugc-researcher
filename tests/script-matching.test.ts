@@ -4,10 +4,16 @@ import {
   dateProximity,
   isVirtualAssignmentId,
   parseVirtualAssignmentId,
+  MATCH_AUTO_MIN,
   resolveScriptMatches,
   virtualAssignmentId,
 } from "@/lib/scripts";
-import type { ResearchScript, ResearchScriptAssignment, ResearchVideo } from "@/lib/types";
+import type {
+  ResearchScript,
+  ResearchScriptAssignment,
+  ResearchTranscriptStatus,
+  ResearchVideo,
+} from "@/lib/types";
 
 function script(id: string, hook: string, body: string): ResearchScript {
   return {
@@ -33,11 +39,12 @@ function vid(
   id: string,
   creatorId: string,
   transcript: string | null,
-  postedAt: string | null = null
+  postedAt: string | null = null,
+  status: ResearchTranscriptStatus = transcript ? "transcribed" : "pending"
 ): ResearchVideo {
   return {
     id, research_creator_id: creatorId, url: `https://x/${id}`, shortcode: id,
-    transcript_text: transcript, transcript_status: transcript ? "transcribed" : "pending",
+    transcript_text: transcript, transcript_status: status,
     posted_at: postedAt,
   } as unknown as ResearchVideo;
 }
@@ -363,5 +370,234 @@ describe("real and virtual pairs competing for one video", () => {
       assignmentId: virtual[0].id,
       reason: "posted-before-send",
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Trial reels
+//
+// Joey's creators run Instagram Trials through a tool that uploads one reel
+// fifteen-plus times in a sitting. A trial reel never graduates and never
+// counts as a post, so no member of a batch may ever be linked to a script —
+// and the moment that matters most is the one where the batch is invisible:
+// transcription is asynchronous (the Fly worker takes one row per 60s poll),
+// so for hours a burst reads as ONE transcribed video with no rivals at all,
+// which is exactly the shape that auto-links.
+// ---------------------------------------------------------------------------
+
+const TRIAL_HOOK = "Four things you should not be doing if you want to lock in this year";
+const TRIAL_BODY =
+  "Number one, comparing your progress to somebody who started five years earlier. " +
+  "Number two, skipping rest because you think exhaustion equals discipline. " +
+  "Number three, chasing approval from strangers online instead of building something quietly.";
+/** The creator said the script, so containment is a clean 1.0 — every gate
+ *  below is therefore about the batch, never about a weak score. */
+const TRIAL_TRANSCRIPT = `${TRIAL_HOOK}. ${TRIAL_BODY}`;
+const OTHER_TRANSCRIPT =
+  "The bible literally tells us how to turn poverty into generational wealth, and nobody teaches this anywhere.";
+
+const TRIAL_SENT = "2026-08-30T00:00:00Z";
+const BURST_START = Date.parse("2026-09-01T18:00:00Z");
+const burstAt = (i: number, from = BURST_START) => new Date(from + i * 5 * 60_000).toISOString();
+
+const trialScript = () => script("s1", TRIAL_HOOK, TRIAL_BODY);
+const trialAsg = () => asg("a1", "s1", "c1", TRIAL_SENT);
+
+/** A 15-upload trial burst, `transcribed` of which have come back from the
+ *  worker; the rest are still queued. */
+function burst(transcribed: number, size = 15, from = BURST_START): ResearchVideo[] {
+  return Array.from({ length: size }, (_, i) =>
+    i < transcribed
+      ? vid(`v${i}`, "c1", TRIAL_TRANSCRIPT, burstAt(i, from))
+      : vid(`v${i}`, "c1", null, burstAt(i, from), "pending")
+  );
+}
+
+describe("resolveScriptMatches — trial bursts still transcribing", () => {
+  // THE failure. One transcribed upload of fifteen has no rival, clears
+  // MATCH_AUTO_MIN at 1.0 and beats a runner-up of 0.000 — so the old
+  // resolver linked a trial upload with no human in the loop, permanently,
+  // and /scripts then carried it as a real post.
+  it("holds a lone transcribed upload whose fourteen siblings are still queued, instead of linking it", () => {
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], burst(1), new Set());
+    expect(out.confirm).toHaveLength(0);
+    expect(out.review).toHaveLength(1);
+    expect(out.review[0]).toMatchObject({
+      assignmentId: "a1",
+      videoId: "v0",
+      reason: "awaiting-siblings",
+      pendingSiblings: 14,
+    });
+  });
+
+  // Two transcribed siblings already contest each other, so the old code
+  // called this "contested" — true but misleading: nothing here needs a human
+  // to choose between two scripts, it needs the other thirteen transcripts.
+  it("calls a two-of-fifteen burst awaiting siblings rather than contested", () => {
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], burst(2), new Set());
+    expect(out.confirm).toHaveLength(0);
+    expect(out.review.map((r) => r.reason)).toEqual(["awaiting-siblings"]);
+  });
+
+  // At TRIAL_MIN_BATCH the detector can finally see the batch, and every
+  // member drops out of the candidate pool entirely — there is no pair left
+  // to hold, confirm or review.
+  it("excludes every member once three of the fifteen have transcripts", () => {
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], burst(3), new Set());
+    expect([...out.trialVideoIds].sort()).toEqual(["v0", "v1", "v2"]);
+    expect(out.confirm).toHaveLength(0);
+    expect(out.review).toHaveLength(0);
+  });
+
+  it("excludes all fifteen once the whole burst is transcribed", () => {
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], burst(15), new Set());
+    expect(out.trialVideoIds.size).toBe(15);
+    expect(out.confirm).toHaveLength(0);
+    expect(out.review).toHaveLength(0);
+  });
+
+  // A batch counts a claimed sibling as evidence: it is still an upload the
+  // trial tool made, and dropping it from the count is what would let a
+  // three-upload batch read as a two-upload pair.
+  it("counts an already-claimed sibling when deciding a burst is a batch", () => {
+    const videos = [
+      vid("v0", "c1", TRIAL_TRANSCRIPT, burstAt(0)),
+      vid("v1", "c1", TRIAL_TRANSCRIPT, burstAt(1)),
+      vid("taken", "c1", TRIAL_TRANSCRIPT, burstAt(2)),
+    ];
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], videos, new Set(["taken"]));
+    expect(out.trialVideoIds.has("v0")).toBe(true);
+    expect(out.trialVideoIds.has("v1")).toBe(true);
+    expect(out.confirm).toHaveLength(0);
+    expect(out.review).toHaveLength(0);
+  });
+
+  // 8pm US Eastern is 00:00 UTC. Bucketed by calendar day this burst splits
+  // 1/14, the lone member on the sparse side sees no siblings, and the
+  // permanent wrong link is back. The window rolls on instants for this.
+  it("sees a burst that straddles midnight UTC — held while transcribing", () => {
+    const late = vid("late", "c1", TRIAL_TRANSCRIPT, "2026-09-01T23:58:00Z");
+    const early = Array.from({ length: 14 }, (_, i) =>
+      vid(`early${i}`, "c1", null, burstAt(i, Date.parse("2026-09-02T00:05:00Z")), "pending")
+    );
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], [late, ...early], new Set());
+    expect(out.confirm).toHaveLength(0);
+    expect(out.review.map((r) => r.reason)).toEqual(["awaiting-siblings"]);
+  });
+
+  it("sees the same straddling burst as one batch once every member is transcribed", () => {
+    const late = vid("late", "c1", TRIAL_TRANSCRIPT, "2026-09-01T23:58:00Z");
+    const early = Array.from({ length: 14 }, (_, i) =>
+      vid(`early${i}`, "c1", TRIAL_TRANSCRIPT, burstAt(i, Date.parse("2026-09-02T00:05:00Z")))
+    );
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], [late, ...early], new Set());
+    expect(out.trialVideoIds.size).toBe(15);
+    expect(out.confirm).toHaveLength(0);
+    expect(out.review).toHaveLength(0);
+  });
+
+  // A pair is not a trial run — creators hand-post the same reel twice — so
+  // TRIAL_MIN_BATCH leaves it alone and it lands where it always did.
+  it("still calls a hand-posted identical pair contested, not a batch", () => {
+    const videos = [
+      vid("v0", "c1", TRIAL_TRANSCRIPT, burstAt(0)),
+      vid("v1", "c1", TRIAL_TRANSCRIPT, burstAt(1)),
+    ];
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], videos, new Set());
+    expect(out.trialVideoIds.size).toBe(0);
+    expect(out.confirm).toHaveLength(0);
+    expect(out.review.map((r) => r.reason)).toEqual(["contested"]);
+  });
+});
+
+describe("resolveScriptMatches — what the hold must NOT catch", () => {
+  it("auto-links a lone post with nothing else in its window", () => {
+    const out = resolveScriptMatches(
+      [trialScript()],
+      [trialAsg()],
+      [vid("v0", "c1", TRIAL_TRANSCRIPT, burstAt(0))],
+      new Set()
+    );
+    expect(out.confirm).toHaveLength(1);
+    expect(out.confirm[0]).toMatchObject({ videoId: "v0", pendingSiblings: 0 });
+    expect(out.review).toHaveLength(0);
+  });
+
+  // "failed" is terminal on this read. A failed transcript is usually a
+  // deleted post, and requeueMatchCandidates has already flipped every
+  // in-radius failed/skipped row to "pending" earlier in the same
+  // matchScriptPosts call — so a row still reading "failed" here is one
+  // nothing is coming for. Treating it as in flight would hold a real post
+  // forever, since the requeue would re-arm it on every tick.
+  it("does not hold for a same-day sibling whose transcription failed", () => {
+    const videos = [
+      vid("v0", "c1", TRIAL_TRANSCRIPT, burstAt(0)),
+      vid("dead", "c1", null, burstAt(1), "failed"),
+    ];
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], videos, new Set());
+    expect(out.confirm).toHaveLength(1);
+    expect(out.confirm[0].videoId).toBe("v0");
+  });
+
+  it("does not hold for a pending upload three days outside the window", () => {
+    const videos = [
+      vid("v0", "c1", TRIAL_TRANSCRIPT, burstAt(0)),
+      vid("far", "c1", null, "2026-09-04T18:00:00Z", "pending"),
+    ];
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], videos, new Set());
+    expect(out.confirm).toHaveLength(1);
+    expect(out.confirm[0].videoId).toBe("v0");
+  });
+
+  // Two different reels the same day is a normal posting day, not a trial —
+  // but while one of them is still transcribing we cannot tell which is which,
+  // so the pair waits.
+  it("holds while a genuinely different same-day upload is still transcribing", () => {
+    const videos = [
+      vid("v0", "c1", TRIAL_TRANSCRIPT, burstAt(0)),
+      vid("v1", "c1", null, burstAt(1), "pending"),
+    ];
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], videos, new Set());
+    expect(out.confirm).toHaveLength(0);
+    expect(out.review.map((r) => r.reason)).toEqual(["awaiting-siblings"]);
+  });
+
+  it("links the matching one once both same-day uploads are transcribed", () => {
+    const videos = [
+      vid("v0", "c1", TRIAL_TRANSCRIPT, burstAt(0)),
+      vid("v1", "c1", OTHER_TRANSCRIPT, burstAt(1)),
+    ];
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], videos, new Set());
+    expect(out.trialVideoIds.size).toBe(0);
+    expect(out.confirm).toHaveLength(1);
+    expect(out.confirm[0].videoId).toBe("v0");
+    expect(out.confirm[0].runnerUp).toBeLessThan(MATCH_AUTO_MIN);
+    expect(out.review).toHaveLength(0);
+  });
+
+  // The existing fixtures build untranscribed videos with a null posted_at.
+  // Those have no burst to belong to and must never read as siblings, or this
+  // guard would silently change matches that have nothing to do with trials.
+  it("never treats an undated untranscribed video as a sibling", () => {
+    const videos = [
+      vid("v0", "c1", TRIAL_TRANSCRIPT, burstAt(0)),
+      vid("undated", "c1", null),
+    ];
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], videos, new Set());
+    expect(out.confirm).toHaveLength(1);
+  });
+
+  it("never scans a creator with no open assignment", () => {
+    // c2's burst is real, but nobody is waiting on it — the detector must not
+    // walk it at all, and nothing about c1's lone post may change.
+    const videos = [
+      vid("v0", "c1", TRIAL_TRANSCRIPT, burstAt(0)),
+      ...Array.from({ length: 5 }, (_, i) =>
+        vid(`o${i}`, "c2", TRIAL_TRANSCRIPT, burstAt(i))
+      ),
+    ];
+    const out = resolveScriptMatches([trialScript()], [trialAsg()], videos, new Set());
+    expect(out.confirm).toHaveLength(1);
+    expect([...out.trialVideoIds]).toEqual([]);
   });
 });

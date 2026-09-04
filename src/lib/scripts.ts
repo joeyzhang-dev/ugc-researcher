@@ -281,7 +281,11 @@ export function rankScore(textScore: number, proximity: number): number {
 }
 
 /** Why a pair needs eyes on it rather than being linked outright. */
-export type MatchReviewReason = "contested" | "low-confidence" | "posted-before-send";
+export type MatchReviewReason =
+  | "contested"
+  | "low-confidence"
+  | "posted-before-send"
+  | "awaiting-siblings";
 
 export interface ResolvedMatch {
   assignmentId: string;
@@ -297,12 +301,21 @@ export interface ResolvedMatch {
   rank: number;
   /** Best rank any rival pair reached for this video or this assignment. */
   runnerUp: number;
+  /** Same-creator uploads inside this video's burst window whose transcripts
+   *  have not landed yet. Any one of them could come back as the same reel,
+   *  which would make this a trial upload rather than a post — so a non-zero
+   *  count is what holds the pair back. */
+  pendingSiblings: number;
   reason?: MatchReviewReason;
 }
 
 export interface MatchResolution {
   confirm: ResolvedMatch[];
   review: ResolvedMatch[];
+  /** Videos excluded as trial-batch members. Reported so the review queue and
+   *  the script detail page can drop them from the candidates they offer a
+   *  human — the resolver refusing to link one is only half the guarantee. */
+  trialVideoIds: Set<string>;
 }
 
 /** Pre-tokenized transcript, so a creator's library is tokenized once. */
@@ -547,6 +560,24 @@ export function trialUploadIds<T extends TrialUpload>(videos: T[]): Set<string> 
 }
 
 /**
+ * A sibling whose transcript is still coming.
+ *
+ * "pending" and "fetching" mean the worker has it or shortly will; "failed"
+ * and "skipped" are terminal ON THIS READ. `requeueMatchCandidates` runs at
+ * the top of the same `matchScriptPosts` call and has already flipped every
+ * in-radius failed/skipped row back to "pending", so a row still reading
+ * terminal here is one nothing is coming for — usually a deleted post, whose
+ * media is simply gone. Treating those as in flight would hold a real post
+ * forever, since the requeue re-arms them on every tick.
+ */
+function inFlight(v: ResearchVideo): boolean {
+  return (
+    !v.transcript_text &&
+    (v.transcript_status === "pending" || v.transcript_status === "fetching")
+  );
+}
+
+/**
  * Match every open assignment to the video it produced, in one pass.
  *
  * Resolution is global rather than per-assignment on purpose. A video can back
@@ -559,6 +590,23 @@ export function trialUploadIds<T extends TrialUpload>(videos: T[]): Set<string> 
  * nearest rival; everything else is returned for a human to confirm. That
  * keeps the original guarantee — two similar scripts are never silently
  * swapped — while sparing the ~600 open assignments that have no rival at all.
+ *
+ * Two rules keep a trial reel out of all of this. Creators upload one reel
+ * fifteen-plus times in a sitting through the Instagram Trials tool; a trial
+ * reel never graduates and never counts as a post, so no member of a batch may
+ * ever back a script. Where the batch is visible every member is excluded from
+ * the pool outright, by `trialUploadIds` — the same detection /performance
+ * collapses by, so the matcher and the numbers cannot disagree about which
+ * uploads are real. Where it is NOT visible — fewer than `TRIAL_MIN_BATCH`
+ * transcripts back, which is the normal state for hours after a burst, and
+ * exactly the shape that used to auto-link against a runner-up of 0.000 — a
+ * pair whose video still has an untranscribed sibling inside its burst window
+ * is held as `awaiting-siblings` instead of being linked or called contested.
+ *
+ * The hold goes to review rather than to a silent fourth list on purpose: a
+ * real post whose only same-day sibling is a deleted reel — permanently
+ * `failed`, and re-armed to `pending` by `requeueMatchCandidates` on every
+ * tick — would otherwise be held forever with nobody able to see it.
  *
  * `takenVideoIds` are videos already linked to some assignment; they are never
  * offered again.
@@ -576,13 +624,59 @@ export function resolveScriptMatches(
   const open = assignments.filter(
     (a) => !a.research_video_id && a.status !== "Skipped" && scriptById.has(a.script_id)
   );
-  if (!open.length) return { confirm: [], review: [] };
+  if (!open.length) return { confirm: [], review: [], trialVideoIds: new Set() };
 
   const wanted = new Set(open.map((a) => a.research_creator_id));
+
+  // Everything trial-related below is scoped to creators with something open.
+  // Nobody is waiting on anyone else's uploads, and this runs on every hourly
+  // tick and every review-page load.
+  const libraryByCreator = new Map<string, ResearchVideo[]>();
+  for (const v of videos) {
+    if (!wanted.has(v.research_creator_id)) continue;
+    (libraryByCreator.get(v.research_creator_id) ??
+      libraryByCreator.set(v.research_creator_id, []).get(v.research_creator_id)!).push(v);
+  }
+
+  // Detection runs over the creator's whole library, claimed posts included: a
+  // sibling already linked to some script is still evidence that this upload
+  // came out of a batch, and dropping it from the count is what would let a
+  // three-upload batch read as a hand-posted pair.
+  const trialVideoIds = new Set<string>();
+  for (const library of libraryByCreator.values()) {
+    for (const id of trialUploadIds(library)) trialVideoIds.add(id);
+  }
+
+  // When each still-transcribing upload was posted, per creator — the only
+  // thing that can be known about a sibling before its words arrive.
+  const inFlightAt = new Map<string, number[]>();
+  for (const [creatorId, library] of libraryByCreator) {
+    const at: number[] = [];
+    for (const v of library) {
+      if (!inFlight(v) || !v.posted_at) continue;
+      const t = Date.parse(v.posted_at);
+      if (!Number.isNaN(t)) at.push(t);
+    }
+    inFlightAt.set(creatorId, at);
+  }
+
   const poolByCreator = new Map<string, ResearchVideo[]>();
+  const pendingSiblings = new Map<string, number>();
   for (const v of videos) {
     if (!v.transcript_text || takenVideoIds.has(v.id)) continue;
     if (!wanted.has(v.research_creator_id)) continue;
+    // A trial upload is never a post, so it is never a candidate and never a
+    // rival either — it must not be able to contest a real post for its own
+    // assignment.
+    if (trialVideoIds.has(v.id)) continue;
+    const posted = v.posted_at ? Date.parse(v.posted_at) : NaN;
+    let waiting = 0;
+    if (!Number.isNaN(posted)) {
+      for (const t of inFlightAt.get(v.research_creator_id) ?? []) {
+        if (Math.abs(t - posted) <= TRIAL_BURST_WINDOW_MS) waiting++;
+      }
+    }
+    pendingSiblings.set(v.id, waiting);
     (poolByCreator.get(v.research_creator_id) ??
       poolByCreator.set(v.research_creator_id, []).get(v.research_creator_id)!).push(v);
   }
@@ -643,6 +737,7 @@ export function resolveScriptMatches(
         proximity,
         rank,
         runnerUp: 0,
+        pendingSiblings: pendingSiblings.get(v.id) ?? 0,
       });
       // Rivalry is judged on rank: two scripts the words cannot separate are
       // separated here by which one was actually sent near the post.
@@ -679,6 +774,14 @@ export function resolveScriptMatches(
       // The post predates its own script. Almost always a stale assignment or
       // a recycled script, never a real link — but a human should say so.
       review.push({ ...resolved, reason: "posted-before-send" });
+    } else if (p.pendingSiblings > 0) {
+      // Strong enough to link, and we still do not know what this post IS: a
+      // sibling inside its burst window is still transcribing, and if it comes
+      // back as the same reel then both are trial uploads rather than posts.
+      // The pair has already consumed its assignment and its video above, so a
+      // weaker rival cannot take the assignment this tick — it is held, not
+      // dropped.
+      review.push({ ...resolved, reason: "awaiting-siblings" });
     } else if (p.rank - rival < MATCH_AUTO_MARGIN) {
       review.push({ ...resolved, reason: "contested" });
     } else {
@@ -686,7 +789,7 @@ export function resolveScriptMatches(
     }
   }
 
-  return { confirm, review };
+  return { confirm, review, trialVideoIds };
 }
 
 /* --- library scripts: candidates without an assignment -------------------
