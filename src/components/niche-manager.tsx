@@ -6,6 +6,7 @@ import {
 import {
   createNiche, previewNicheChannelRenames, renameNicheChannels, setNicheActive, updateNiche,
 } from "@/app/(app)/settings/niche-actions";
+import type { GuildRole } from "@/lib/discord";
 import type { LiveEmojiBase } from "@/lib/niche-channel-rename";
 import type { Niche } from "@/lib/niches";
 
@@ -29,6 +30,7 @@ export function NicheManager({
   channelCounts,
   liveBases,
   discordReachable,
+  roles,
   preview,
 }: {
   niches: (Niche & { id: string })[];
@@ -40,6 +42,9 @@ export function NicheManager({
    *  keyed on the niche's stored emoji disappears at exactly that moment. */
   liveBases: LiveEmojiBase[];
   discordReachable: boolean;
+  /** Roles /onboard could actually grant, highest first. Empty when Discord is
+   *  unreachable, which is what makes the field fall back to a raw id. */
+  roles: GuildRole[];
   /** A rename waiting to be confirmed, shaped by ?renameFrom/?renameTo. */
   preview: RenamePreview | null;
 }) {
@@ -103,12 +108,10 @@ export function NicheManager({
                   className={`${agInput} w-full`}
                   aria-label={`Name for ${n.name}`}
                 />
-                <input
-                  name="discordRoleId"
-                  defaultValue={n.discordRoleId ?? ""}
-                  placeholder="—"
-                  className={`${agInput} w-full font-mono text-[11px]`}
-                  aria-label={`Discord role for ${n.name}`}
+                <RoleField
+                  roles={roles}
+                  value={n.discordRoleId}
+                  label={`Discord role for ${n.name}`}
                 />
                 <span className="pr-1 text-right text-[12px] tabular-nums text-[var(--ag-ink-3)]">
                   {channelCounts.get(n.name) ?? 0}
@@ -143,12 +146,7 @@ export function NicheManager({
               className={`${agInput} w-full`}
               aria-label="New niche name"
             />
-            <input
-              name="discordRoleId"
-              placeholder="role id"
-              className={`${agInput} w-full font-mono text-[11px]`}
-              aria-label="New niche Discord role id"
-            />
+            <RoleField roles={roles} value={null} label="Discord role for the new niche" />
             <span />
             <SubmitButton className={agButton}>Add</SubmitButton>
             <span />
@@ -269,5 +267,61 @@ function RenameConfirm({ preview }: { preview: RenamePreview }) {
         </Link>
       </div>
     </div>
+  );
+}
+
+/**
+ * The Discord role a niche grants on /onboard.
+ *
+ * A select rather than a snowflake field: an id typed by hand is unverifiable
+ * — a wrong one looks exactly like a right one until an onboard fails with
+ * "niche role not found". The value posted is still the id, so the stored
+ * column is unchanged.
+ *
+ * Falls back to a text input when Discord is unreachable, because losing the
+ * ability to set the role at all would be worse than typing an id.
+ */
+function RoleField({
+  roles,
+  value,
+  label,
+}: {
+  roles: GuildRole[];
+  value: string | null;
+  label: string;
+}) {
+  if (roles.length === 0) {
+    return (
+      <input
+        name="discordRoleId"
+        defaultValue={value ?? ""}
+        placeholder="role id"
+        className={`${agInput} w-full font-mono text-[11px]`}
+        aria-label={label}
+      />
+    );
+  }
+  // A role that has since been deleted still has to render, or saving the row
+  // would silently drop it. It shows as its bare id, flagged.
+  const known = roles.some((r) => r.id === value);
+  // This guild has two roles both called "Unverified". Identical options are
+  // a coin flip, so a name that repeats carries the tail of its id.
+  const seen = new Map<string, number>();
+  for (const r of roles) seen.set(r.name, (seen.get(r.name) ?? 0) + 1);
+  return (
+    <select
+      name="discordRoleId"
+      defaultValue={value ?? ""}
+      className={`${agInput} w-full`}
+      aria-label={label}
+    >
+      <option value="">No role</option>
+      {value && !known ? <option value={value}>{value} (deleted?)</option> : null}
+      {roles.map((r) => (
+        <option key={r.id} value={r.id}>
+          {(seen.get(r.name) ?? 0) > 1 ? `${r.name} …${r.id.slice(-4)}` : r.name}
+        </option>
+      ))}
+    </select>
   );
 }

@@ -15,7 +15,7 @@ import { ScheduleFields } from "@/components/schedule-fields";
 import { LaunchpointSync } from "@/components/launchpoint-sync";
 import { NicheManager, type RenamePreview } from "@/components/niche-manager";
 import { readLaunchpointStatus } from "../launchpoint-actions";
-import { discordConfigured, listGuildChannels } from "@/lib/discord";
+import { discordConfigured, listGuildChannels, listGuildRoles, type GuildRole } from "@/lib/discord";
 import { liveEmojiBases, planNicheChannelRenames, type LiveEmojiBase } from "@/lib/niche-channel-rename";
 import {
   AlertIcon, Badge, Card, CardHead, ClockIcon, DiscordGlyph, Empty, Eyebrow, Field,
@@ -110,10 +110,21 @@ export default async function SettingsPage({
   let liveBases: LiveEmojiBase[] = [];
   let renamePreview: RenamePreview | null = null;
   let discordReachable = false;
+  let assignableRoles: GuildRole[] = [];
   if (discordConfigured() && process.env.DISCORD_GUILD_ID) {
     try {
-      const guildChannels = await listGuildChannels(process.env.DISCORD_GUILD_ID);
+      const [guildChannels, guildRoles] = await Promise.all([
+        listGuildChannels(process.env.DISCORD_GUILD_ID),
+        listGuildRoles(process.env.DISCORD_GUILD_ID),
+      ]);
       discordReachable = true;
+      // What /onboard could actually grant. @everyone is not grantable, and a
+      // managed role belongs to a bot or an integration — Discord refuses to
+      // assign either, so offering them would be offering a guaranteed error.
+      // Highest first, matching how the roles read in Discord itself.
+      assignableRoles = guildRoles
+        .filter((r) => r.name !== "@everyone" && !r.managed)
+        .sort((a, b) => (b.position ?? 0) - (a.position ?? 0));
       liveBases = liveEmojiBases(guildChannels, nicheList);
       if (renameFrom && renameTo) {
         renamePreview = {
@@ -376,6 +387,7 @@ export default async function SettingsPage({
                   channelCounts={channelCounts}
                   liveBases={liveBases}
                   discordReachable={discordReachable}
+                  roles={assignableRoles}
                   preview={renamePreview}
                 />
               )}
