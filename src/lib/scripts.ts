@@ -494,7 +494,13 @@ export function parseVirtualAssignmentId(
   id: string
 ): { scriptId: string; creatorId: string } | null {
   if (!isVirtualAssignmentId(id)) return null;
-  const [scriptId, creatorId] = id.slice(VIRTUAL_ASSIGNMENT_PREFIX.length).split(":");
+  // Exactly two segments. A uuid never contains a colon, so anything other
+  // than scriptId:creatorId means this string was not built by
+  // virtualAssignmentId — silently keeping only the first two parts would
+  // risk attaching a match to the wrong creator instead of failing loudly.
+  const parts = id.slice(VIRTUAL_ASSIGNMENT_PREFIX.length).split(":");
+  if (parts.length !== 2) return null;
+  const [scriptId, creatorId] = parts;
   return scriptId && creatorId ? { scriptId, creatorId } : null;
 }
 
