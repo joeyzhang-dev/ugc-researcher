@@ -104,8 +104,28 @@ export function SendBar({
               aria-label="Send target"
               value={mode}
               items={[
-                { value: "channel", label: "Channel", onClick: () => setMode("channel") },
-                { value: "creators", label: "Creators", onClick: () => setMode("creators") },
+                {
+                  value: "channel",
+                  label: "Channel",
+                  onClick: () => {
+                    setMode("channel");
+                    // A report from the other mode (or a prior excursion back
+                    // into this one) must not linger under a picker it no
+                    // longer describes — most of all the unrecorded warning,
+                    // which someone must act on and must not re-see stale.
+                    setReport(null);
+                    setChannelReport(null);
+                  },
+                },
+                {
+                  value: "creators",
+                  label: "Creators",
+                  onClick: () => {
+                    setMode("creators");
+                    setReport(null);
+                    setChannelReport(null);
+                  },
+                },
               ]}
             />
             <button
@@ -159,8 +179,14 @@ export function SendBar({
             />
           ) : (
             <select
+              aria-label="Format channel"
               value={channelId}
-              onChange={(e) => setChannelId(e.target.value)}
+              onChange={(e) => {
+                setChannelId(e.target.value);
+                // Reselecting mid-picker means the prior Publish result no
+                // longer describes the channel now showing in the control.
+                setChannelReport(null);
+              }}
               className="w-full rounded-lg bg-surface px-3 py-2 text-[13px] text-neutral-900 shadow-[inset_0_1px_2px_rgb(9_9_11/0.04)] ring-1 ring-hairline transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent/45"
             >
               <option value="" disabled>
