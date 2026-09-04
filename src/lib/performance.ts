@@ -20,7 +20,7 @@
  */
 
 import type { ResearchVideo } from "@/lib/types";
-import { transcriptMatchScore } from "@/lib/scripts";
+import { TRIAL_MIN_BATCH, groupTrialUploads } from "@/lib/scripts";
 
 /** The subset of a video the math needs. `ResearchVideo` satisfies it. */
 export type PerformanceVideo = Pick<
@@ -313,29 +313,13 @@ export interface WeeklyRead {
 /* --- trial reels ---------------------------------------------------------- */
 
 /**
- * How alike two transcripts are, symmetrically (0–1).
- *
- * `transcriptMatchScore` is deliberately asymmetric — it asks "how much of the
- * script survived into the transcript", which is the right question when
- * matching a script to a post. Here both sides are transcripts of the same
- * length, and we want "are these the same video", so we take the weaker of the
- * two directions: a short clip fully contained in a long ramble is not the
- * same reel, and only requiring both directions rules that out.
+ * The batch heuristic itself lives in `@/lib/scripts`, next to transcript
+ * matching, because the matcher has to agree with this collapse about which
+ * uploads are real posts: a batch member is never a post here and never a
+ * candidate there. One implementation, re-exported so this module's own
+ * surface is unchanged.
  */
-export function transcriptSimilarity(a: string, b: string): number {
-  return Math.min(transcriptMatchScore(a, b), transcriptMatchScore(b, a));
-}
-
-/** Above this, two posts are the same reel uploaded twice. Measured against
- *  the live corpus (2026-08-31): a real trial batch scores ~1.0 across its
- *  members, while two genuinely different scripts by the same creator on the
- *  same theme topped out around 0.5. */
-export const TRIAL_SAME_REEL = 0.8;
-
-/** A batch has to be more than a pair before we call it a trial run. Posting
- *  the same reel twice is something creators do by hand; twenty times is the
- *  trial-reel tool. */
-export const TRIAL_MIN_BATCH = 3;
+export { transcriptSimilarity, TRIAL_SAME_REEL, TRIAL_MIN_BATCH } from "@/lib/scripts";
 
 export interface TrialCollapse {
   /** One representative per distinct reel — the best-performing upload of
@@ -376,15 +360,7 @@ export function collapseTrialUploads(videos: PerformanceVideo[]): TrialCollapse 
     else kept.push(v);
   }
 
-  // Most-viewed first, so the first member of a group is already its winner.
-  const ordered = [...withText].sort((a, b) => (b.view_count ?? 0) - (a.view_count ?? 0));
-  const groups: PerformanceVideo[][] = [];
-  for (const v of ordered) {
-    const text = v.transcript_text ?? "";
-    const group = groups.find((g) => transcriptSimilarity(g[0].transcript_text ?? "", text) >= TRIAL_SAME_REEL);
-    if (group) group.push(v);
-    else groups.push([v]);
-  }
+  const groups = groupTrialUploads(withText);
 
   let suppressed = 0;
   for (const group of groups) {

@@ -326,6 +326,225 @@ function scoreTokens(scriptTokens: string[], have: Map<string, number>): number 
   }
   return hit / scriptTokens.length;
 }
+// ===========================================================================
+// Trial-reel batches
+// ===========================================================================
+
+/**
+ * Creators run Instagram Trials through a tool that uploads the same reel
+ * dozens of times, and those uploads are not posts: a trial reel never
+ * graduates and never counts toward a deliverable.
+ *
+ * The detection lives HERE, next to transcript matching, rather than in
+ * performance.ts where it started, because two readers depend on it and they
+ * must not be able to disagree. `collapseTrialUploads` drops a detected batch
+ * out of every performance figure; `resolveScriptMatches` refuses to link one
+ * to a script. A second copy of the heuristic would drift, and the two halves
+ * would then disagree about which uploads exist at all. performance.ts
+ * re-exports these so its own surface is unchanged.
+ */
+
+/**
+ * How alike two transcripts are, symmetrically (0–1).
+ *
+ * `transcriptMatchScore` is deliberately asymmetric — it asks "how much of the
+ * script survived into the transcript", which is the right question when
+ * matching a script to a post. Here both sides are transcripts of the same
+ * length, and we want "are these the same video", so we take the weaker of the
+ * two directions: a short clip fully contained in a long ramble is not the
+ * same reel, and only requiring both directions rules that out.
+ */
+export function transcriptSimilarity(a: string, b: string): number {
+  return Math.min(transcriptMatchScore(a, b), transcriptMatchScore(b, a));
+}
+
+/** Above this, two posts are the same reel uploaded twice. Measured against
+ *  the live corpus (2026-08-31): a real trial batch scores ~1.0 across its
+ *  members, while two genuinely different scripts by the same creator on the
+ *  same theme topped out around 0.5. */
+export const TRIAL_SAME_REEL = 0.8;
+
+/** A batch has to be more than a pair before we call it a trial run. Posting
+ *  the same reel twice is something creators do by hand; twenty times is the
+ *  trial-reel tool. */
+export const TRIAL_MIN_BATCH = 3;
+
+/** The two fields the batch heuristic reads. Both `PerformanceVideo` and
+ *  `ResearchVideo` satisfy it, which is what lets one implementation serve
+ *  the performance collapse and the matcher's exclusion. */
+export interface TrialGroupable {
+  transcript_text?: string | null;
+  view_count: number | null;
+}
+
+/**
+ * Partition uploads into same-reel groups, most-viewed first.
+ *
+ * Greedy against each group's first member: the walk is most-viewed first, so
+ * that member is already the group's winner — which is the one
+ * `collapseTrialUploads` used to keep. Groups come back in creation order and
+ * members in view order, so a caller can read `group[0]` as the batch's best
+ * upload without sorting again.
+ *
+ * `similarity` is injectable only so a caller comparing one creator's whole
+ * burst can memoize and pre-tokenize it. The default is the real rule; passing
+ * anything else changes the cost, never the policy.
+ */
+export function groupTrialUploads<T extends TrialGroupable>(
+  videos: T[],
+  similarity: (a: string, b: string) => number = transcriptSimilarity
+): T[][] {
+  // Most-viewed first, so the first member of a group is already its winner.
+  const ordered = [...videos].sort((a, b) => (b.view_count ?? 0) - (a.view_count ?? 0));
+  const groups: T[][] = [];
+  for (const v of ordered) {
+    const text = v.transcript_text ?? "";
+    const group = groups.find((g) => similarity(g[0].transcript_text ?? "", text) >= TRIAL_SAME_REEL);
+    if (group) group.push(v);
+    else groups.push([v]);
+  }
+  return groups;
+}
+
+/**
+ * How far either side of an upload we look for the rest of its batch: ±24h,
+ * rolling on the actual instants, never snapped to a calendar day.
+ *
+ * There is no creator-local time anywhere in this codebase — performance.ts
+ * works in UTC instants (`inWindow`, the rolling `trailingWindow`) and in
+ * reproducible UTC Monday weeks for its reporting keys, and daily-recap's
+ * `collapseByDay` buckets by UTC calendar day for a recap. A calendar day is
+ * the wrong shape for a GUARD: 8pm US Eastern is 00:00 UTC, so a burst posted
+ * around then straddles the day boundary, and the lone member on the sparse
+ * side would have no visible siblings and no detectable batch — reopening
+ * exactly the hole this closes. A recap that splits a batch across two days
+ * shows a wrong count for a day; a matcher that splits one makes a permanent
+ * wrong link.
+ */
+export const TRIAL_BURST_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** An upload as the burst detector reads it: one creator's, under the id it is
+ *  reported by. */
+export interface TrialUpload extends TrialGroupable {
+  id: string;
+  posted_at: string | null;
+}
+
+/**
+ * `transcriptSimilarity`, memoized across one creator's uploads.
+ *
+ * Every member of a burst is compared against every distinct reel in it, once
+ * per member, so the naive call tokenizes the same transcripts thousands of
+ * times. Here each transcript is tokenized once and each unordered pair scored
+ * once — a live 104-upload burst day is ~5.4k unique pairs, not a million.
+ *
+ * The counted form is exactly `transcriptMatchScore`: its per-word cap makes a
+ * word contribute min(count in a, count in b) hits, over a's token count.
+ */
+function memoizedSimilarity(): (a: string, b: string) => number {
+  const idByText = new Map<string, number>();
+  const counts: Map<string, number>[] = [];
+  const totals: number[] = [];
+  const cache = new Map<string, number>();
+
+  const idOf = (text: string): number => {
+    let id = idByText.get(text);
+    if (id === undefined) {
+      id = counts.length;
+      idByText.set(text, id);
+      const have = counted(text);
+      let total = 0;
+      for (const n of have.values()) total += n;
+      counts.push(have);
+      totals.push(total);
+    }
+    return id;
+  };
+
+  const contains = (a: number, b: number): number => {
+    if (totals[a] === 0 || totals[b] === 0) return 0;
+    let hit = 0;
+    for (const [w, n] of counts[a]) hit += Math.min(n, counts[b].get(w) ?? 0);
+    return hit / totals[a];
+  };
+
+  return (a, b) => {
+    const x = idOf(a);
+    const y = idOf(b);
+    const key = x < y ? `${x}:${y}` : `${y}:${x}`;
+    let score = cache.get(key);
+    if (score === undefined) {
+      score = Math.min(contains(x, y), contains(y, x));
+      cache.set(key, score);
+    }
+    return score;
+  };
+}
+
+/**
+ * Which of ONE creator's uploads sit inside a trial batch.
+ *
+ * An upload V is a trial upload when grouping its burst neighbourhood — the
+ * same-creator transcribed uploads within `TRIAL_BURST_WINDOW_MS` of it, V
+ * included — puts V in a group of at least `TRIAL_MIN_BATCH` members. The
+ * neighbourhood is rolled around V rather than cut into fixed buckets, so no
+ * boundary can hide a sibling from it.
+ *
+ * Callers pass one creator's whole library, claimed posts included: a sibling
+ * already linked to some script is still evidence that this upload was part of
+ * a batch. Untranscribed and undated uploads are never members — an absent
+ * transcript is not evidence of duplication (the same call
+ * `collapseTrialUploads` makes), and an undated upload has no burst to sit in.
+ *
+ * Cost is bounded on purpose: an upload with fewer than `TRIAL_MIN_BATCH`
+ * neighbours is never similarity-checked at all (a creator posting twice in
+ * two days costs nothing), each distinct neighbourhood is grouped once, and
+ * similarity is memoized per unordered pair across the whole call.
+ */
+export function trialUploadIds<T extends TrialUpload>(videos: T[]): Set<string> {
+  const trial = new Set<string>();
+
+  const rows: { video: T; at: number }[] = [];
+  for (const v of videos) {
+    if ((v.transcript_text ?? "").trim().length === 0) continue;
+    if (!v.posted_at) continue;
+    const at = Date.parse(v.posted_at);
+    if (Number.isNaN(at)) continue;
+    rows.push({ video: v, at });
+  }
+  if (rows.length < TRIAL_MIN_BATCH) return trial;
+  rows.sort((a, b) => a.at - b.at || a.video.id.localeCompare(b.video.id));
+
+  const similarity = memoizedSimilarity();
+  // A neighbourhood is a contiguous run of the time-sorted rows, so both
+  // bounds only ever move forward and each distinct run is grouped once.
+  const sizesBySlice = new Map<string, Map<string, number>>();
+  let lo = 0;
+  let hi = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const at = rows[i].at;
+    while (rows[lo].at < at - TRIAL_BURST_WINDOW_MS) lo++;
+    // hi lands on at least i on its own: every row up to i is within the
+    // window of row i by construction.
+    while (hi + 1 < rows.length && rows[hi + 1].at <= at + TRIAL_BURST_WINDOW_MS) hi++;
+    if (hi - lo + 1 < TRIAL_MIN_BATCH) continue;
+
+    const key = `${lo}:${hi}`;
+    let sizes = sizesBySlice.get(key);
+    if (!sizes) {
+      sizes = new Map<string, number>();
+      const near = rows.slice(lo, hi + 1).map((r) => r.video);
+      for (const group of groupTrialUploads(near, similarity)) {
+        for (const member of group) sizes.set(member.id, group.length);
+      }
+      sizesBySlice.set(key, sizes);
+    }
+    if ((sizes.get(rows[i].video.id) ?? 0) >= TRIAL_MIN_BATCH) trial.add(rows[i].video.id);
+  }
+
+  return trial;
+}
 
 /**
  * Match every open assignment to the video it produced, in one pass.
