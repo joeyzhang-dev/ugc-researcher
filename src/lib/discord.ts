@@ -65,6 +65,8 @@ export interface GuildChannel {
   type: number;
   name: string;
   parent_id: string | null;
+  /** Discord's display order within the category. */
+  position?: number;
 }
 
 export interface GuildRole {
