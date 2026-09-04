@@ -83,14 +83,14 @@ describe("streak", () => {
 });
 
 describe("dailyRecap trial collapse", () => {
-  it("counts a trial batch as one post, matching the weekly card", () => {
+  it("counts a trial batch as no posts, matching the weekly card", () => {
     // Seen live: a raw daily said "10 posted yesterday" for a creator whose
     // whole WEEK collapses to 16. The two commands must not disagree.
     const script = "four things you should not be doing if you claim to be a christian today";
     const batch = Array.from({ length: 10 }, (_, i) => post(`t${i}`, "2026-08-25T10:00:00Z".replace("10", "10"), script));
     const r = dailyRecap({ posts: batch, metrics: [], today: WED });
-    expect(r.pace.postsThisWeek).toBe(1);
-    expect(r.trialUploads).toBe(9);
+    expect(r.pace.postsThisWeek).toBe(0);
+    expect(r.trialUploads).toBe(10);
   });
 
   it("leaves genuinely different posts alone", () => {
