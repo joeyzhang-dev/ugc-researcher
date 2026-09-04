@@ -8,6 +8,8 @@ import {
   nextRunAt,
   parseTimeOfDay,
   type ScrapeSettings,
+  scrapeDepth,
+  FIRST_SCRAPE_LIMIT,
 } from "@/lib/scrape-settings";
 
 const at = (iso: string) => new Date(iso);
@@ -118,5 +120,28 @@ describe("clampInt", () => {
     expect(clampInt("", 1, 200, 35)).toBe(35);
     expect(clampInt("   ", 1, 200, 35)).toBe(35);
     expect(clampInt("12.6", 1, 200, 35)).toBe(13);
+  });
+});
+
+describe("scrapeDepth", () => {
+  it("pulls a deep history the first time it ever sees a creator", () => {
+    // A profile fetch returns newest-first, so a shallow FIRST scrape is a
+    // permanent hole: posts older than the slice can never be recovered by
+    // scraping more often, only by scraping deeper. Measured 2026-09-04,
+    // 19 of 45 research creators held 3 posts covering under a week —
+    // @dylonpboone's three reached back 2.8 days.
+    expect(scrapeDepth({ lastScrapedAt: null, configuredLimit: 3 })).toBe(FIRST_SCRAPE_LIMIT);
+  });
+
+  it("pulls only the configured slice on every later scrape", () => {
+    // A re-scrape only has to catch what is new since last time, and depth is
+    // billed per request — that is what the setting is for.
+    expect(scrapeDepth({ lastScrapedAt: "2026-09-01T00:00:00Z", configuredLimit: 3 })).toBe(3);
+  });
+
+  it("never goes shallower than the configured limit on a first scrape", () => {
+    // If someone deliberately sets a deeper limit than the first-scrape
+    // default, honour it rather than quietly capping them.
+    expect(scrapeDepth({ lastScrapedAt: null, configuredLimit: 120 })).toBe(120);
   });
 });

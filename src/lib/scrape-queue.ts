@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { runResearchScrape } from "@/lib/jobs/research";
 import {
   DEFAULT_SCRAPE_SETTINGS,
+  scrapeDepth,
   type ScrapeRunStatus,
   type ScrapeSettings,
 } from "@/lib/scrape-settings";
@@ -115,7 +116,7 @@ export async function drainOneQueued(supabase: SupabaseClient): Promise<DrainRes
   const settings = await readSettings(supabase);
   const { data: next } = await supabase
     .from("research_creators")
-    .select("id, handle, platform")
+    .select("id, handle, platform, last_scraped_at")
     .not("scrape_queued_at", "is", null)
     .order("scrape_queued_at", { ascending: true })
     .limit(1)
@@ -136,7 +137,13 @@ export async function drainOneQueued(supabase: SupabaseClient): Promise<DrainRes
     await runResearchScrape(supabase, {
       handle: next.handle as string,
       platform: next.platform as Platform,
-      resultsLimit: settings.results_limit,
+      // Deep on a creator's first scrape, the configured slice afterwards.
+      // Passing settings.results_limit unconditionally is what left creators
+      // added through the queue with a permanently shallow history.
+      resultsLimit: scrapeDepth({
+        lastScrapedAt: next.last_scraped_at as string | null,
+        configuredLimit: settings.results_limit,
+      }),
     });
   } catch (e) {
     ok = false;

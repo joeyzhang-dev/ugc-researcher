@@ -3,13 +3,17 @@ import { fetchProfile, fetchProfileVideos } from "@/lib/scrapecreators";
 import { canonicalVideoUrl } from "@/lib/social-urls";
 import { detectFormatCategory, extractHashtags } from "@/lib/research";
 import { captureImage, captureVideo } from "@/lib/thumbnails";
+import { FIRST_SCRAPE_LIMIT } from "@/lib/scrape-settings";
 import type { Platform } from "@/lib/types";
 
 /** Newest N videos per scrape (count-based — there's no date filter on the
  *  profile endpoints). Enough history for the trailing-10 lift baseline
  *  without paging through a creator's whole back catalogue. Override per call
  *  with resultsLimit. */
-const DEFAULT_RESULTS_LIMIT = 35;
+// One number for a first scrape, wherever it is triggered from. The
+// add-creator form defaulting to 35 while the queue passed 3 is exactly the
+// split that left half the research pool three reels deep.
+const DEFAULT_RESULTS_LIMIT = FIRST_SCRAPE_LIMIT;
 
 /** Instagram CDN URLs 403 when hotlinked and expire in days; anything we want
  *  to render must live in our own storage. */

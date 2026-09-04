@@ -44,6 +44,22 @@ export const DEFAULT_SCRAPE_SETTINGS: ScrapeSettings = {
 
 export const INTERVAL_MIN = 1;
 export const INTERVAL_MAX = 168;
+/**
+ * Depth for a creator we have never scraped before.
+ *
+ * A profile fetch returns newest-first and pages until it runs out, so a
+ * shallow FIRST scrape is a permanent hole: posts older than the slice cannot
+ * be recovered by scraping more OFTEN, only by scraping deeper. Measured
+ * 2026-09-04, with the configured limit at 3, 19 of 45 research creators held
+ * three posts covering under a week — @dylonpboone's reached back 2.8 days.
+ *
+ * Depth is close to free: Scrape Creators bills per REQUEST, not per video, at
+ * one credit per page of ~8-12 reels, and pagination stops as soon as a page
+ * reports no more. So a creator with 10 videos costs one credit at depth 40,
+ * the same as at depth 3; a prolific one costs three or four.
+ */
+export const FIRST_SCRAPE_LIMIT = 40;
+
 export const RESULTS_MIN = 1;
 export const RESULTS_MAX = 200;
 export const STAGGER_MIN = 0;
@@ -127,4 +143,21 @@ export function clampInt(raw: unknown, min: number, max: number, fallback: numbe
   const n = Math.round(Number(raw));
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
+}
+
+/**
+ * How many reels to pull for one creator on this run.
+ *
+ * Deep the first time, then the configured slice — a re-scrape only has to
+ * catch what is new. Never shallower than the configured limit, so a
+ * deliberately deeper setting is honoured rather than quietly capped.
+ */
+export function scrapeDepth({
+  lastScrapedAt,
+  configuredLimit,
+}: {
+  lastScrapedAt: string | null | undefined;
+  configuredLimit: number;
+}): number {
+  return lastScrapedAt ? configuredLimit : Math.max(configuredLimit, FIRST_SCRAPE_LIMIT);
 }
