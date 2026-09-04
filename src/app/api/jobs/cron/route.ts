@@ -93,7 +93,20 @@ export async function GET(request: NextRequest) {
     const scrape = await scrapeAll(false);
     // Only once the scrape queue is empty — mid-drain the budget is spoken for.
     const idle = scrape.remaining === 0;
-    const matched = idle ? await matchScriptPosts(createAdminClient()) : null;
+    // Non-fatal like the digests above: matchScriptPosts touches
+    // research_script_posts, whose migration ships separately from this code
+    // and can land on Vercel first. An uncaught throw here used to take the
+    // whole tick down with it — Launchpoint syncs on the next line, so a
+    // matcher fault would silently stop that drain too, with nothing in the
+    // response saying why.
+    let matched: Awaited<ReturnType<typeof matchScriptPosts>> | { failed: string } | null = null;
+    if (idle) {
+      try {
+        matched = await matchScriptPosts(createAdminClient());
+      } catch (error) {
+        matched = { failed: error instanceof Error ? error.message : String(error) };
+      }
+    }
     // Launchpoint gets whatever is left of the tick. Its two expensive phases
     // are budget-aware and resume from the table on the next run, so a short
     // remainder here is progress rather than a wasted call.
