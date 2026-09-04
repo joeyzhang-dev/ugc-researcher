@@ -53,6 +53,18 @@ export function trialFlagsFromJobs(jobs: PublishJob[]): TrialFlag[] {
   return [...bySc.values()];
 }
 
+/**
+ * Per-request ceiling on the batcher read.
+ *
+ * `fetch` has no default timeout, so an unroutable or hung host does not throw
+ * — it waits. Measured against a dead host, the cron tick simply stopped
+ * there. On Vercel that would silently consume the whole 300s ceiling and skip
+ * matching and the Launchpoint drain, which is barely better than the
+ * uncaught throw the orchestrator now guards against. The publish log is a
+ * small indexed table on a warm project; 15s is generous.
+ */
+export const BATCHER_TIMEOUT_MS = 15_000;
+
 /** Whether the batcher project is reachable from this deployment. */
 export function batcherConfigured(): boolean {
   return !!(process.env.TRIAL_BATCHER_SUPABASE_URL && process.env.TRIAL_BATCHER_SERVICE_KEY);
@@ -73,7 +85,10 @@ export async function fetchPublishedTrials(pageSize = 1000): Promise<TrialFlag[]
   for (let offset = 0; ; offset += pageSize) {
     const res = await fetch(
       `${base}/rest/v1/publish_jobs?select=batch_id,status,permalink&status=eq.done&limit=${pageSize}&offset=${offset}`,
-      { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+      {
+        headers: { apikey: key, Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(BATCHER_TIMEOUT_MS),
+      }
     );
     if (!res.ok) throw new Error(`trial batcher ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const page = (await res.json()) as PublishJob[];

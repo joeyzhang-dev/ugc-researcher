@@ -99,7 +99,20 @@ export async function GET(request: NextRequest) {
     // came from — manufacturing exactly the near-tie MATCH_AUTO_MARGIN refuses
     // to auto-link, and filling /scripts/review with pileups of one reel.
     // Cheap: one read of the batcher's publish log plus a per-creator pass.
-    const trials = idle ? await syncTrialUploads(createAdminClient()) : null;
+    // Non-fatal, the same contract as Launchpoint's accounts phase: this is
+    // the only phase that reads a SECOND Supabase project (the trial
+    // batcher's), which can be down, rotated or paused on a schedule nothing
+    // here controls. Uncaught, that would 500 the whole tick and silently skip
+    // matching and the Launchpoint drain below it — so the failure is caught
+    // and reported in the response instead of taking the hour with it.
+    let trials: Awaited<ReturnType<typeof syncTrialUploads>> | { failed: string } | null = null;
+    if (idle) {
+      try {
+        trials = await syncTrialUploads(createAdminClient());
+      } catch (error) {
+        trials = { failed: error instanceof Error ? error.message : String(error) };
+      }
+    }
     const matched = idle ? await matchScriptPosts(createAdminClient()) : null;
     // Launchpoint gets whatever is left of the tick. Its two expensive phases
     // are budget-aware and resume from the table on the next run, so a short
