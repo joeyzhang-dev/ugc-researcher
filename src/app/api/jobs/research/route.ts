@@ -54,6 +54,11 @@ export async function POST(request: NextRequest) {
       const result = await runFormatCategorization(createAdminClient(), body.creatorId);
       return NextResponse.json(result);
     }
+    if (body.action === "trial-sync") {
+      const { syncTrialUploads } = await import("@/lib/jobs/trial-sync");
+      return NextResponse.json(await syncTrialUploads(createAdminClient()));
+    }
+
     if (body.action === "match-scripts") {
       return NextResponse.json(await matchScriptPosts(createAdminClient()));
     }

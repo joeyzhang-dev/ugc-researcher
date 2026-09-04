@@ -968,9 +968,15 @@ def run_once() -> int:
 
     # Highest view count first so likely S-tier videos get transcripts soonest
     # (format analysis starts with the winners).
+    # Trial uploads are excluded outright. A trial is one of ~35 near-identical
+    # takes the batcher publishes to find a winner; none of them is a
+    # deliverable, none is a script-matching candidate, and transcribing them
+    # was 590 Whisper calls in 30 days on the roster alone. Filtered here rather
+    # than by marking rows 'skipped' so a row un-flagged later becomes eligible
+    # again with no second write.
     research = sb(
         "GET",
-        "research_videos?transcript_status=eq.pending"
+        "research_videos?transcript_status=eq.pending&is_trial_upload=is.false"
         "&order=view_count.desc.nullslast&limit=25"
         "&select=id,url,video_url,duration_seconds,audio_url:raw_metadata->>audioUrl",
     )

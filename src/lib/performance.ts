@@ -331,7 +331,7 @@ export interface TrialCollapse {
 }
 
 /**
- * Collapse trial-reel batches down to one post each.
+ * Drop trial-reel batches. Every member goes; none of them is a post.
  *
  * Creators run Instagram Trials through a tool that uploads the same reel
  * dozens of times: measured live, one creator's week held 104 uploads carrying
@@ -365,6 +365,39 @@ export interface TrialCollapse {
  * Anything without a transcript stands alone. A missing transcript is not
  * evidence of duplication, and guessing would quietly delete real posts.
  */
+/**
+ * The shortcodes of every upload belonging to a trial batch — the top draw
+ * included, because it is a trial like the rest.
+ *
+ * This is what stamps `research_videos.is_trial_upload` for the creators the
+ * batcher does not cover. Measured at 0.976 precision against the batcher's
+ * ground truth, which is why those rows are recorded as trial_source
+ * 'heuristic' and stay re-evaluable.
+ *
+ * A post that was PAID is never named, whatever its transcript looks like. A
+ * trial never counts toward a paid deliverable, so earnings are evidence
+ * against a post being one — and a wrong flag would delete real money from
+ * trueCpm, which divides dollars paid by the views they were paid for. The
+ * first live backfill flagged 10 paid posts this way, every one of them from
+ * the heuristic and none from ground truth.
+ *
+ * Paid members still take part in the GROUPING — they are part of the batch's
+ * shape — they are just never flagged.
+ */
+export function trialUploadShortcodes(videos: PerformanceVideo[]): string[] {
+  const withText = videos.filter((v) => (v.transcript_text ?? "").trim().length > 0);
+  const out: string[] = [];
+  for (const group of groupTrialUploads(withText)) {
+    if (group.length < TRIAL_MIN_BATCH) continue;
+    for (const v of group) {
+      if (!v.shortcode) continue;
+      if ((v.earnings_usd ?? 0) > 0) continue;
+      out.push(v.shortcode);
+    }
+  }
+  return out;
+}
+
 export function collapseTrialUploads(videos: PerformanceVideo[]): TrialCollapse {
   const withText: PerformanceVideo[] = [];
   const kept: PerformanceVideo[] = [];

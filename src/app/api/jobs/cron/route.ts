@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { scrapeAll } from "@/lib/jobs/scrape-all";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { matchScriptPosts } from "@/lib/jobs/match-scripts";
+import { syncTrialUploads } from "@/lib/jobs/trial-sync";
 import { syncLaunchpoint } from "@/lib/jobs/launchpoint";
 import { isDigestHour, sendCoachDigests } from "@/lib/jobs/coach-digest";
 import {
@@ -93,12 +94,27 @@ export async function GET(request: NextRequest) {
     const scrape = await scrapeAll(false);
     // Only once the scrape queue is empty — mid-drain the budget is spoken for.
     const idle = scrape.remaining === 0;
-    // Non-fatal like the digests above: matchScriptPosts touches
-    // research_script_posts, whose migration ships separately from this code
-    // and can land on Vercel first. An uncaught throw here used to take the
-    // whole tick down with it — Launchpoint syncs on the next line, so a
-    // matcher fault would silently stop that drain too, with nothing in the
-    // response saying why.
+    // Flag trial uploads before matching. A batch is the same words filmed ~35
+    // times, so every member scores almost identically against the script it
+    // came from — manufacturing exactly the near-tie MATCH_AUTO_MARGIN refuses
+    // to auto-link, and filling /scripts/review with pileups of one reel.
+    // Cheap: one read of the batcher's publish log plus a per-creator pass.
+    //
+    // Both phases are non-fatal, like the digests above, and for the same
+    // reason each: matchScriptPosts reads research_script_posts, whose
+    // migration ships separately from this code and can land on Vercel
+    // second; syncTrialUploads reads a SECOND Supabase project, which can be
+    // unreachable on its own schedule. An uncaught throw in either used to
+    // take the whole tick with it — Launchpoint drains below, so a fault here
+    // would silently stop that too, with nothing in the response saying why.
+    let trials: Awaited<ReturnType<typeof syncTrialUploads>> | { failed: string } | null = null;
+    if (idle) {
+      try {
+        trials = await syncTrialUploads(createAdminClient());
+      } catch (error) {
+        trials = { failed: error instanceof Error ? error.message : String(error) };
+      }
+    }
     let matched: Awaited<ReturnType<typeof matchScriptPosts>> | { failed: string } | null = null;
     if (idle) {
       try {
@@ -115,7 +131,7 @@ export async function GET(request: NextRequest) {
           budgetMs: Math.max(0, LAUNCHPOINT_BUDGET_MS - (Date.now() - startedAt)),
         })
       : null;
-    return NextResponse.json({ ...scrape, matched, launchpoint, digest, creatorWeekly, creatorDaily });
+    return NextResponse.json({ ...scrape, trials, matched, launchpoint, digest, creatorWeekly, creatorDaily });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
