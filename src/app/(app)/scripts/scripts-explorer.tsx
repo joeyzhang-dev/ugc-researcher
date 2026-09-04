@@ -12,6 +12,7 @@ import { assignScriptNumbers } from "./doc";
 import { ScriptsDocView } from "./scripts-doc-view";
 import { AnnounceBar } from "./announce-bar";
 import { SendBar, type SendTarget } from "./send-bar";
+import type { FormatChannel } from "@/lib/format-channels";
 
 /* Categorical niche colors, restyled from cal.ts's flat pastels into the app's
    hairline-ring + tint language. The server deals a stable index per niche
@@ -175,6 +176,7 @@ export function ScriptsExplorer({
   initialSents,
   currentAppId,
   sendTargets,
+  formatChannels,
   formSlot,
   footnote,
 }: {
@@ -194,6 +196,9 @@ export function ScriptsExplorer({
   currentAppId: string | null;
   /** Roster creators the send bar can deliver to. */
   sendTargets: SendTarget[];
+  /** The scripts / formats category's channels, read live from Discord.
+   *  Empty when Discord is unreachable — see page.tsx's `.catch(() => [])`. */
+  formatChannels: FormatChannel[];
   /** The server-rendered "Write a script" card, slotted between KPIs and table. */
   formSlot: ReactNode;
   footnote?: ReactNode;
@@ -749,6 +754,7 @@ export function ScriptsExplorer({
           scriptIds={[...selectedIds]}
           targets={sendTargets}
           nicheEmojis={nicheEmojis}
+          formatChannels={formatChannels}
           onClear={() => setSelectedIds(new Set())}
         />
       )}

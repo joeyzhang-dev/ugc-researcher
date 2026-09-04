@@ -21,6 +21,7 @@ import type { SendTarget } from "./send-bar";
 import { buildSendTargets, type SendTargetInput } from "@/lib/send-targets";
 import { loadViewCurves, videoSelect } from "@/lib/video-metrics";
 import { loadNiches, nicheEmojis } from "@/lib/niches";
+import { listFormatChannels } from "@/lib/format-channels";
 
 export const dynamic = "force-dynamic";
 // Server actions invoked from this page inherit this budget — a full-batch
@@ -189,6 +190,10 @@ export default async function ScriptsPage({
     channels: (channelsData ?? []) as SendTargetInput["channels"],
   });
 
+  // Discord unreachable must degrade the picker to empty, never take
+  // /scripts down — the channel-send path is a nicety, not a dependency.
+  const formatChannels = await listFormatChannels().catch(() => []);
+
   return (
     <>
       {/* No standing description under the title: the owner asked for none — it
@@ -222,6 +227,7 @@ export default async function ScriptsPage({
         initialSents={sentFilters}
         currentAppId={appFilter}
         sendTargets={sendTargets}
+        formatChannels={formatChannels}
         footnote={
           scopedCreators.length === 0 ? (
             <p className="mt-3 text-xs text-neutral-400">
