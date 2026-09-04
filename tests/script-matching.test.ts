@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { dateProximity, resolveScriptMatches } from "@/lib/scripts";
+import {
+  buildVirtualAssignments,
+  dateProximity,
+  isVirtualAssignmentId,
+  parseVirtualAssignmentId,
+  resolveScriptMatches,
+  virtualAssignmentId,
+} from "@/lib/scripts";
 import type { ResearchScript, ResearchScriptAssignment, ResearchVideo } from "@/lib/types";
 
 function script(id: string, hook: string, body: string): ResearchScript {
@@ -197,5 +204,89 @@ describe("resolveScriptMatches with timing", () => {
     const { confirm } = resolveScriptMatches(scripts, assignments, videos, new Set());
     expect(confirm).toHaveLength(1);
     expect(confirm[0].proximity).toBe(1);
+  });
+});
+
+function nichedScript(id: string, niche: string | null): ResearchScript {
+  return {
+    id, app_id: null, title: id, hook: id, body: `body of ${id}`, niche,
+    inspo_url: null, demo: null, songs: null, status: "Sent",
+    created_at: "2026-08-01T00:00:00Z",
+  } as unknown as ResearchScript;
+}
+
+describe("virtual assignment ids", () => {
+  it("round-trips a script and creator through an id", () => {
+    const id = virtualAssignmentId("s1", "c1");
+    expect(isVirtualAssignmentId(id)).toBe(true);
+    expect(parseVirtualAssignmentId(id)).toEqual({ scriptId: "s1", creatorId: "c1" });
+  });
+
+  it("does not mistake a real uuid for a virtual id", () => {
+    const real = "8f14e45f-ceea-467a-9f38-1b2c3d4e5f60";
+    expect(isVirtualAssignmentId(real)).toBe(false);
+    expect(parseVirtualAssignmentId(real)).toBeNull();
+  });
+});
+
+describe("buildVirtualAssignments", () => {
+  const postings = [{ script_id: "s1", posted_at: "2026-09-01T00:00:00Z" }];
+
+  it("generates no pair for a script that was never published", () => {
+    const out = buildVirtualAssignments(
+      [nichedScript("s1", "Christian")], [], [{ id: "c1", niche: "Christian" }], []
+    );
+    expect(out).toHaveLength(0);
+  });
+
+  it("pairs a published script with creators in its niche only", () => {
+    const out = buildVirtualAssignments(
+      [nichedScript("s1", "Christian")],
+      postings,
+      [{ id: "c1", niche: "Christian" }, { id: "c2", niche: "Girly Finance" }],
+      []
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      script_id: "s1",
+      research_creator_id: "c1",
+      research_video_id: null,
+      status: "Assigned",
+      sent_at: "2026-09-01T00:00:00Z",
+    });
+  });
+
+  it("treats a null-niche script as universal — this is how #broad works", () => {
+    const out = buildVirtualAssignments(
+      [nichedScript("s1", null)],
+      postings,
+      [{ id: "c1", niche: "Christian" }, { id: "c2", niche: null }],
+      []
+    );
+    expect(out.map((a) => a.research_creator_id).sort()).toEqual(["c1", "c2"]);
+  });
+
+  it("never double-scores a creator who already has a real assignment", () => {
+    const out = buildVirtualAssignments(
+      [nichedScript("s1", "Christian")],
+      postings,
+      [{ id: "c1", niche: "Christian" }, { id: "c2", niche: "Christian" }],
+      [asg("a1", "s1", "c1")]
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].research_creator_id).toBe("c2");
+  });
+
+  it("anchors sent_at to the EARLIEST posting when a script sits in two channels", () => {
+    const out = buildVirtualAssignments(
+      [nichedScript("s1", "Christian")],
+      [
+        { script_id: "s1", posted_at: "2026-09-03T00:00:00Z" },
+        { script_id: "s1", posted_at: "2026-09-01T00:00:00Z" },
+      ],
+      [{ id: "c1", niche: "Christian" }],
+      []
+    );
+    expect(out[0].sent_at).toBe("2026-09-01T00:00:00Z");
   });
 });

@@ -469,3 +469,97 @@ export function resolveScriptMatches(
 
   return { confirm, review };
 }
+
+/* --- library scripts: candidates without an assignment -------------------
+ *
+ * A script published to a format channel is not assigned to anyone. To keep
+ * matching working we synthesise the pairs an assignment used to provide:
+ * (published script) x (creator whose niche it fits). The resolver cannot
+ * tell these from real open assignments, which is the point — its
+ * best-first settling still arbitrates between them and the real ones.
+ */
+
+export const VIRTUAL_ASSIGNMENT_PREFIX = "virtual:";
+
+/** uuids contain no colons, so this is unambiguous to parse back. */
+export function virtualAssignmentId(scriptId: string, creatorId: string): string {
+  return `${VIRTUAL_ASSIGNMENT_PREFIX}${scriptId}:${creatorId}`;
+}
+
+export function isVirtualAssignmentId(id: string): boolean {
+  return id.startsWith(VIRTUAL_ASSIGNMENT_PREFIX);
+}
+
+export function parseVirtualAssignmentId(
+  id: string
+): { scriptId: string; creatorId: string } | null {
+  if (!isVirtualAssignmentId(id)) return null;
+  const [scriptId, creatorId] = id.slice(VIRTUAL_ASSIGNMENT_PREFIX.length).split(":");
+  return scriptId && creatorId ? { scriptId, creatorId } : null;
+}
+
+/** One publication of a script to a channel — only what scoping needs. */
+export interface ScriptPosting {
+  script_id: string;
+  posted_at: string;
+}
+
+/** A creator and the niche that decides which scripts they are a candidate for. */
+export interface ScopedCreator {
+  id: string;
+  niche: string | null;
+}
+
+/**
+ * Candidate (script, creator) pairs for every published script.
+ *
+ * A creator is a candidate when the script's niche matches theirs, or when the
+ * script carries no niche at all — a null niche is what makes a script
+ * universal, and is how #broad works without a schema for formats.
+ *
+ * `sent_at` is the EARLIEST posting: a script cross-posted to two channels was
+ * available to the creator from the first one, and date proximity should
+ * measure against when they could first have seen it.
+ *
+ * Creators who already hold a real assignment for a script are skipped, so a
+ * script sent the old way and published the new way is never scored twice.
+ */
+export function buildVirtualAssignments(
+  scripts: ResearchScript[],
+  postings: ScriptPosting[],
+  creators: ScopedCreator[],
+  existing: ResearchScriptAssignment[]
+): ResearchScriptAssignment[] {
+  const firstPostingByScript = new Map<string, string>();
+  for (const p of postings) {
+    const seen = firstPostingByScript.get(p.script_id);
+    if (!seen || p.posted_at < seen) firstPostingByScript.set(p.script_id, p.posted_at);
+  }
+  if (!firstPostingByScript.size) return [];
+
+  const claimed = new Set(existing.map((a) => `${a.script_id}:${a.research_creator_id}`));
+  const out: ResearchScriptAssignment[] = [];
+
+  for (const s of scripts) {
+    const sentAt = firstPostingByScript.get(s.id);
+    if (!sentAt) continue;
+    for (const c of creators) {
+      if (s.niche !== null && s.niche !== c.niche) continue;
+      if (claimed.has(`${s.id}:${c.id}`)) continue;
+      out.push({
+        id: virtualAssignmentId(s.id, c.id),
+        script_id: s.id,
+        research_creator_id: c.id,
+        research_video_id: null,
+        status: "Assigned",
+        notes: null,
+        assigned_at: sentAt,
+        posted_at: null,
+        discord_channel_id: null,
+        discord_message_id: null,
+        sent_at: sentAt,
+      });
+    }
+  }
+  return out;
+}
