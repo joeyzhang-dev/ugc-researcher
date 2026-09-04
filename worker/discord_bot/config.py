@@ -8,12 +8,48 @@ in research_discord_channels and are loaded at startup).
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 
 from discord_bot.onboarding import WelcomeLinks
 
-# Where offboarded creators' channels go. Matches the worker's discover step.
-PAUSED_CATEGORIES: frozenset[str] = frozenset({"Not Creating 🚫"})
+# Where offboarded creators' channels go — keyed by ID, because a category's
+# name is not ours.
+#
+# This was a name set until 2026-09-04, when the category was renamed from
+# "Not Creating 🚫" to "🚫 Not Creating" — same words, emoji moved to the
+# front — and every /offboard started failing with "couldn't find the paused
+# category". Anyone with Manage Channels can rename a category from their
+# phone, and nothing tells this repo. The id cannot change, and it was already
+# sitting in DEFAULT_EXCLUDED_CATEGORY_IDS below on the day the rename broke
+# this: we had the stable key and matched on the unstable one.
+PAUSED_CATEGORY_IDS: frozenset[int] = frozenset({1511568384200806481})
+
+# Last-resort name match, for a guild whose ids we do not know — a fresh
+# server, or a test fixture built from names. Deliberately loose: casefolded
+# and punctuation-insensitive, so the emoji's POSITION can never matter again.
+# Never the primary test; an id match always wins.
+_PAUSED_NAME_FALLBACK = re.compile(r"not\s*creating", re.IGNORECASE)
+
+
+def is_paused_category(category_id: object = None, name: object = None) -> bool:
+    """True when this category is where offboarded creators are parked.
+
+    Takes the id AND the name so callers can pass whatever they hold. The id
+    decides whenever there is one; the name is only consulted when there is
+    not, and then only loosely.
+    """
+    if category_id is not None:
+        try:
+            return int(category_id) in PAUSED_CATEGORY_IDS
+        except (TypeError, ValueError):
+            pass
+    return bool(name) and bool(_PAUSED_NAME_FALLBACK.search(str(name)))
+
+
+# Kept for the message /offboard shows a human when the category is missing —
+# an id is not something anyone can act on, a name is.
+PAUSED_CATEGORY_LABEL = "Not Creating 🚫"
 
 # Roles allowed to run the bot's slash commands. Live ids, 2026-08-31.
 # Anyone holding Administrator also passes (see commands.may_run_commands) so a
